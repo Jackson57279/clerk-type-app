@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
+  EMAIL_TEMPLATE_PLACEHOLDERS,
   renderPasswordResetEmail,
   renderDoubleOptInEmail,
   renderMagicLinkEmail,
@@ -237,5 +238,38 @@ describe("renderMagicLinkEmail", () => {
     expect(result.html).toContain(
       '<link rel="icon" href="https://app.example.com/fav.ico" />'
     );
+  });
+
+  it("replaces all branding placeholders in custom template", () => {
+    const result = renderMagicLinkEmail(
+      { magicLink: "https://go.com/ml", expiresInMinutes: 5 },
+      {
+        branding: {
+          logoUrl: "https://cdn.example.com/logo.png",
+          primaryColor: "#2563eb",
+          secondaryColor: "#64748b",
+          companyName: "Acme",
+          faviconUrl: "https://cdn.example.com/fav.ico",
+        },
+        htmlTemplate:
+          "{{companyName}}|{{logoUrl}}|{{primaryColor}}|{{secondaryColor}}|{{faviconUrl}}|{{magicLink}}|{{expiresInMinutes}}",
+      }
+    );
+    expect(result.html).toBe(
+      "Acme|https://cdn.example.com/logo.png|#2563eb|#64748b|https://cdn.example.com/fav.ico|https://go.com/ml|5"
+    );
+  });
+});
+
+describe("EMAIL_TEMPLATE_PLACEHOLDERS", () => {
+  it("exposes placeholder names for password reset templates", () => {
+    expect(EMAIL_TEMPLATE_PLACEHOLDERS.passwordReset).toContain("resetLink");
+    expect(EMAIL_TEMPLATE_PLACEHOLDERS.passwordReset).toContain("companyName");
+    expect(EMAIL_TEMPLATE_PLACEHOLDERS.passwordReset).toContain("primaryColor");
+  });
+
+  it("exposes placeholder names for double opt-in and magic link templates", () => {
+    expect(EMAIL_TEMPLATE_PLACEHOLDERS.doubleOptIn).toContain("confirmationLink");
+    expect(EMAIL_TEMPLATE_PLACEHOLDERS.magicLink).toContain("magicLink");
   });
 });

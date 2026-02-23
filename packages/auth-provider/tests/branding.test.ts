@@ -98,6 +98,30 @@ describe("brandingFromOrganization", () => {
     });
   });
 
+  it("maps secondary_color to secondaryColor", () => {
+    const config = brandingFromOrganization({
+      secondary_color: "#1e293b",
+    });
+    expect(config).toEqual({ secondaryColor: "#1e293b" });
+  });
+
+  it("maps all branding fields including secondary_color", () => {
+    const config = brandingFromOrganization({
+      logo_url: "https://org.com/logo.png",
+      primary_color: "#dc2626",
+      secondary_color: "#64748b",
+      favicon_url: "https://org.com/fav.ico",
+      name: "Org Name",
+    });
+    expect(config).toEqual({
+      logoUrl: "https://org.com/logo.png",
+      primaryColor: "#dc2626",
+      secondaryColor: "#64748b",
+      faviconUrl: "https://org.com/fav.ico",
+      companyName: "Org Name",
+    });
+  });
+
   it("trims and omits empty strings", () => {
     const config = brandingFromOrganization({
       logo_url: "  https://x.com/l  ",

@@ -9,6 +9,7 @@ export interface BrandingConfig {
 export interface OrganizationBrandingRow {
   logo_url?: string | null;
   primary_color?: string | null;
+  secondary_color?: string | null;
   favicon_url?: string | null;
   name?: string | null;
 }
@@ -32,12 +33,15 @@ export function brandingFromOrganization(
   if (!row) return null;
   const logoUrl = row.logo_url?.trim() || undefined;
   const primaryColor = row.primary_color?.trim() || undefined;
+  const secondaryColor = row.secondary_color?.trim() || undefined;
   const faviconUrl = row.favicon_url?.trim() || undefined;
   const companyName = row.name?.trim() || undefined;
-  if (!logoUrl && !primaryColor && !faviconUrl && !companyName) return null;
+  if (!logoUrl && !primaryColor && !secondaryColor && !faviconUrl && !companyName)
+    return null;
   return {
     ...(logoUrl && { logoUrl }),
     ...(primaryColor && { primaryColor }),
+    ...(secondaryColor && { secondaryColor }),
     ...(faviconUrl && { faviconUrl }),
     ...(companyName && { companyName }),
   };

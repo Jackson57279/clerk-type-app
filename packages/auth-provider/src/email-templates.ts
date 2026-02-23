@@ -1,5 +1,36 @@
 import { mergeBranding, type BrandingConfig } from "./branding.js";
 
+export const EMAIL_TEMPLATE_PLACEHOLDERS = {
+  passwordReset: [
+    "resetLink",
+    "expiresInMinutes",
+    "companyName",
+    "logoUrl",
+    "primaryColor",
+    "secondaryColor",
+    "faviconUrl",
+  ] as const,
+  doubleOptIn: [
+    "confirmationLink",
+    "operation",
+    "expiresInMinutes",
+    "companyName",
+    "logoUrl",
+    "primaryColor",
+    "secondaryColor",
+    "faviconUrl",
+  ] as const,
+  magicLink: [
+    "magicLink",
+    "expiresInMinutes",
+    "companyName",
+    "logoUrl",
+    "primaryColor",
+    "secondaryColor",
+    "faviconUrl",
+  ] as const,
+};
+
 export interface PasswordResetEmailParams {
   resetLink: string;
   expiresInMinutes: number;
