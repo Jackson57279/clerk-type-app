@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   createMfaBackupProvider,
+  enforceMfaOrBackupCodes,
 } from "../src/mfa-backup-enforcement.js";
 import {
   createMemoryBackupCodeStore,
@@ -66,5 +67,36 @@ describe("createMfaBackupProvider", () => {
     });
     expect(await provider.hasMfaOrBackupCodes("user-consumed")).toBe(true);
     expect(await getRemainingBackupCodeCount("user-consumed", backupStore)).toBe(1);
+  });
+});
+
+describe("enforceMfaOrBackupCodes", () => {
+  it("returns allowed: true when provider says user has MFA or backup codes", async () => {
+    const provider = createMfaBackupProvider({
+      hasTotp: async (userId) => userId === "user-ok",
+      backupCodeStore: createMemoryBackupCodeStore(),
+    });
+    const result = await enforceMfaOrBackupCodes(provider, "user-ok");
+    expect(result).toEqual({ allowed: true });
+  });
+
+  it("returns allowed: false, requiresMfaOrBackup: true when user has neither", async () => {
+    const provider = createMfaBackupProvider({
+      hasTotp: async () => false,
+      backupCodeStore: createMemoryBackupCodeStore(),
+    });
+    const result = await enforceMfaOrBackupCodes(provider, "user-none");
+    expect(result).toEqual({ allowed: false, requiresMfaOrBackup: true });
+  });
+
+  it("returns allowed: true when user has only backup codes", async () => {
+    const backupStore = createMemoryBackupCodeStore();
+    await addBackupCodesForUser("u", ["abc12345"], backupStore);
+    const provider = createMfaBackupProvider({
+      hasTotp: async () => false,
+      backupCodeStore: backupStore,
+    });
+    const result = await enforceMfaOrBackupCodes(provider, "u");
+    expect(result).toEqual({ allowed: true });
   });
 });

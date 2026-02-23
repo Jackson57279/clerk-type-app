@@ -7,6 +7,19 @@ export interface MfaBackupEnforcementOptions {
   backupCodeStore: BackupCodeStore;
 }
 
+export type MfaBackupEnforcementResult =
+  | { allowed: true }
+  | { allowed: false; requiresMfaOrBackup: true };
+
+export async function enforceMfaOrBackupCodes(
+  provider: MfaBackupProvider,
+  userId: string
+): Promise<MfaBackupEnforcementResult> {
+  const hasMfaOrBackup = await provider.hasMfaOrBackupCodes(userId);
+  if (hasMfaOrBackup) return { allowed: true };
+  return { allowed: false, requiresMfaOrBackup: true };
+}
+
 export function createMfaBackupProvider(
   options: MfaBackupEnforcementOptions
 ): MfaBackupProvider {
