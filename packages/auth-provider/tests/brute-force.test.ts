@@ -141,6 +141,21 @@ describe("createBruteForceProtection (custom options)", () => {
     expect(bf.check("127.0.0.2").allowed).toBe(true);
   });
 
+  it("tracks keys independently with custom options", () => {
+    const bf = createBruteForceProtection({ baseDelayMs: 1000 });
+    bf.recordFailedAttempt("a");
+    bf.recordFailedAttempt("a");
+    bf.recordFailedAttempt("b");
+
+    expect(bf.check("a").allowed).toBe(false);
+    expect(bf.check("b").allowed).toBe(false);
+
+    vi.advanceTimersByTime(1000);
+
+    expect(bf.check("a").allowed).toBe(false);
+    expect(bf.check("b").allowed).toBe(true);
+  });
+
   it("clearFailedAttempts resets state for that key only", () => {
     const bf = createBruteForceProtection({ baseDelayMs: 100 });
     bf.recordFailedAttempt("a");
