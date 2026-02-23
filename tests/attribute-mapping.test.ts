@@ -119,4 +119,18 @@ describe("applyAttributeMapping", () => {
     expect(claims.groups).toEqual(["engineering", "admin"]);
     expect(claims.roles).toEqual(["developer"]);
   });
+
+  it("returns all undefined and empty arrays with empty config", () => {
+    const attrs: Record<string, string[]> = {
+      email: ["a@b.com"],
+      name: ["Bob"],
+    };
+    const claims = applyAttributeMapping(attrs, {});
+    expect(claims.email).toBeUndefined();
+    expect(claims.name).toBeUndefined();
+    expect(claims.firstName).toBeUndefined();
+    expect(claims.lastName).toBeUndefined();
+    expect(claims.groups).toEqual([]);
+    expect(claims.roles).toEqual([]);
+  });
 });
