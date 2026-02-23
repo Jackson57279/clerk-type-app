@@ -14,6 +14,18 @@ describe("account lockout (30 min after 10 failed attempts)", () => {
     vi.useRealTimers();
   });
 
+  it("uses default 10 attempts and 30 min lockout", () => {
+    const key = "u@test.com";
+    for (let i = 0; i < 9; i++) recordFailedAttempt(key);
+    expect(checkAccountLockout(key).locked).toBe(false);
+    recordFailedAttempt(key);
+    const r = checkAccountLockout(key);
+    expect(r.locked).toBe(true);
+    expect(r.retryAfterSeconds).toBe(30 * 60);
+    vi.advanceTimersByTime(30 * 60 * 1000);
+    expect(checkAccountLockout(key).locked).toBe(false);
+  });
+
   it("allows first attempt with no lock", () => {
     expect(checkAccountLockout("user@example.com").locked).toBe(false);
   });
