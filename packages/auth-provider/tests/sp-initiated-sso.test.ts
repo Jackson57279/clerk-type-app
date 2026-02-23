@@ -405,6 +405,19 @@ describe("getSpInitiatedLoginRedirect", () => {
       expect(new URL(result.redirectUrl).searchParams.get("RelayState")).toBe("/app/callback");
     }
   });
+
+  it("redirect URL contains signed AuthnRequest by default", async () => {
+    const result = await getSpInitiatedLoginRedirect(
+      {},
+      { spConfig: spConfig(), idpConfig: idpConfig() }
+    );
+    expect(result.status).toBe(302);
+    if (result.status !== 302) return;
+    const samlRequestB64 = new URL(result.redirectUrl).searchParams.get("SAMLRequest");
+    expect(samlRequestB64).toBeTruthy();
+    const xml = zlib.inflateRawSync(Buffer.from(samlRequestB64!, "base64")).toString("utf8");
+    expect(xml).toContain("Signature");
+  });
 });
 
 describe("handleSpInitiatedAssertEndpoint", () => {
