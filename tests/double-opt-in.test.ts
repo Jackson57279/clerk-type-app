@@ -5,6 +5,7 @@ import {
   createMemoryConfirmationStore,
   isSensitiveOperation,
   SENSITIVE_OPERATIONS,
+  DEFAULT_CONFIRMATION_LINK_TTL_MS,
   type SensitiveOperationType,
 } from "../src/double-opt-in.js";
 
@@ -22,10 +23,23 @@ describe("createConfirmationToken", () => {
     const result = createConfirmationToken(basePayload, SECRET);
     expect(result.token).toBeDefined();
     expect(typeof result.token).toBe("string");
-    expect(result.token).toContain(".");
+    expect(result.token.split(".")).toHaveLength(3);
     expect(result.expiresAt).toBeGreaterThan(Date.now());
     expect(result.jti).toBeDefined();
     expect(result.jti).toMatch(/^[a-f0-9]{32}$/);
+  });
+
+  it("emits JWT format (header.payload.signature) with short expiry", () => {
+    const result = createConfirmationToken(basePayload, SECRET);
+    const [headerB64, payloadB64, sigB64] = result.token.split(".");
+    expect(headerB64).toBeDefined();
+    expect(payloadB64).toBeDefined();
+    expect(sigB64).toBeDefined();
+    const payload = verifyConfirmationToken(result.token, SECRET);
+    expect(payload).not.toBeNull();
+    const ttlMs = result.expiresAt - Date.now();
+    expect(ttlMs).toBeLessThanOrEqual(DEFAULT_CONFIRMATION_LINK_TTL_MS + 1000);
+    expect(ttlMs).toBeGreaterThanOrEqual(DEFAULT_CONFIRMATION_LINK_TTL_MS - 1000);
   });
 
   it("uses default TTL of 15 minutes", () => {
@@ -86,12 +100,13 @@ describe("verifyConfirmationToken", () => {
   it("returns null for tampered token", () => {
     const { token } = createConfirmationToken(basePayload, SECRET);
     const parts = token.split(".");
-    const payloadB64 = parts[0] ?? "";
-    const sig = parts[1] ?? "";
+    const headerB64 = parts[0] ?? "";
+    const payloadB64 = parts[1] ?? "";
+    const sig = parts[2] ?? "";
     const tamperedPayload =
       payloadB64.slice(0, -1) + (payloadB64.slice(-1) === "a" ? "b" : "a");
     expect(
-      verifyConfirmationToken(`${tamperedPayload}.${sig}`, SECRET)
+      verifyConfirmationToken(`${headerB64}.${tamperedPayload}.${sig}`, SECRET)
     ).toBeNull();
   });
 
@@ -99,8 +114,12 @@ describe("verifyConfirmationToken", () => {
     expect(verifyConfirmationToken("notadot", SECRET)).toBeNull();
   });
 
+  it("returns null for two-part token (legacy format)", () => {
+    expect(verifyConfirmationToken("a.b", SECRET)).toBeNull();
+  });
+
   it("returns null for invalid base64 payload", () => {
-    expect(verifyConfirmationToken("!!!.!!!", SECRET)).toBeNull();
+    expect(verifyConfirmationToken("!!!.!!!.!!!", SECRET)).toBeNull();
   });
 
   it("round-trips without operationParams", () => {

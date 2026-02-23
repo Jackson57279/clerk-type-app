@@ -1,6 +1,8 @@
 import { createHmac, randomBytes } from "crypto";
 
-const DEFAULT_TTL_MS = 15 * 60 * 1000;
+export const DEFAULT_CONFIRMATION_LINK_TTL_MS = 15 * 60 * 1000;
+
+const JWT_HEADER = { alg: "HS256", typ: "JWT" } as const;
 
 export const SENSITIVE_OPERATIONS = [
   "change_email",
@@ -61,7 +63,7 @@ export function createConfirmationToken(
   secret: string,
   options: CreateConfirmationTokenOptions = {}
 ): CreateConfirmationTokenResult {
-  const ttlMs = options.ttlMs ?? DEFAULT_TTL_MS;
+  const ttlMs = options.ttlMs ?? DEFAULT_CONFIRMATION_LINK_TTL_MS;
   const expiresAt = Date.now() + ttlMs;
   const expSec = Math.floor(expiresAt / 1000);
   const jti = randomBytes(16).toString("hex");
@@ -73,9 +75,11 @@ export function createConfirmationToken(
     operation: payload.operation,
     operationParams: payload.operationParams ?? {},
   };
+  const headerB64 = encodePayload(JWT_HEADER as unknown as Record<string, unknown>);
   const payloadB64 = encodePayload(data);
-  const sig = createHmac("sha256", secret).update(payloadB64).digest();
-  const token = `${payloadB64}.${base64url(sig)}`;
+  const signingInput = `${headerB64}.${payloadB64}`;
+  const sig = createHmac("sha256", secret).update(signingInput).digest();
+  const token = `${signingInput}.${base64url(sig)}`;
   return { token, expiresAt, jti };
 }
 
@@ -88,19 +92,20 @@ export function verifyConfirmationToken(
   secret: string,
   options: VerifyConfirmationTokenOptions = {}
 ): VerifyConfirmationTokenResult | null {
-  const dot = token.indexOf(".");
-  if (dot === -1) return null;
-  const payloadB64 = token.slice(0, dot);
-  const sigB64 = token.slice(dot + 1);
+  const parts = token.split(".");
+  if (parts.length !== 3) return null;
+  const [headerB64, payloadB64, sigB64] = parts;
+  if (!headerB64 || !payloadB64 || !sigB64) return null;
+  const signingInput = `${headerB64}.${payloadB64}`;
+  const expectedSig = createHmac("sha256", secret).update(signingInput).digest();
+  const expectedB64 = base64url(expectedSig);
+  if (sigB64 !== expectedB64) return null;
   let payloadBuf: Buffer;
   try {
     payloadBuf = decodeBase64url(payloadB64);
   } catch {
     return null;
   }
-  const expectedSig = createHmac("sha256", secret).update(payloadB64).digest();
-  const expectedB64 = base64url(expectedSig);
-  if (sigB64 !== expectedB64) return null;
   let data: {
     exp: number;
     jti: string;
