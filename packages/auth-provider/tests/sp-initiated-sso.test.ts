@@ -344,7 +344,9 @@ describe("SLO end-to-end", () => {
       idpConfig: idpLogoutConfig,
       getSpLogoutUrl: (issuer) =>
         issuer === "https://sp.example.com/metadata.xml" ? "https://sp.example.com/slo" : null,
-      invalidateSession: (params) => invalidated.push(params),
+      invalidateSession: (params) => {
+        invalidated.push(params);
+      },
     });
     expect(invalidated).toHaveLength(1);
     expect(invalidated[0]?.nameId).toBe(nameId);
