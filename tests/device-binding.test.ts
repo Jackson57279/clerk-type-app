@@ -91,4 +91,23 @@ describe("validateDeviceBinding", () => {
       })
     ).toBe(false);
   });
+
+  it("returns false when stored hash present but current fingerprint is empty string", () => {
+    const stored = hashDeviceFingerprint("device1");
+    expect(
+      validateDeviceBinding({
+        storedFingerprintHash: stored,
+        currentFingerprint: "",
+      })
+    ).toBe(false);
+  });
+
+  it("returns true when stored hash is empty and current is empty (optional binding)", () => {
+    expect(
+      validateDeviceBinding({
+        storedFingerprintHash: "",
+        currentFingerprint: "",
+      })
+    ).toBe(true);
+  });
 });
