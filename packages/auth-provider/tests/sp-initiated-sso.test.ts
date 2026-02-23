@@ -12,6 +12,7 @@ import {
   getSpInitiatedLoginRedirect,
   handleSpInitiatedAssertEndpoint,
   handleSpInitiatedLogoutResponseEndpoint,
+  getSpMetadataXml,
   type SpInitiatedSpConfig,
   type SpInitiatedIdpConfig,
 } from "../src/sp-initiated-sso.js";
@@ -586,5 +587,58 @@ describe("SLO end-to-end", () => {
       SAMLResponse: samlResponseBase64,
     });
     expect(validated.inResponseTo).toBe(parsed.requestId);
+  });
+});
+
+const XMLNS_MD = "urn:oasis:names:tc:SAML:2.0:metadata";
+
+describe("getSpMetadataXml", () => {
+  it("returns valid SAML 2.0 SP metadata XML", () => {
+    const xml = getSpMetadataXml(spConfig());
+    expect(xml).toContain("EntityDescriptor");
+    expect(xml).toContain("SPSSODescriptor");
+    const dom = new DOMParser().parseFromString(xml, "text/xml");
+    const entityDescriptor = dom.getElementsByTagNameNS(XMLNS_MD, "EntityDescriptor")[0];
+    expect(entityDescriptor).toBeTruthy();
+    expect(entityDescriptor?.getAttribute("entityID")).toBe("https://sp.example.com/metadata.xml");
+  });
+
+  it("includes AssertionConsumerService with HTTP-POST binding and assert endpoint", () => {
+    const xml = getSpMetadataXml(spConfig());
+    const dom = new DOMParser().parseFromString(xml, "text/xml");
+    const acsList = dom.getElementsByTagNameNS(XMLNS_MD, "AssertionConsumerService");
+    expect(acsList.length).toBeGreaterThanOrEqual(1);
+    const acs = acsList[0];
+    expect(acs?.getAttribute("Binding")).toBe("urn:oasis:names:tc:SAML:2.0:bindings:HTTP-POST");
+    expect(acs?.getAttribute("Location")).toBe("https://sp.example.com/assert");
+  });
+
+  it("includes SingleLogoutService with HTTP-Redirect binding", () => {
+    const xml = getSpMetadataXml(spConfig());
+    const dom = new DOMParser().parseFromString(xml, "text/xml");
+    const sloList = dom.getElementsByTagNameNS(XMLNS_MD, "SingleLogoutService");
+    expect(sloList.length).toBeGreaterThanOrEqual(1);
+    expect(sloList[0]?.getAttribute("Binding")).toBe("urn:oasis:names:tc:SAML:2.0:bindings:HTTP-Redirect");
+  });
+
+  it("includes KeyDescriptor with certificate data", () => {
+    const xml = getSpMetadataXml(spConfig());
+    expect(xml).toContain("KeyDescriptor");
+    expect(xml).toContain("X509Certificate");
+    expect(xml).toContain("MIIDGTCCAgGgAwIBAgIJAO8HJfrb3JZeMA0GCSqGSIb3DQEBBQUAMCMxITAfBgNV");
+  });
+
+  it("uses custom entityId and assertEndpoint from config", () => {
+    const xml = getSpMetadataXml(
+      spConfig({
+        entityId: "https://myapp.com/saml",
+        assertEndpoint: "https://myapp.com/saml/acs",
+      })
+    );
+    const dom = new DOMParser().parseFromString(xml, "text/xml");
+    const entityDescriptor = dom.getElementsByTagNameNS(XMLNS_MD, "EntityDescriptor")[0];
+    expect(entityDescriptor?.getAttribute("entityID")).toBe("https://myapp.com/saml");
+    const acsList = dom.getElementsByTagNameNS(XMLNS_MD, "AssertionConsumerService");
+    expect(acsList[0]?.getAttribute("Location")).toBe("https://myapp.com/saml/acs");
   });
 });

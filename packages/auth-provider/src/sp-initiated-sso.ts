@@ -30,6 +30,7 @@ interface IdpOptions {
 }
 
 interface ServiceProviderInstance {
+  create_metadata(): string;
   create_login_request_url(
     idp: IdpInstance,
     options: { relay_state?: string },
@@ -122,6 +123,11 @@ function toIdpOptions(c: SpInitiatedIdpConfig): IdpOptions {
     force_authn: c.forceAuthn,
     allow_unencrypted_assertion: c.allowUnencryptedAssertion,
   };
+}
+
+export function getSpMetadataXml(spConfig: SpInitiatedSpConfig): string {
+  const sp = new saml2.ServiceProvider(toSpOptions(spConfig));
+  return sp.create_metadata();
 }
 
 function extractAuthnRequestId(signedAuthnRequestXml: string): string {
