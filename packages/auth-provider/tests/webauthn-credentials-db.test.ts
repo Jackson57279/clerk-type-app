@@ -234,6 +234,40 @@ describe("createPostgresPasskeyStore", () => {
     expect(list[0]!.backedUp).toBe(false);
   });
 
+  it("listByUserId returns multiDevice and backedUp when row has device_type multiDevice and is_synced true", async () => {
+    const { pool, rows } = createMockPool();
+    const userId = "user-synced";
+    const credId = "c3luY2VkLWNyZWQ";
+    rows.set(userId, [
+      makeRow(userId, credId, { device_type: "multiDevice", is_synced: true }),
+    ]);
+    const store = createPostgresPasskeyStore({ pool });
+    const list = await store.listByUserId(userId);
+    expect(list).toHaveLength(1);
+    expect(list[0]!.deviceType).toBe("multiDevice");
+    expect(list[0]!.backedUp).toBe(true);
+  });
+
+  it("save with multiDevice and backedUp persists and round-trips via listByUserId", async () => {
+    const { pool } = createMockPool();
+    const store = createPostgresPasskeyStore({ pool });
+    const cred: StoredPasskey = {
+      userId: "user-multi",
+      credentialId: "bXVsdGktZGV2aWNl",
+      publicKey: new Uint8Array(32).fill(3),
+      counter: 0,
+      deviceType: "multiDevice",
+      backedUp: true,
+      webauthnUserID: "user-multi",
+    };
+    await store.save(cred);
+    const list = await store.listByUserId("user-multi");
+    expect(list).toHaveLength(1);
+    expect(list[0]!.credentialId).toBe("bXVsdGktZGV2aWNl");
+    expect(list[0]!.deviceType).toBe("multiDevice");
+    expect(list[0]!.backedUp).toBe(true);
+  });
+
   it("findByCredentialId returns credential when present", async () => {
     const { pool, rows } = createMockPool();
     const userId = "user-1";

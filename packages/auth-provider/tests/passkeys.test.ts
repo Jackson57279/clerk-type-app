@@ -1194,3 +1194,171 @@ describe("Resident key (discoverable credentials) authentication", () => {
     expect(found!.credentialId).toBe("cred-only-b");
   });
 });
+
+describe("Multi-device passkey support", () => {
+  it("stores and lists synced (multiDevice, backedUp) passkey from registration", async () => {
+    const credentialStore = createMemoryPasskeyStore();
+    const challengeStore = createMemoryPasskeyChallengeStore();
+    await startRegistration({
+      userId: "u-multidevice",
+      userName: "alice",
+      credentialStore,
+      challengeStore,
+      rpConfig,
+    });
+    vi.mocked(simplewebauthn.verifyRegistrationResponse).mockImplementationOnce(async () =>
+      ({
+        verified: true,
+        registrationInfo: {
+          credential: {
+            id: "synced-cred-id",
+            publicKey: new Uint8Array(32),
+            counter: 0,
+            transports: ["internal"],
+          },
+          credentialDeviceType: "multiDevice",
+          credentialBackedUp: true,
+        },
+      }) as VerifiedRegistrationResponse
+    );
+    const result = await finishRegistration({
+      userId: "u-multidevice",
+      response: {
+        id: "synced-cred-id",
+        rawId: "synced-cred-id",
+        type: "public-key",
+        response: {
+          clientDataJSON: "e30",
+          attestationObject: "o2NmbXRkbm9uZWdhdHRTdG10oGhhdXRoRGF0YVikSZYN5YgOjGh0NBcPZHZgW4_krrmihjLHmVzzuoMdl2NFAAAAAK3OAAI1vMYKZIsLJfHwVQMAIER5YWx1eSBMYXB0b3ClB1YmxpYyBLZXnALg",
+        },
+        clientExtensionResults: {},
+      },
+      credentialStore,
+      challengeStore,
+      rpConfig,
+      mfaBackupProvider: allowMfaBackupProvider,
+    });
+    expect(result.verified).toBe(true);
+    expect(result.credentialId).toBe("synced-cred-id");
+    const list = await listPasskeys({ userId: "u-multidevice", credentialStore });
+    expect(list).toHaveLength(1);
+    expect(list[0]!.deviceType).toBe("multiDevice");
+    expect(list[0]!.backedUp).toBe(true);
+  });
+
+  it("authenticates with synced passkey (userId flow)", async () => {
+    const credentialStore = createMemoryPasskeyStore();
+    const challengeStore = createMemoryPasskeyChallengeStore();
+    await credentialStore.save({
+      userId: "u-synced-auth",
+      credentialId: "synced-1",
+      publicKey: new Uint8Array(32),
+      counter: 0,
+      deviceType: "multiDevice",
+      backedUp: true,
+      webauthnUserID: "w",
+    });
+    const authOptions = await startAuthentication({
+      userId: "u-synced-auth",
+      credentialStore,
+      challengeStore,
+      rpConfig,
+    });
+    expect(authOptions.allowCredentials).toHaveLength(1);
+    expect(authOptions.allowCredentials![0]!.id).toBe("synced-1");
+    vi.mocked(simplewebauthn.verifyAuthenticationResponse).mockImplementationOnce(async () =>
+      ({
+        verified: true,
+        authenticationInfo: { newCounter: 1 },
+      }) as VerifiedAuthenticationResponse
+    );
+    const result = await finishAuthentication({
+      userId: "u-synced-auth",
+      response: {
+        id: "synced-1",
+        rawId: "synced-1",
+        type: "public-key",
+        response: {
+          clientDataJSON: "eyJ0eXBlIjoid2ViYXV0aG4uZ2V0IiwiY2hhbGxlbmdlIjoiYWJjIiwib3JpZ2luIjoiaHR0cDovL2xvY2FsaG9zdCJ9",
+          authenticatorData: "SZYN5YgOjGh0NBcPZHZgW4_krrmihjLHmVzzuoMdl2MFAAAAAA",
+          signature: "MEUCIQDxZWE",
+        },
+        clientExtensionResults: {},
+      },
+      credentialStore,
+      challengeStore,
+      rpConfig,
+    });
+    expect(result.verified).toBe(true);
+    expect(result.credentialId).toBe("synced-1");
+  });
+
+  it("authenticates from any registered device via discoverable flow", async () => {
+    const credentialStore = createMemoryPasskeyStore();
+    const challengeStore = createMemoryPasskeyChallengeStore();
+    const userId = "u-multi-device";
+    await credentialStore.save({
+      userId,
+      credentialId: "device-laptop",
+      publicKey: new Uint8Array(32).fill(1),
+      counter: 0,
+      deviceType: "singleDevice",
+      backedUp: false,
+      webauthnUserID: "w",
+    });
+    await credentialStore.save({
+      userId,
+      credentialId: "device-phone",
+      publicKey: new Uint8Array(32).fill(2),
+      counter: 0,
+      deviceType: "multiDevice",
+      backedUp: true,
+      webauthnUserID: "w",
+    });
+    const authOptions = await startAuthentication({
+      credentialStore,
+      challengeStore,
+      rpConfig,
+      useDiscoverableCredentials: true,
+    });
+    expect(authOptions.allowCredentials).toBeUndefined();
+    const clientDataJSON = Buffer.from(
+      JSON.stringify({
+        type: "webauthn.get",
+        challenge: authOptions.challenge,
+        origin: rpConfig.origin,
+      }),
+      "utf-8"
+    ).toString("base64url");
+    vi.mocked(simplewebauthn.verifyAuthenticationResponse).mockImplementationOnce(async () =>
+      ({
+        verified: true,
+        authenticationInfo: {
+          newCounter: 1,
+          credentialID: "device-phone",
+          credentialDeviceType: "multiDevice",
+          credentialBackedUp: true,
+        },
+      }) as unknown as VerifiedAuthenticationResponse
+    );
+    const result = await finishAuthentication({
+      response: {
+        id: "device-phone",
+        rawId: "device-phone",
+        type: "public-key",
+        response: {
+          clientDataJSON,
+          authenticatorData: "SZYN5YgOjGh0NBcPZHZgW4_krrmihjLHmVzzuoMdl2MFAAAAAA",
+          signature: "MEUCIQDxZWE",
+        },
+        clientExtensionResults: {},
+      },
+      credentialStore,
+      challengeStore,
+      rpConfig,
+    });
+    expect(result.verified).toBe(true);
+    expect(result.userId).toBe(userId);
+    expect(result.credentialId).toBe("device-phone");
+  });
+});

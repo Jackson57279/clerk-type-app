@@ -188,4 +188,42 @@ describe("passkey registration", () => {
     expect(list[0]!.friendlyName).toBe("My MacBook");
     expect(list[0]!.deviceInfo).toContain("Chrome");
   });
+
+  it("finishPasskeyRegistration stores multiDevice and backedUp when authenticator is synced", async () => {
+    const deps = createDeps({ hasMfaOrBackupCodes: async () => true });
+    await startPasskeyRegistration(deps, { userId: "user-synced", userName: "eve" });
+    vi.mocked(simplewebauthn.verifyRegistrationResponse).mockImplementationOnce(async () =>
+      ({
+        verified: true,
+        registrationInfo: {
+          credential: {
+            id: "cred-synced",
+            publicKey: new Uint8Array(32),
+            counter: 0,
+            transports: ["internal"],
+          },
+          credentialDeviceType: "multiDevice",
+          credentialBackedUp: true,
+        },
+      }) as unknown as VerifiedRegistrationResponse
+    );
+    await finishPasskeyRegistration(deps, {
+      userId: "user-synced",
+      response: {
+        id: "cred-synced",
+        rawId: "cred-synced",
+        type: "public-key",
+        response: {
+          clientDataJSON: "e30",
+          attestationObject: "o2NmbXRkbm9uZWdhdHRTdG10oA",
+        },
+        clientExtensionResults: {},
+      },
+    });
+    const list = await listPasskeys({ userId: "user-synced", credentialStore: deps.credentialStore });
+    expect(list).toHaveLength(1);
+    expect(list[0]!.credentialId).toBe("cred-synced");
+    expect(list[0]!.deviceType).toBe("multiDevice");
+    expect(list[0]!.backedUp).toBe(true);
+  });
 });
