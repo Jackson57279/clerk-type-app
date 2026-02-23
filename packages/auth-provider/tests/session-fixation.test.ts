@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { regenerateSessionId } from "../src/session-fixation.js";
+import { regenerateSessionId, createSessionAfterLogin } from "../src/session-fixation.js";
 
 describe("regenerateSessionId (session fixation prevention)", () => {
   it("returns a new session ID different from the old one", () => {
@@ -114,5 +114,55 @@ describe("regenerateSessionId (session fixation prevention)", () => {
     expect(store.has(fixatedSessionId)).toBe(false);
     expect(store.get(newSessionId)).toEqual({ userId: "user1", orgId: null });
     expect(newSessionId).not.toBe(fixatedSessionId);
+  });
+});
+
+describe("createSessionAfterLogin (session fixation + Set-Cookie)", () => {
+  it("returns new session ID and Set-Cookie header with default cookie name", () => {
+    const store = new Map<string, { userId: string; orgId: string | null }>();
+    const sessionStore = {
+      remove(id: string) {
+        store.delete(id);
+      },
+      register(id: string, userId: string, orgId: string | null) {
+        store.set(id, { userId, orgId });
+      },
+    };
+    const oldId = "pre-login-session";
+    const { newSessionId, setCookieHeader } = createSessionAfterLogin(
+      oldId,
+      "user1",
+      null,
+      sessionStore
+    );
+    expect(newSessionId).not.toBe(oldId);
+    expect(newSessionId).toMatch(/^[a-f0-9]{64}$/);
+    expect(setCookieHeader).toMatch(/^session=/);
+    expect(setCookieHeader).toContain(newSessionId);
+    expect(setCookieHeader).toContain("HttpOnly");
+    expect(store.has(oldId)).toBe(false);
+    expect(store.get(newSessionId)).toEqual({ userId: "user1", orgId: null });
+  });
+
+  it("uses custom cookie name and options", () => {
+    const store = new Map<string, { userId: string; orgId: string | null }>();
+    const sessionStore = {
+      remove(id: string) {
+        store.delete(id);
+      },
+      register(id: string, userId: string, orgId: string | null) {
+        store.set(id, { userId, orgId });
+      },
+    };
+    const { setCookieHeader } = createSessionAfterLogin(
+      "old",
+      "user1",
+      "org1",
+      sessionStore,
+      { cookieName: "sid", maxAgeSeconds: 3600, path: "/" }
+    );
+    expect(setCookieHeader).toMatch(/^sid=/);
+    expect(setCookieHeader).toContain("Max-Age=3600");
+    expect(setCookieHeader).toContain("Path=/");
   });
 });
