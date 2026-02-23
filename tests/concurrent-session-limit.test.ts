@@ -390,6 +390,16 @@ describe("createConcurrentSessionLimit (getLimits per user/org)", () => {
     expect(r.allowed).toBe(true);
     expect(r.evictSessionIds).toHaveLength(1);
   });
+
+  it("returns allowed false when getLimits resolves user limit to 0", () => {
+    const limiter = createConcurrentSessionLimit({
+      defaultUserLimit: 5,
+      getLimits: (userId) => (userId === "blocked" ? { user: 0 } : {}),
+    });
+    const r = limiter.check("blocked", null);
+    expect(r.allowed).toBe(false);
+    expect(r.evictSessionIds).toEqual([]);
+  });
 });
 
 describe("getConcurrentSessionLimitDefaults (configurable via env)", () => {
