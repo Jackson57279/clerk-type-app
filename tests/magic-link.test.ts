@@ -4,6 +4,7 @@ import {
   verifyMagicLinkToken,
   createMemoryUsedTokenStore,
   DEFAULT_MAGIC_LINK_TTL_MS,
+  getMagicLinkTtlMs,
 } from "../src/magic-link.js";
 
 const SECRET = "test-secret-key";
@@ -208,5 +209,88 @@ describe("magic link device binding", () => {
 describe("DEFAULT_MAGIC_LINK_TTL_MS", () => {
   it("is 15 minutes in milliseconds", () => {
     expect(DEFAULT_MAGIC_LINK_TTL_MS).toBe(15 * 60 * 1000);
+  });
+});
+
+describe("getMagicLinkTtlMs", () => {
+  const orig = process.env.MAGIC_LINK_TTL_MINUTES;
+
+  afterEach(() => {
+    if (orig !== undefined) {
+      process.env.MAGIC_LINK_TTL_MINUTES = orig;
+    } else {
+      delete process.env.MAGIC_LINK_TTL_MINUTES;
+    }
+  });
+
+  it("returns 15 min default when MAGIC_LINK_TTL_MINUTES is unset", () => {
+    delete process.env.MAGIC_LINK_TTL_MINUTES;
+    expect(getMagicLinkTtlMs()).toBe(15 * 60 * 1000);
+  });
+
+  it("returns 15 min default when MAGIC_LINK_TTL_MINUTES is empty", () => {
+    process.env.MAGIC_LINK_TTL_MINUTES = "";
+    expect(getMagicLinkTtlMs()).toBe(15 * 60 * 1000);
+  });
+
+  it("returns configured minutes in ms when valid", () => {
+    process.env.MAGIC_LINK_TTL_MINUTES = "5";
+    expect(getMagicLinkTtlMs()).toBe(5 * 60 * 1000);
+    process.env.MAGIC_LINK_TTL_MINUTES = "60";
+    expect(getMagicLinkTtlMs()).toBe(60 * 60 * 1000);
+    process.env.MAGIC_LINK_TTL_MINUTES = "1440";
+    expect(getMagicLinkTtlMs()).toBe(1440 * 60 * 1000);
+  });
+
+  it("returns default when value is below 1", () => {
+    process.env.MAGIC_LINK_TTL_MINUTES = "0";
+    expect(getMagicLinkTtlMs()).toBe(DEFAULT_MAGIC_LINK_TTL_MS);
+    process.env.MAGIC_LINK_TTL_MINUTES = "-1";
+    expect(getMagicLinkTtlMs()).toBe(DEFAULT_MAGIC_LINK_TTL_MS);
+  });
+
+  it("returns default when value is above 1440", () => {
+    process.env.MAGIC_LINK_TTL_MINUTES = "1441";
+    expect(getMagicLinkTtlMs()).toBe(DEFAULT_MAGIC_LINK_TTL_MS);
+  });
+
+  it("returns default when value is not an integer", () => {
+    process.env.MAGIC_LINK_TTL_MINUTES = "5.5";
+    expect(getMagicLinkTtlMs()).toBe(DEFAULT_MAGIC_LINK_TTL_MS);
+    process.env.MAGIC_LINK_TTL_MINUTES = "abc";
+    expect(getMagicLinkTtlMs()).toBe(DEFAULT_MAGIC_LINK_TTL_MS);
+  });
+});
+
+describe("magic link configurable expiration", () => {
+  const orig = process.env.MAGIC_LINK_TTL_MINUTES;
+
+  afterEach(() => {
+    if (orig !== undefined) {
+      process.env.MAGIC_LINK_TTL_MINUTES = orig;
+    } else {
+      delete process.env.MAGIC_LINK_TTL_MINUTES;
+    }
+  });
+
+  it("createMagicLinkToken uses env TTL when options.ttlMs not provided", () => {
+    process.env.MAGIC_LINK_TTL_MINUTES = "7";
+    const result = createMagicLinkToken({ email: "u@x.com" }, SECRET);
+    const expectedExpiry = 7 * 60 * 1000;
+    const ttlMs = result.expiresAt - Date.now();
+    expect(ttlMs).toBeGreaterThanOrEqual(expectedExpiry - 2000);
+    expect(ttlMs).toBeLessThanOrEqual(expectedExpiry + 2000);
+  });
+
+  it("createMagicLinkToken options.ttlMs overrides env", () => {
+    process.env.MAGIC_LINK_TTL_MINUTES = "60";
+    const result = createMagicLinkToken(
+      { email: "u@x.com" },
+      SECRET,
+      { ttlMs: 2 * 60 * 1000 }
+    );
+    const ttlMs = result.expiresAt - Date.now();
+    expect(ttlMs).toBeGreaterThanOrEqual(2 * 60 * 1000 - 2000);
+    expect(ttlMs).toBeLessThanOrEqual(2 * 60 * 1000 + 2000);
   });
 });

@@ -3,6 +3,19 @@ import { hashDeviceFingerprint, validateDeviceBinding } from "./device-binding.j
 
 export const DEFAULT_MAGIC_LINK_TTL_MS = 15 * 60 * 1000;
 
+const MIN_TTL_MINUTES = 1;
+const MAX_TTL_MINUTES = 1440;
+
+export function getMagicLinkTtlMs(): number {
+  const raw = process.env.MAGIC_LINK_TTL_MINUTES;
+  if (raw === undefined || raw === "") return DEFAULT_MAGIC_LINK_TTL_MS;
+  const minutes = Number(raw);
+  if (!Number.isInteger(minutes) || minutes < MIN_TTL_MINUTES || minutes > MAX_TTL_MINUTES) {
+    return DEFAULT_MAGIC_LINK_TTL_MS;
+  }
+  return minutes * 60 * 1000;
+}
+
 const JWT_HEADER = { alg: "HS256", typ: "JWT" } as const;
 
 function base64url(buf: Buffer): string {
@@ -50,7 +63,7 @@ export function createMagicLinkToken(
   secret: string,
   options: CreateMagicLinkTokenOptions = {}
 ): CreateMagicLinkTokenResult {
-  const ttlMs = options.ttlMs ?? DEFAULT_MAGIC_LINK_TTL_MS;
+  const ttlMs = options.ttlMs ?? getMagicLinkTtlMs();
   const expiresAt = Date.now() + ttlMs;
   const expSec = Math.floor(expiresAt / 1000);
   const jti = randomBytes(16).toString("hex");
