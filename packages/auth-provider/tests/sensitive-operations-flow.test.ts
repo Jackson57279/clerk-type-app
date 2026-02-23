@@ -169,6 +169,21 @@ describe("double-opt-in required for sensitive operations", () => {
     expect(action).not.toHaveBeenCalled();
   });
 
+  it("every sensitive operation type requires double-opt-in (rejects execution without token)", async () => {
+    for (const operation of SENSITIVE_OPERATIONS) {
+      const context = {
+        userId: "u1",
+        email: "u@example.com",
+        operation: operation as SensitiveOperationType,
+      };
+      const action = vi.fn().mockResolvedValue(undefined);
+      await expect(
+        executeSensitiveOperation(operation, undefined, context, SECRET, action)
+      ).rejects.toThrow(ConfirmationRequiredError);
+      expect(action).not.toHaveBeenCalled();
+    }
+  });
+
   it("sensitive operation executes only after request and with token from confirmation link", async () => {
     const context = {
       userId: "u1",
