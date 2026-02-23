@@ -99,4 +99,24 @@ describe("applyAttributeMapping", () => {
     const claims = applyAttributeMapping(attrs, { emailAttribute: EMAIL_ATTR });
     expect(claims.email).toBe("first@example.com");
   });
+
+  it("maps SAML AttributeStatement-style email, name, groups, roles", () => {
+    const attrs: Record<string, string[]> = {
+      email: ["user@company.com"],
+      name: ["User Name"],
+      groups: ["engineering", "admin"],
+      roles: ["developer"],
+    };
+    const mapping: AttributeMappingConfig = {
+      emailAttribute: "email",
+      nameAttribute: "name",
+      groupsAttribute: "groups",
+      rolesAttribute: "roles",
+    };
+    const claims = applyAttributeMapping(attrs, mapping);
+    expect(claims.email).toBe("user@company.com");
+    expect(claims.name).toBe("User Name");
+    expect(claims.groups).toEqual(["engineering", "admin"]);
+    expect(claims.roles).toEqual(["developer"]);
+  });
 });
