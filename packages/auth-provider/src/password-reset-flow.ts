@@ -90,7 +90,7 @@ export interface ResetPasswordWithTokenOptions {
   token: string;
   newPassword: string;
   secret: string;
-  usedTokenStore: SingleUseTokenStore;
+  usedTokenStore?: SingleUseTokenStore;
   updateUserPassword: (userId: string, passwordHash: string) => Promise<void>;
   passwordPolicy?: PasswordPolicy;
   validatePasswordFn?: (
@@ -132,7 +132,9 @@ export async function resetPasswordWithToken(
     validatePasswordAsync,
   } = options;
 
-  const verified = verifyPasswordResetToken(token, secret, { usedTokenStore });
+  const verified = verifyPasswordResetToken(token, secret, {
+    ...(usedTokenStore !== undefined && { usedTokenStore }),
+  });
   if (!verified) {
     return { success: false, reason: "invalid_or_expired_token" };
   }

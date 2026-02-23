@@ -236,6 +236,31 @@ describe("resetPasswordWithToken", () => {
     expect(updateUserPassword).toHaveBeenCalledTimes(1);
   });
 
+  it("single-use: token invalidated after use by default when usedTokenStore omitted", async () => {
+    const { token } = createPasswordResetToken(
+      { userId: "u1", email: "u@x.com" },
+      SECRET
+    );
+    const updateUserPassword = vi.fn().mockResolvedValue(undefined);
+
+    const first = await resetPasswordWithToken({
+      token,
+      newPassword: "validpass1",
+      secret: SECRET,
+      updateUserPassword,
+    });
+    expect(first).toEqual({ success: true, userId: "u1" });
+
+    const second = await resetPasswordWithToken({
+      token,
+      newPassword: "otherpass1",
+      secret: SECRET,
+      updateUserPassword,
+    });
+    expect(second).toEqual({ success: false, reason: "invalid_or_expired_token" });
+    expect(updateUserPassword).toHaveBeenCalledTimes(1);
+  });
+
   it("uses validatePasswordAsync when provided and succeeds when valid", async () => {
     const store = createMemoryUsedTokenStore();
     const { token } = createPasswordResetToken(
