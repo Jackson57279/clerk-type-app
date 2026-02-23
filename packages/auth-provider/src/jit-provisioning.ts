@@ -3,7 +3,12 @@ import {
   type AttributeMappingConfig,
   type MappedClaims,
 } from "./attribute-mapping.js";
-import type { SpInitiatedAssertionResult } from "./sp-initiated-sso.js";
+import {
+  validateSpInitiatedPostResponse,
+  type SpInitiatedAssertionResult,
+  type SpInitiatedIdpConfig,
+  type SpInitiatedSpConfig,
+} from "./sp-initiated-sso.js";
 
 export type JitAttributeMapping = AttributeMappingConfig;
 export type JitMappedClaims = MappedClaims;
@@ -90,4 +95,83 @@ export async function getOrProvisionUser(
     roles: claims.roles.length > 0 ? claims.roles : undefined,
   });
   return { user, created: true };
+}
+
+export interface HandleSpInitiatedAssertWithJitParams {
+  SAMLResponse: string;
+  RelayState?: string;
+}
+
+export interface HandleSpInitiatedAssertWithJitOptions {
+  spConfig: SpInitiatedSpConfig;
+  idpConfig: SpInitiatedIdpConfig;
+  requireSessionIndex?: boolean;
+  allowIdpInitiated?: boolean;
+  mapping: JitAttributeMapping;
+  store: JitUserStore;
+  organizationId: string;
+  jitEnabled?: boolean;
+}
+
+export interface HandleSpInitiatedAssertWithJitSuccess {
+  status: 200;
+  user: JitUser;
+  created: boolean;
+}
+
+export interface HandleSpInitiatedAssertWithJitError {
+  status: 400;
+  error: string;
+  errorDescription: string;
+}
+
+export type HandleSpInitiatedAssertWithJitResult =
+  | HandleSpInitiatedAssertWithJitSuccess
+  | HandleSpInitiatedAssertWithJitError;
+
+export async function handleSpInitiatedAssertWithJit(
+  params: HandleSpInitiatedAssertWithJitParams,
+  options: HandleSpInitiatedAssertWithJitOptions
+): Promise<HandleSpInitiatedAssertWithJitResult> {
+  const samlResponse = params.SAMLResponse?.trim();
+  if (!samlResponse) {
+    return {
+      status: 400,
+      error: "invalid_request",
+      errorDescription: "SAMLResponse is required",
+    };
+  }
+  const requireSessionIndex = options.allowIdpInitiated
+    ? false
+    : (options.requireSessionIndex ?? true);
+  let assertion: SpInitiatedAssertionResult;
+  try {
+    assertion = await validateSpInitiatedPostResponse(
+      options.spConfig,
+      options.idpConfig,
+      { SAMLResponse: samlResponse, RelayState: params.RelayState },
+      { requireSessionIndex }
+    );
+  } catch (err) {
+    return {
+      status: 400,
+      error: "invalid_request",
+      errorDescription: err instanceof Error ? err.message : "Invalid SAML response",
+    };
+  }
+  try {
+    const result = await getOrProvisionUser(
+      assertion,
+      options.mapping,
+      options.store,
+      { organizationId: options.organizationId, jitEnabled: options.jitEnabled }
+    );
+    return { status: 200, user: result.user, created: result.created };
+  } catch (err) {
+    return {
+      status: 400,
+      error: "invalid_request",
+      errorDescription: err instanceof Error ? err.message : "JIT provisioning failed",
+    };
+  }
 }
