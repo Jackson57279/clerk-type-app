@@ -114,6 +114,18 @@ describe("checkResend", () => {
     }
     vi.useRealTimers();
   });
+
+  it("exponential backoff yields base, 2x, 4x, 8x for counts 1..4", () => {
+    const store = createMemoryResendStore();
+    const baseMs = 1000;
+    for (let count = 1; count <= 4; count++) {
+      recordResend("key", store);
+      const result = checkResend("key", store, { baseDelayMs: baseMs });
+      expect(result.allowed).toBe(false);
+      const expectedSec = Math.ceil((baseMs * Math.pow(2, count - 1)) / 1000);
+      expect(result.retryAfterSeconds).toBe(expectedSec);
+    }
+  });
 });
 
 describe("recordResend", () => {
