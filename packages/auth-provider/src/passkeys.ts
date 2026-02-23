@@ -277,6 +277,18 @@ export interface RevokePasskeyResult {
   revoked: boolean;
 }
 
+export interface ListPasskeysOptions {
+  userId: string;
+  credentialStore: PasskeyStore;
+}
+
+export async function listPasskeys(
+  options: ListPasskeysOptions
+): Promise<StoredPasskey[]> {
+  const { userId, credentialStore } = options;
+  return credentialStore.listByUserId(userId);
+}
+
 export async function revokePasskey(
   options: RevokePasskeyOptions
 ): Promise<RevokePasskeyResult> {

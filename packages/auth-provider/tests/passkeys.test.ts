@@ -11,6 +11,7 @@ import {
   finishRegistration,
   startAuthentication,
   finishAuthentication,
+  listPasskeys,
   revokePasskey,
   type StoredPasskey,
   type PasskeyRpConfig,
@@ -46,6 +47,93 @@ const rpConfig: PasskeyRpConfig = {
 };
 
 const allowMfaBackupProvider = { hasMfaOrBackupCodes: async () => true };
+
+describe("Multiple passkeys (user can register multiple passkeys)", () => {
+  it("user can register multiple passkeys and list them via listPasskeys", async () => {
+    const credentialStore = createMemoryPasskeyStore();
+    const challengeStore = createMemoryPasskeyChallengeStore();
+    const userId = "user-multi-list";
+    let list = await listPasskeys({ userId, credentialStore });
+    expect(list).toHaveLength(0);
+
+    const baseResponse = {
+      rawId: "mock",
+      type: "public-key" as const,
+      response: {
+        clientDataJSON: "e30",
+        attestationObject: "o2NmbXRkbm9uZWdhdHRTdG10oGhhdXRoRGF0YVikSZYN5YgOjGh0NBcPZHZgW4_krrmihjLHmVzzuoMdl2NFAAAAAK3OAAI1vMYKZIsLJfHwVQMAIER5YWx1eSBMYXB0b3ClB1YmxpYyBLZXnALg",
+      },
+      clientExtensionResults: {},
+    };
+    const mockCred = (id: string) => ({
+      verified: true as const,
+      registrationInfo: {
+        credential: {
+          id,
+          publicKey: new Uint8Array(32),
+          counter: 0,
+          transports: [] as const,
+        },
+        credentialDeviceType: "singleDevice" as const,
+        credentialBackedUp: false,
+      },
+    });
+    vi.mocked(simplewebauthn.verifyRegistrationResponse)
+      .mockImplementationOnce(async () => mockCred("passkey-a") as unknown as VerifiedRegistrationResponse)
+      .mockImplementationOnce(async () => mockCred("passkey-b") as unknown as VerifiedRegistrationResponse);
+
+    await startRegistration({
+      userId,
+      userName: "alice",
+      credentialStore,
+      challengeStore,
+      rpConfig,
+    });
+    const r1 = await finishRegistration({
+      userId,
+      response: { ...baseResponse, id: "passkey-a" },
+      credentialStore,
+      challengeStore,
+      rpConfig,
+      mfaBackupProvider: allowMfaBackupProvider,
+    });
+    expect(r1.verified).toBe(true);
+
+    list = await listPasskeys({ userId, credentialStore });
+    expect(list).toHaveLength(1);
+    expect(list[0]!.credentialId).toBe("passkey-a");
+
+    await startRegistration({
+      userId,
+      userName: "alice",
+      credentialStore,
+      challengeStore,
+      rpConfig,
+    });
+    const r2 = await finishRegistration({
+      userId,
+      response: { ...baseResponse, id: "passkey-b" },
+      credentialStore,
+      challengeStore,
+      rpConfig,
+      mfaBackupProvider: allowMfaBackupProvider,
+    });
+    expect(r2.verified).toBe(true);
+
+    list = await listPasskeys({ userId, credentialStore });
+    expect(list).toHaveLength(2);
+    expect(list.map((p) => p.credentialId).sort()).toEqual(["passkey-a", "passkey-b"]);
+
+    const authOptions = await startAuthentication({
+      userId,
+      credentialStore,
+      challengeStore,
+      rpConfig,
+    });
+    expect(authOptions.allowCredentials).toHaveLength(2);
+    expect(authOptions.allowCredentials!.map((c) => c.id).sort()).toEqual(["passkey-a", "passkey-b"]);
+  });
+});
 
 describe("PasskeyStore (multiple passkeys)", () => {
   it("user can register multiple passkeys and use any for auth", async () => {
