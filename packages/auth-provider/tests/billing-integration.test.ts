@@ -197,6 +197,48 @@ describe("deliverSeatUsageWebhooks", () => {
     expect(result.byOrganization).toEqual([]);
   });
 
+  it("calls billingReporter.reportSeatUsage with billing payloads when provided", async () => {
+    const organizations = [
+      {
+        organizationId: "org_a",
+        memberships: [
+          membership({ organizationId: "org_a", status: "active" }),
+          membership({ organizationId: "org_a", userId: "u2", status: "active" }),
+        ],
+      },
+      { organizationId: "org_b", memberships: [] },
+    ];
+    const reportedPayloads: { organizationId: string; seatCount: number; at: string }[] = [];
+    const billingReporter = {
+      async reportSeatUsage(payloads: { organizationId: string; seatCount: number; at: string }[]) {
+        reportedPayloads.push(...payloads);
+      },
+    };
+    const store: WebhookSubscriptionStore = {
+      async listSubscriptions() {
+        return [];
+      },
+    };
+    const at = new Date("2026-02-23T12:00:00.000Z");
+    await deliverSeatUsageWebhooks({
+      organizations,
+      webhookStore: store,
+      at,
+      billingReporter,
+    });
+    expect(reportedPayloads).toHaveLength(2);
+    expect(reportedPayloads).toContainEqual({
+      organizationId: "org_a",
+      seatCount: 2,
+      at: "2026-02-23T12:00:00.000Z",
+    });
+    expect(reportedPayloads).toContainEqual({
+      organizationId: "org_b",
+      seatCount: 0,
+      at: "2026-02-23T12:00:00.000Z",
+    });
+  });
+
   it("reports delivered and failed per organization", async () => {
     const organizations = [
       { organizationId: "org_ok", memberships: [membership({ status: "active" })] },

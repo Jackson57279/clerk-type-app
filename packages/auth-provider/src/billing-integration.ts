@@ -48,6 +48,7 @@ export interface DeliverSeatUsageWebhooksParams {
   webhookStore: WebhookSubscriptionStore;
   at?: Date;
   webhookDeliveryOptions?: DeliverWebhookOptions;
+  billingReporter?: BillingReporter;
 }
 
 export interface DeliverSeatUsageWebhooksResult {
@@ -68,8 +69,13 @@ export async function deliverSeatUsageWebhooks(
     webhookStore,
     at = new Date(),
     webhookDeliveryOptions,
+    billingReporter,
   } = params;
-  const payloads = createSeatUsageWebhookPayloads(organizations, at);
+  const billingPayloads = getBillingSeatPayloads(organizations, at);
+  if (billingReporter) {
+    await billingReporter.reportSeatUsage(billingPayloads);
+  }
+  const payloads = billingPayloads.map((p) => createSeatUsageWebhookPayload(p));
   const byOrganization: DeliverSeatUsageWebhooksResult["byOrganization"] = [];
   for (const payload of payloads) {
     const orgId = (payload.data as { organizationId: string }).organizationId;
