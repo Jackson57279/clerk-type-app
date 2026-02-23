@@ -5,6 +5,7 @@ import {
   getKeyById,
   rotateIfNeeded,
   asKeySetView,
+  startAutomaticKeyRotation,
   ROTATION_INTERVAL_DAYS,
   type SigningKey,
 } from "../src/key-rotation.js";
@@ -125,5 +126,57 @@ describe("asKeySetView", () => {
     expect(view.getCurrent()).toEqual(current);
     expect(view.getKeyById(current.id)).toEqual(current);
     expect(view.getKeyById("nonexistent")).toBeNull();
+  });
+});
+
+describe("startAutomaticKeyRotation", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("calls rotateIfNeeded on start", () => {
+    const store = createMemorySigningKeyStore();
+    const initial = store.getCurrent()!;
+    startAutomaticKeyRotation(store);
+    expect(store.getCurrent()!.id).toBe(initial.id);
+  });
+
+  it("rotates when key is 90+ days old and check runs", () => {
+    const store = createMemorySigningKeyStore();
+    const old = store.getCurrent()!;
+    vi.advanceTimersByTime(ROTATION_INTERVAL_DAYS * 24 * 60 * 60 * 1000);
+    startAutomaticKeyRotation(store);
+    expect(store.getCurrent()!.id).not.toBe(old.id);
+    expect(store.getAll()).toHaveLength(2);
+  });
+
+  it("runs rotation on interval and rotates when due", () => {
+    const store = createMemorySigningKeyStore();
+    const old = store.getCurrent()!;
+    const checkIntervalMs = 60 * 60 * 1000;
+    startAutomaticKeyRotation(store, { checkIntervalMs });
+    vi.advanceTimersByTime(ROTATION_INTERVAL_DAYS * 24 * 60 * 60 * 1000);
+    vi.advanceTimersByTime(checkIntervalMs);
+    expect(store.getCurrent()!.id).not.toBe(old.id);
+  });
+
+  it("stop clears the interval", () => {
+    const store = createMemorySigningKeyStore();
+    const checkIntervalMs = 60 * 60 * 1000;
+    const handle = startAutomaticKeyRotation(store, { checkIntervalMs });
+    const idBeforeStop = store.getCurrent()!;
+    handle.stop();
+    vi.advanceTimersByTime(checkIntervalMs * 5);
+    expect(store.getCurrent()!.id).toBe(idBeforeStop.id);
+  });
+
+  it("uses custom rotation interval when provided", () => {
+    const store = createMemorySigningKeyStore();
+    vi.advanceTimersByTime(10 * 24 * 60 * 60 * 1000);
+    startAutomaticKeyRotation(store, { rotationIntervalDays: 7 });
+    expect(store.getAll()).toHaveLength(2);
   });
 });

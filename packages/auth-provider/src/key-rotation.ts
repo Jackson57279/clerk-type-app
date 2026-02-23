@@ -2,6 +2,17 @@ import { randomBytes } from "crypto";
 
 export const ROTATION_INTERVAL_DAYS = 90;
 
+const DEFAULT_CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000;
+
+export interface AutomaticKeyRotationOptions {
+  checkIntervalMs?: number;
+  rotationIntervalDays?: number;
+}
+
+export interface AutomaticKeyRotationHandle {
+  stop(): void;
+}
+
 export interface SigningKey {
   id: string;
   secret: string;
@@ -71,5 +82,22 @@ export function asKeySetView(store: SigningKeyStore): SigningKeySetView {
   return {
     getCurrent: () => store.getCurrent(),
     getKeyById: (id: string) => getKeyById(store, id),
+  };
+}
+
+export function startAutomaticKeyRotation(
+  store: SigningKeyStore,
+  options: AutomaticKeyRotationOptions = {}
+): AutomaticKeyRotationHandle {
+  const checkIntervalMs = options.checkIntervalMs ?? DEFAULT_CHECK_INTERVAL_MS;
+  const rotationIntervalDays = options.rotationIntervalDays ?? ROTATION_INTERVAL_DAYS;
+  rotateIfNeeded(store, rotationIntervalDays);
+  const id = setInterval(() => {
+    rotateIfNeeded(store, rotationIntervalDays);
+  }, checkIntervalMs);
+  return {
+    stop() {
+      clearInterval(id);
+    },
   };
 }
