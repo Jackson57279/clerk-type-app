@@ -269,6 +269,28 @@ describe("provisionUser", () => {
     expect(result.created).toBe(true);
     expect(result.user.email).toBe("user@company.com");
   });
+
+  it("updates deactivated user but keeps active false when data.active is false", async () => {
+    const store = memoryStore([
+      {
+        id: "user_1",
+        email: "deact@example.com",
+        externalId: "ext-1",
+        name: undefined,
+        firstName: undefined,
+        lastName: undefined,
+        active: false,
+      },
+    ]);
+    const result = await provisionUser(
+      store,
+      { email: "deact@example.com", externalId: "ext-1", active: false, name: "Updated" },
+      { reactivateIfDeactivated: true }
+    );
+    expect(result.created).toBe(false);
+    expect(result.user.active).toBe(false);
+    expect(result.user.name).toBe("Updated");
+  });
 });
 
 describe("deprovisionUser", () => {
@@ -346,6 +368,23 @@ describe("deprovisionUser", () => {
     const found = await store.findById("user_1");
     expect(found).not.toBeNull();
     expect(found?.active).toBe(false);
+  });
+
+  it("calling deprovision with hard true twice is idempotent", async () => {
+    const store = memoryStore([
+      {
+        id: "user_1",
+        email: "hard@example.com",
+        externalId: undefined,
+        name: undefined,
+        firstName: undefined,
+        lastName: undefined,
+        active: true,
+      },
+    ]);
+    await deprovisionUser(store, "user_1", { hard: true });
+    await expect(deprovisionUser(store, "user_1", { hard: true })).resolves.toBeUndefined();
+    expect(await store.findById("user_1")).toBeNull();
   });
 });
 
