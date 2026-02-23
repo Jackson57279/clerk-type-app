@@ -1,7 +1,8 @@
 import { createHmac, randomBytes } from "crypto";
 import { hashDeviceFingerprint, validateDeviceBinding } from "./device-binding.js";
+import { DEFAULT_LINK_TTL_MS } from "./link-format.js";
 
-export const DEFAULT_MAGIC_LINK_TTL_MS = 15 * 60 * 1000;
+export const DEFAULT_MAGIC_LINK_TTL_MS = DEFAULT_LINK_TTL_MS;
 
 const MIN_TTL_MINUTES = 1;
 const MAX_TTL_MINUTES = 1440;

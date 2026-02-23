@@ -128,3 +128,21 @@ describe("JWT-based link with short expiry (password reset)", () => {
     expect(ttlMs).toBeGreaterThanOrEqual(DEFAULT_LINK_TTL_MS - 2000);
   });
 });
+
+describe("JWT in link has exp claim and short expiry", () => {
+  it("decoded JWT payload from link contains exp within DEFAULT_LINK_TTL_MS", () => {
+    const { token } = createMagicLinkToken({ email: "u@example.com" }, SECRET);
+    const link = buildJwtLink("https://app.example.com/login", token);
+    const extracted = parseJwtFromLink(link);
+    expect(extracted).not.toBeNull();
+    const parts = (extracted as string).split(".");
+    expect(parts).toHaveLength(3);
+    const padded = parts[1].replace(/-/g, "+").replace(/_/g, "/") + "=".repeat((4 - (parts[1].length % 4)) % 4);
+    const payloadJson = Buffer.from(padded, "base64").toString("utf8");
+    const payload = JSON.parse(payloadJson) as { exp?: number };
+    expect(payload.exp).toBeDefined();
+    const nowSec = Math.floor(Date.now() / 1000);
+    expect(payload.exp).toBeGreaterThan(nowSec);
+    expect(payload.exp).toBeLessThanOrEqual(nowSec + Math.ceil(DEFAULT_LINK_TTL_MS / 1000) + 2);
+  });
+});
