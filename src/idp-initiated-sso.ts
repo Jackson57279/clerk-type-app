@@ -1,22 +1,9 @@
 import { createRequire } from "module";
 import crypto from "crypto";
+import { encryptAssertion } from "./saml-assertion-encryption.js";
 
 const require = createRequire(import.meta.url);
 const { SignedXml } = require("xml-crypto") as { SignedXml: new (options?: { privateKey?: string; signatureAlgorithm?: string; canonicalizationAlgorithm?: string }) => SignedXmlInstance };
-const xmlenc = require("xml-encryption") as {
-  encrypt: (
-    content: string,
-    options: {
-      pem: Buffer | string;
-      rsa_pub: Buffer | string;
-      encryptionAlgorithm?: string;
-      keyEncryptionAlgorithm?: string;
-      keyEncryptionDigest?: string;
-      disallowEncryptionWithInsecureAlgorithm?: boolean;
-    },
-    callback: (err: Error | null, result: string) => void
-  ) => void;
-};
 
 interface SignedXmlInstance {
   addReference(opts: { xpath: string; transforms?: string[]; digestAlgorithm?: string }): void;
@@ -100,28 +87,6 @@ function signAssertion(assertionXml: string, idpConfig: IdpInitiatedIdpConfig): 
     location: { reference: "//*[local-name(.)='Assertion']", action: "append" },
   });
   return signer.getSignedXml();
-}
-
-function encryptAssertion(assertionXml: string, spCertificatePem: string): Promise<string> {
-  const certPem = formatPem(spCertificatePem, "CERTIFICATE");
-  const certBuffer = Buffer.from(certPem, "utf8");
-  return new Promise((resolve, reject) => {
-    xmlenc.encrypt(
-      assertionXml,
-      {
-        pem: certBuffer,
-        rsa_pub: certBuffer,
-        encryptionAlgorithm: "http://www.w3.org/2001/04/xmlenc#aes128-cbc",
-        keyEncryptionAlgorithm: "http://www.w3.org/2001/04/xmlenc#rsa-oaep-mgf1p",
-        keyEncryptionDigest: "sha1",
-        disallowEncryptionWithInsecureAlgorithm: true,
-      },
-      (err: Error | null, encryptedData: string) => {
-        if (err) reject(err);
-        else resolve(`<saml:EncryptedAssertion xmlns:saml="${XMLNS_SAML}">${encryptedData}</saml:EncryptedAssertion>`);
-      }
-    );
-  });
 }
 
 export function createIdpInitiatedResponse(
