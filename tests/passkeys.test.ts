@@ -31,6 +31,7 @@ vi.mock("@simplewebauthn/server", async (importOriginal) => {
   return {
     ...actual,
     verifyRegistrationResponse: vi.fn().mockImplementation(defaultRegMock),
+    verifyAuthenticationResponse: vi.fn().mockImplementation(actual.verifyAuthenticationResponse),
   };
 });
 
@@ -282,6 +283,89 @@ describe("Passkey metadata (name, device info, last used)", () => {
     const b = list.find((p) => p.credentialId === "cred-b");
     expect(a!.lastUsedAt).toBeDefined();
     expect(b!.lastUsedAt).toBe("2025-01-01T00:00:00.000Z");
+  });
+
+  it("finishRegistration with name and deviceInfo stores friendlyName and deviceInfo", async () => {
+    const credentialStore = createMemoryPasskeyStore();
+    const challengeStore = createMemoryPasskeyChallengeStore();
+    await startRegistration({
+      userId: "u-meta",
+      userName: "alice",
+      credentialStore,
+      challengeStore,
+      rpConfig,
+    });
+    await finishRegistration({
+      userId: "u-meta",
+      response: {
+        id: "mock-cred-id",
+        rawId: "mock-cred-id",
+        type: "public-key",
+        response: {
+          clientDataJSON: "e30",
+          attestationObject: "o2NmbXRkbm9uZWdhdHRTdG10oGhhdXRoRGF0YVikSZYN5YgOjGh0NBcPZHZgW4_krrmihjLHmVzzuoMdl2NFAAAAAK3OAAI1vMYKZIsLJfHwVQMAIER5YWx1eSBMYXB0b3ClB1YmxpYyBLZXnALg",
+        },
+        clientExtensionResults: {},
+      },
+      credentialStore,
+      challengeStore,
+      rpConfig,
+      name: "My MacBook",
+      deviceInfo: "Chrome on macOS · internal",
+    });
+    const list = await credentialStore.listByUserId("u-meta");
+    expect(list).toHaveLength(1);
+    expect(list[0]!.friendlyName).toBe("My MacBook");
+    expect(list[0]!.deviceInfo).toBe("Chrome on macOS · internal");
+  });
+
+  it("finishAuthentication updates lastUsedAt on the used passkey", async () => {
+    vi.mocked(simplewebauthn.verifyAuthenticationResponse).mockImplementationOnce(async () => ({
+      verified: true,
+      authenticationInfo: { newCounter: 1 },
+    }));
+    const credentialStore = createMemoryPasskeyStore();
+    const challengeStore = createMemoryPasskeyChallengeStore();
+    await credentialStore.save({
+      userId: "u1",
+      credentialId: "p1",
+      publicKey: new Uint8Array(32),
+      counter: 0,
+      deviceType: "singleDevice",
+      backedUp: false,
+      webauthnUserID: "w",
+    });
+    await startAuthentication({
+      userId: "u1",
+      credentialStore,
+      challengeStore,
+      rpConfig,
+    });
+    const before = Date.now();
+    const result = await finishAuthentication({
+      userId: "u1",
+      response: {
+        id: "p1",
+        rawId: "p1",
+        type: "public-key",
+        response: {
+          clientDataJSON: "eyJ0eXBlIjoid2ViYXV0aG4uZ2V0IiwiY2hhbGxlbmdlIjoiYWJjIiwib3JpZ2luIjoiaHR0cDovL2xvY2FsaG9zdCJ9",
+          authenticatorData: "SZYN5YgOjGh0NBcPZHZgW4_krrmihjLHmVzzuoMdl2MFAAAAAA",
+          signature: "MEUCIQDxZWE",
+        },
+        clientExtensionResults: {},
+      },
+      credentialStore,
+      challengeStore,
+      rpConfig,
+    });
+    const after = Date.now();
+    expect(result.verified).toBe(true);
+    const list = await credentialStore.listByUserId("u1");
+    expect(list[0]!.lastUsedAt).toBeDefined();
+    const ts = new Date(list[0]!.lastUsedAt!).getTime();
+    expect(ts).toBeGreaterThanOrEqual(before - 1000);
+    expect(ts).toBeLessThanOrEqual(after + 1000);
   });
 });
 
