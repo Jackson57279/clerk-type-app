@@ -53,6 +53,19 @@ describe("generateTOTP", () => {
     const code = generateTOTP(RFC_SECRET, { time: 60, period: 60, digits: 6 });
     expect(code).toMatch(/^\d{6}$/);
   });
+
+  it("uses custom t0 (epoch) per RFC 6238", () => {
+    const t0 = 100;
+    const time = 130;
+    const code = generateTOTP(RFC_SECRET, { time, period: 30, digits: 6, t0 });
+    expect(code).toMatch(/^\d{6}$/);
+    const expectedCode = generateTOTP(RFC_SECRET, {
+      time: 30,
+      period: 30,
+      digits: 6,
+    });
+    expect(code).toBe(expectedCode);
+  });
 });
 
 describe("verifyTOTP", () => {
