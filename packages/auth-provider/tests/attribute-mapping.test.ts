@@ -93,6 +93,14 @@ describe("applyAttributeMapping", () => {
     expect(claims.groups).toEqual(["a", "b"]);
   });
 
+  it("filters empty strings from roles attribute", () => {
+    const attrs: Record<string, string[]> = {
+      roles: ["admin", "", "  ", "viewer"],
+    };
+    const claims = applyAttributeMapping(attrs, { rolesAttribute: "roles" });
+    expect(claims.roles).toEqual(["admin", "viewer"]);
+  });
+
   it("returns first value for single-value attributes when multiple present", () => {
     const attrs: Record<string, string[]> = {
       [EMAIL_ATTR]: ["first@example.com", "second@example.com"],
