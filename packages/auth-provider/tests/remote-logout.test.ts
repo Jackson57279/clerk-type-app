@@ -134,7 +134,7 @@ describe("handleRemoteLogoutEndpoint", () => {
       },
     };
     const result = handleRemoteLogoutEndpoint(
-      { userId: undefined } as { userId: string },
+      { userId: undefined } as unknown as { userId: string },
       { store }
     );
     expect(result.status).toBe(400);
