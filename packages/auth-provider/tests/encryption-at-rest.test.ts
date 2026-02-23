@@ -69,7 +69,8 @@ describe("encryptAes256 / decryptAes256", () => {
   it("decrypt tampered ciphertext throws", () => {
     const enc = encryptAes256("secret", KEY);
     const raw = Buffer.from(enc, "base64");
-    raw[raw.length - 1] ^= 1;
+    const last = raw[raw.length - 1];
+    if (last !== undefined) raw[raw.length - 1] = last ^ 1;
     expect(() => decryptAes256(raw.toString("base64"), KEY)).toThrow();
   });
 

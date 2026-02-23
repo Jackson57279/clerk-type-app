@@ -4,6 +4,10 @@
   "workspaces": {
     "": {
       "name": "auth-provider",
+    },
+    "packages/auth-provider": {
+      "name": "auth-provider",
+      "version": "0.1.0",
       "dependencies": {
         "@aws-sdk/client-kms": "^3.995.0",
         "@simplewebauthn/server": "^13.2.3",
@@ -397,6 +401,8 @@
     "async": ["async@3.2.6", "", {}, "sha512-htCUDlxyyCLMgaM3xXg0C0LW2xqfuQ6p05pCEIsXuyQ+a1koYKTuBMzRNwmybfLgvJDMd0r1LTn4+E0Ti6C2AA=="],
 
     "asynckit": ["asynckit@0.4.0", "", {}, "sha512-Oei9OH4tRh0YqU3GxhX79dM/mwVgvbZJaSNaRk+bshkj0S5cfHcgYakreBjrHwatXKbz+IoIdYLxrKim2MjW0Q=="],
+
+    "auth-provider": ["auth-provider@workspace:packages/auth-provider"],
 
     "axios": ["axios@1.13.5", "", { "dependencies": { "follow-redirects": "^1.15.11", "form-data": "^4.0.5", "proxy-from-env": "^1.1.0" } }, "sha512-cz4ur7Vb0xS4/KUN0tPWe44eqxrIu31me+fbang3ijiNscE129POzipJJA6zniq2C/Z6sJCjMimjS8Lc/GAs8Q=="],
 

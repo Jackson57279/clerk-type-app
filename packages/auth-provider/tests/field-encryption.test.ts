@@ -68,7 +68,8 @@ describe("encryptSensitiveField / decryptSensitiveField", () => {
   it("decrypt tampered ciphertext throws", () => {
     const enc = encryptSensitiveField("123-45-6789", KEY);
     const raw = Buffer.from(enc, "base64");
-    raw[raw.length - 1] ^= 0xff;
+    const last = raw[raw.length - 1];
+    if (last !== undefined) raw[raw.length - 1] = last ^ 0xff;
     expect(() => decryptSensitiveField(raw.toString("base64"), KEY)).toThrow();
   });
 

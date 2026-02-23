@@ -1,5 +1,9 @@
 import { describe, it, expect, vi } from "vitest";
 import * as simplewebauthn from "@simplewebauthn/server";
+import type {
+  VerifiedAuthenticationResponse,
+  VerifiedRegistrationResponse,
+} from "@simplewebauthn/server";
 import {
   createMemoryPasskeyStore,
   createMemoryPasskeyChallengeStore,
@@ -323,10 +327,12 @@ describe("Passkey metadata (name, device info, last used)", () => {
   });
 
   it("finishAuthentication updates lastUsedAt on the used passkey", async () => {
-    vi.mocked(simplewebauthn.verifyAuthenticationResponse).mockImplementationOnce(async () => ({
-      verified: true,
-      authenticationInfo: { newCounter: 1 },
-    }));
+    vi.mocked(simplewebauthn.verifyAuthenticationResponse).mockImplementationOnce(async () =>
+      ({
+        verified: true,
+        authenticationInfo: { newCounter: 1 },
+      }) as VerifiedAuthenticationResponse
+    );
     const credentialStore = createMemoryPasskeyStore();
     const challengeStore = createMemoryPasskeyChallengeStore();
     await credentialStore.save({
@@ -615,19 +621,21 @@ describe("WebAuthn platform authenticators", () => {
       rpConfig,
       authenticatorAttachment: "platform",
     });
-    vi.mocked(simplewebauthn.verifyRegistrationResponse).mockImplementationOnce(async () => ({
-      verified: true,
-      registrationInfo: {
-        credential: {
-          id: "platform-cred",
-          publicKey: new Uint8Array(32),
-          counter: 0,
-          transports: ["internal"],
+    vi.mocked(simplewebauthn.verifyRegistrationResponse).mockImplementationOnce(async () =>
+      ({
+        verified: true,
+        registrationInfo: {
+          credential: {
+            id: "platform-cred",
+            publicKey: new Uint8Array(32),
+            counter: 0,
+            transports: ["internal"],
+          },
+          credentialDeviceType: "singleDevice",
+          credentialBackedUp: false,
         },
-        credentialDeviceType: "singleDevice",
-        credentialBackedUp: false,
-      },
-    }));
+      }) as VerifiedRegistrationResponse
+    );
     await finishRegistration({
       userId: "u-device-type",
       response: {
@@ -777,8 +785,8 @@ describe("finishRegistration", () => {
       },
     });
     vi.mocked(simplewebauthn.verifyRegistrationResponse)
-      .mockImplementationOnce(async () => mockCred("cred-first"))
-      .mockImplementationOnce(async () => mockCred("cred-second"));
+      .mockImplementationOnce(async () => mockCred("cred-first") as unknown as VerifiedRegistrationResponse)
+      .mockImplementationOnce(async () => mockCred("cred-second") as unknown as VerifiedRegistrationResponse);
 
     await startRegistration({
       userId,

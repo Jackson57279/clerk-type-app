@@ -1,30 +1,11 @@
 {
-  "name": "auth-provider",
+  "name": "auth-provider-monorepo",
   "version": "0.1.0",
   "private": true,
-  "type": "module",
+  "workspaces": ["packages/*"],
   "scripts": {
-    "build": "tsc",
-    "test": "vitest run",
-    "lint": "eslint src tests"
-  },
-  "devDependencies": {
-    "@types/node": "^22.10.1",
-    "@types/qrcode": "^1.5.6",
-    "eslint": "^9.16.0",
-    "typescript": "^5.7.2",
-    "typescript-eslint": "^8.16.0",
-    "vitest": "^2.1.6"
-  },
-  "dependencies": {
-    "@aws-sdk/client-kms": "^3.995.0",
-    "@simplewebauthn/server": "^13.2.3",
-    "@xmldom/xmldom": "^0.8.11",
-    "argon2": "^0.41.1",
-    "hi-base32": "^0.5.1",
-    "qrcode": "^1.5.4",
-    "saml2-js": "^4.0.4",
-    "twilio": "^5.12.2",
-    "xml-encryption": "^3.1.0"
+    "build": "bun run --cwd packages/auth-provider build",
+    "test": "bun run --cwd packages/auth-provider test",
+    "lint": "bun run --cwd packages/auth-provider lint"
   }
 }
