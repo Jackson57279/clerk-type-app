@@ -118,6 +118,12 @@ export function clearAllSessions(): void {
   sessions.clear();
 }
 
+export function invalidateAllSessionsForUser(userId: string): string[] {
+  const ids = getSessionsByUser(userId);
+  for (const id of ids) sessions.delete(id);
+  return ids;
+}
+
 export interface ConcurrentSessionLimitOptions {
   defaultUserLimit?: number;
   defaultOrgLimit?: number;
@@ -218,6 +224,11 @@ export function createConcurrentSessionLimit(
         if (rec.orgId === orgId) n++;
       }
       return n;
+    },
+    invalidateAllSessionsForUser(userId: string): string[] {
+      const ids = getByUser(userId);
+      for (const id of ids) store.delete(id);
+      return ids;
     },
   };
 }

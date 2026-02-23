@@ -7,6 +7,7 @@ import {
   getActiveCountByOrg,
   createConcurrentSessionLimit,
   clearAllSessions,
+  invalidateAllSessionsForUser,
 } from "../src/concurrent-session-limit.js";
 
 describe("concurrent session limit (default 5 per user)", () => {
@@ -126,6 +127,41 @@ describe("concurrent session limit (default 5 per user)", () => {
   });
 });
 
+describe("invalidateAllSessionsForUser (remote logout)", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    clearAllSessions();
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("returns and removes all session ids for the given user", () => {
+    registerSession("s0", "u1", null);
+    registerSession("s1", "u1", null);
+    registerSession("s2", "u2", null);
+    const revoked = invalidateAllSessionsForUser("u1");
+    expect(revoked).toHaveLength(2);
+    expect(revoked).toContain("s0");
+    expect(revoked).toContain("s1");
+    expect(getActiveCountByUser("u1")).toBe(0);
+    expect(getActiveCountByUser("u2")).toBe(1);
+  });
+
+  it("returns empty array when user has no sessions", () => {
+    const revoked = invalidateAllSessionsForUser("u1");
+    expect(revoked).toEqual([]);
+  });
+
+  it("leaves other users sessions intact", () => {
+    registerSession("s0", "u1", null);
+    registerSession("s1", "u2", null);
+    registerSession("s2", "u2", null);
+    invalidateAllSessionsForUser("u1");
+    expect(getActiveCountByUser("u2")).toBe(2);
+  });
+});
+
 describe("createConcurrentSessionLimit (custom defaults)", () => {
   beforeEach(() => {
     vi.useFakeTimers();
@@ -168,5 +204,18 @@ describe("createConcurrentSessionLimit (custom defaults)", () => {
     const r = limiter.check("u3", "org1", {});
     expect(r.allowed).toBe(true);
     expect(r.evictSessionIds).toHaveLength(1);
+  });
+
+  it("invalidateAllSessionsForUser revokes all sessions for user in isolated store", () => {
+    const limiter = createConcurrentSessionLimit({ defaultUserLimit: 5 });
+    limiter.register("s0", "u1", null);
+    limiter.register("s1", "u1", null);
+    limiter.register("s2", "u2", null);
+    const revoked = limiter.invalidateAllSessionsForUser("u1");
+    expect(revoked).toHaveLength(2);
+    expect(revoked).toContain("s0");
+    expect(revoked).toContain("s1");
+    expect(limiter.getActiveCountByUser("u1")).toBe(0);
+    expect(limiter.getActiveCountByUser("u2")).toBe(1);
   });
 });
