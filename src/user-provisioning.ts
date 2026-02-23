@@ -37,9 +37,8 @@ export interface ProvisionResult {
   created: boolean;
 }
 
-export interface DeprovisionOptions {
-  hard?: boolean;
-}
+import { deprovisionEntity, type DeprovisionOptions } from "./soft-delete.js";
+export type { DeprovisionOptions } from "./soft-delete.js";
 
 export async function provisionUser(
   store: UserProvisioningStore,
@@ -92,12 +91,5 @@ export async function deprovisionUser(
   userId: string,
   options: DeprovisionOptions = {}
 ): Promise<void> {
-  const user = await store.findById(userId);
-  if (!user) return;
-
-  if (options.hard) {
-    await store.hardDelete(userId);
-  } else {
-    await store.softDelete(userId);
-  }
+  return deprovisionEntity(store, userId, options);
 }
