@@ -90,4 +90,29 @@ describe("regenerateSessionId (session fixation prevention)", () => {
     const id2 = regenerateSessionId("pre2", "user1", null, sessionStore);
     expect(id1).not.toBe(id2);
   });
+
+  it("prevents session fixation: after login old session is invalid, only new session is valid", () => {
+    const store = new Map<string, { userId: string; orgId: string | null }>();
+    const sessionStore = {
+      remove(id: string) {
+        store.delete(id);
+      },
+      register(id: string, userId: string, orgId: string | null) {
+        store.set(id, { userId, orgId });
+      },
+    };
+    const fixatedSessionId = "attacker-known-session-id";
+    sessionStore.register(fixatedSessionId, "anonymous", null);
+
+    const newSessionId = regenerateSessionId(
+      fixatedSessionId,
+      "user1",
+      null,
+      sessionStore
+    );
+
+    expect(store.has(fixatedSessionId)).toBe(false);
+    expect(store.get(newSessionId)).toEqual({ userId: "user1", orgId: null });
+    expect(newSessionId).not.toBe(fixatedSessionId);
+  });
 });
