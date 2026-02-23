@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import {
   buildJwtLink,
   parseJwtFromLink,
@@ -15,6 +15,7 @@ import {
 import {
   createEmailVerificationToken,
   verifyEmailVerificationToken,
+  createNoOpEmailVerificationStore,
 } from "../src/email-verification.js";
 
 const SECRET = "link-format-secret";
@@ -172,5 +173,26 @@ describe("JWT in link has exp claim and short expiry", () => {
     const nowSec = Math.floor(Date.now() / 1000);
     expect(payload.exp).toBeGreaterThan(nowSec);
     expect(payload.exp).toBeLessThanOrEqual(nowSec + Math.ceil(DEFAULT_LINK_TTL_MS / 1000) + 2);
+  });
+
+  it("expired JWT extracted from link fails verification", () => {
+    vi.useFakeTimers();
+    const store = createNoOpEmailVerificationStore();
+    const { token } = createEmailVerificationToken(
+      { userId: "u1", email: "u@example.com" },
+      SECRET,
+      { ttlMs: 1000 }
+    );
+    const link = buildJwtLink("https://app.example.com/verify-email", token);
+    const extracted = parseJwtFromLink(link);
+    expect(extracted).toBe(token);
+    expect(
+      verifyEmailVerificationToken(extracted!, SECRET, { usedTokenStore: store })
+    ).not.toBeNull();
+    vi.advanceTimersByTime(2000);
+    expect(
+      verifyEmailVerificationToken(extracted!, SECRET, { usedTokenStore: store })
+    ).toBeNull();
+    vi.useRealTimers();
   });
 });
