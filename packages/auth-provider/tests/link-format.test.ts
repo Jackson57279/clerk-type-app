@@ -137,7 +137,9 @@ describe("JWT in link has exp claim and short expiry", () => {
     expect(extracted).not.toBeNull();
     const parts = (extracted as string).split(".");
     expect(parts).toHaveLength(3);
-    const padded = parts[1].replace(/-/g, "+").replace(/_/g, "/") + "=".repeat((4 - (parts[1].length % 4)) % 4);
+    const b64 = parts[1];
+    if (!b64) throw new Error("missing payload");
+    const padded = b64.replace(/-/g, "+").replace(/_/g, "/") + "=".repeat((4 - (b64.length % 4)) % 4);
     const payloadJson = Buffer.from(padded, "base64").toString("utf8");
     const payload = JSON.parse(payloadJson) as { exp?: number };
     expect(payload.exp).toBeDefined();
