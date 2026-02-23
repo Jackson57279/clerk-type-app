@@ -11,6 +11,12 @@ import {
   type VerifyConfirmationTokenResult,
 } from "./double-opt-in.js";
 import { renderDoubleOptInEmail } from "./email-templates.js";
+import {
+  checkResend,
+  recordResend,
+  type ResendPolicyOptions,
+  type ResendPolicyStore,
+} from "./resend-policy.js";
 
 export const SENSITIVE_OPERATION_LABELS: Record<SensitiveOperationType, string> = {
   change_email: "change email address",
@@ -36,13 +42,30 @@ export interface RequestSensitiveOperationOptions {
   usedTokenStore?: SingleUseConfirmationStore;
   branding?: BrandingConfig | null;
   ttlMs?: number;
+  resendPolicyStore?: ResendPolicyStore;
+  resendPolicyOptions?: ResendPolicyOptions;
 }
 
-export interface RequestSensitiveOperationResult {
-  token: string;
-  confirmationLink: string;
-  expiresAt: number;
-  sent: boolean;
+export type RequestSensitiveOperationResult =
+  | {
+      token: string;
+      confirmationLink: string;
+      expiresAt: number;
+      sent: boolean;
+    }
+  | {
+      resendBlocked: { retryAfterSeconds: number };
+      sent: false;
+    };
+
+export function isRequestSensitiveOperationSuccess(
+  r: RequestSensitiveOperationResult
+): r is Extract<RequestSensitiveOperationResult, { token: string }> {
+  return "token" in r;
+}
+
+function resendKey(userId: string, operation: SensitiveOperationType): string {
+  return `${userId}:${operation}`;
 }
 
 export async function requestSensitiveOperation(
@@ -58,7 +81,20 @@ export async function requestSensitiveOperation(
     sendEmail,
     branding,
     ttlMs = DEFAULT_CONFIRMATION_LINK_TTL_MS,
+    resendPolicyStore,
+    resendPolicyOptions,
   } = options;
+
+  if (resendPolicyStore) {
+    const key = resendKey(userId, operation);
+    const resendResult = checkResend(key, resendPolicyStore, resendPolicyOptions);
+    if (!resendResult.allowed && resendResult.retryAfterSeconds !== undefined) {
+      return {
+        resendBlocked: { retryAfterSeconds: resendResult.retryAfterSeconds },
+        sent: false,
+      };
+    }
+  }
 
   const payload: DoubleOptInPayload = {
     userId,
@@ -83,6 +119,10 @@ export async function requestSensitiveOperation(
 
   if (sendEmail) {
     await sendEmail({ to: email, html, text });
+  }
+
+  if (resendPolicyStore) {
+    recordResend(resendKey(userId, operation), resendPolicyStore);
   }
 
   return {

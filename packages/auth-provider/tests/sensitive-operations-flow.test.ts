@@ -6,7 +6,9 @@ import {
   SENSITIVE_OPERATION_LABELS,
   requestSensitiveOperation,
   executeSensitiveOperation,
+  isRequestSensitiveOperationSuccess,
 } from "../src/sensitive-operations-flow.js";
+import { createMemoryResendStore } from "../src/resend-policy.js";
 
 const SECRET = "test-secret";
 
@@ -31,6 +33,7 @@ describe("requestSensitiveOperation", () => {
       secret: SECRET,
       buildConfirmLink: (t) => `https://app.example.com/confirm?token=${t}`,
     });
+    if (!isRequestSensitiveOperationSuccess(result)) throw new Error("expected success");
     expect(result.token).toBeDefined();
     expect(result.token.split(".")).toHaveLength(3);
     expect(result.confirmationLink).toContain(result.token);
@@ -49,6 +52,7 @@ describe("requestSensitiveOperation", () => {
       buildConfirmLink: (t) => `https://app.example.com/confirm?token=${t}`,
       sendEmail,
     });
+    if (!isRequestSensitiveOperationSuccess(result)) throw new Error("expected success");
     expect(result.sent).toBe(true);
     expect(sendEmail).toHaveBeenCalledTimes(1);
     expect(sendEmail).toHaveBeenCalledWith(
@@ -74,12 +78,80 @@ describe("requestSensitiveOperation", () => {
       operationParams: { newEmail: "new@example.com" },
       ttlMs: 5 * 60 * 1000,
     });
+    if (!isRequestSensitiveOperationSuccess(result)) throw new Error("expected success");
     expect(result.expiresAt).toBeGreaterThanOrEqual(
       Date.now() + 5 * 60 * 1000 - 2000
     );
     expect(result.expiresAt).toBeLessThanOrEqual(
       Date.now() + 5 * 60 * 1000 + 2000
     );
+  });
+
+  it("returns resendBlocked with retryAfterSeconds when resend policy blocks", async () => {
+    const store = createMemoryResendStore();
+    const baseMs = 100;
+    const first = await requestSensitiveOperation({
+      operation: "change_email",
+      userId: "u1",
+      email: "u@example.com",
+      secret: SECRET,
+      buildConfirmLink: (t) => `https://app.example.com/confirm?token=${t}`,
+      resendPolicyStore: store,
+      resendPolicyOptions: { baseDelayMs: baseMs, maxDelayMs: 10_000 },
+    });
+    if (!isRequestSensitiveOperationSuccess(first)) throw new Error("expected success");
+
+    const second = await requestSensitiveOperation({
+      operation: "change_email",
+      userId: "u1",
+      email: "u@example.com",
+      secret: SECRET,
+      buildConfirmLink: (t) => `https://app.example.com/confirm?token=${t}`,
+      resendPolicyStore: store,
+      resendPolicyOptions: { baseDelayMs: baseMs, maxDelayMs: 10_000 },
+    });
+    expect(isRequestSensitiveOperationSuccess(second)).toBe(false);
+    expect("resendBlocked" in second).toBe(true);
+    if ("resendBlocked" in second) {
+      expect(second.resendBlocked.retryAfterSeconds).toBeGreaterThan(0);
+    }
+    expect(second.sent).toBe(false);
+  });
+
+  it("allows resend after backoff delay when using resend policy", async () => {
+    const store = createMemoryResendStore();
+    const baseMs = 50;
+    await requestSensitiveOperation({
+      operation: "change_password",
+      userId: "u2",
+      email: "u2@example.com",
+      secret: SECRET,
+      buildConfirmLink: (t) => `https://app.example.com/confirm?token=${t}`,
+      resendPolicyStore: store,
+      resendPolicyOptions: { baseDelayMs: baseMs },
+    });
+    const blocked = await requestSensitiveOperation({
+      operation: "change_password",
+      userId: "u2",
+      email: "u2@example.com",
+      secret: SECRET,
+      buildConfirmLink: (t) => `https://app.example.com/confirm?token=${t}`,
+      resendPolicyStore: store,
+      resendPolicyOptions: { baseDelayMs: baseMs },
+    });
+    expect(isRequestSensitiveOperationSuccess(blocked)).toBe(false);
+
+    await new Promise((r) => setTimeout(r, baseMs + 20));
+    const allowed = await requestSensitiveOperation({
+      operation: "change_password",
+      userId: "u2",
+      email: "u2@example.com",
+      secret: SECRET,
+      buildConfirmLink: (t) => `https://app.example.com/confirm?token=${t}`,
+      resendPolicyStore: store,
+      resendPolicyOptions: { baseDelayMs: baseMs },
+    });
+    if (!isRequestSensitiveOperationSuccess(allowed)) throw new Error("expected success");
   });
 });
 
@@ -91,15 +163,15 @@ describe("executeSensitiveOperation", () => {
   };
 
   it("runs action with verified payload when token is valid", async () => {
-    const { token } = (
-      await requestSensitiveOperation({
-        operation: "change_email",
-        userId: context.userId,
-        email: context.email,
-        secret: SECRET,
-        buildConfirmLink: (t) => `https://app.example.com/confirm?token=${t}`,
-      })
-    );
+    const req = await requestSensitiveOperation({
+      operation: "change_email",
+      userId: context.userId,
+      email: context.email,
+      secret: SECRET,
+      buildConfirmLink: (t) => `https://app.example.com/confirm?token=${t}`,
+    });
+    if (!isRequestSensitiveOperationSuccess(req)) throw new Error("expected success");
+    const token = req.token;
     const action = vi.fn().mockResolvedValue({ done: true });
     const out = await executeSensitiveOperation(
       "change_email",
@@ -148,15 +220,15 @@ describe("executeSensitiveOperation", () => {
   });
 
   it("throws ConfirmationRequiredError when token user does not match context", async () => {
-    const { token } = (
-      await requestSensitiveOperation({
-        operation: "change_email",
-        userId: "other-user",
-        email: "other@example.com",
-        secret: SECRET,
-        buildConfirmLink: (t) => `?token=${t}`,
-      })
-    );
+    const req = await requestSensitiveOperation({
+      operation: "change_email",
+      userId: "other-user",
+      email: "other@example.com",
+      secret: SECRET,
+      buildConfirmLink: (t) => `?token=${t}`,
+    });
+    if (!isRequestSensitiveOperationSuccess(req)) throw new Error("expected success");
+    const token = req.token;
     const action = vi.fn();
     await expect(
       executeSensitiveOperation("change_email", token, context, SECRET, action)
@@ -171,13 +243,15 @@ describe("executeSensitiveOperation", () => {
         email: "e@x.com",
         operation: op as SensitiveOperationType,
       };
-      const { token } = await requestSensitiveOperation({
+      const req = await requestSensitiveOperation({
         operation: op as SensitiveOperationType,
         userId: ctx.userId,
         email: ctx.email,
         secret: SECRET,
         buildConfirmLink: (t) => `https://x.com/c?token=${t}`,
       });
+      if (!isRequestSensitiveOperationSuccess(req)) throw new Error("expected success");
+      const token = req.token;
       const action = vi.fn().mockResolvedValue(undefined);
       await executeSensitiveOperation(op as SensitiveOperationType, token, ctx, SECRET, action);
       expect(action).toHaveBeenCalledWith(
