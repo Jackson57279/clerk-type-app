@@ -307,6 +307,17 @@ describe("executeSensitiveOperation", () => {
     expect(action).not.toHaveBeenCalled();
   });
 
+  it("throws ConfirmationRequiredError when token is empty or whitespace", async () => {
+    const action = vi.fn();
+    await expect(
+      executeSensitiveOperation("change_email", "", context, SECRET, action)
+    ).rejects.toThrow(ConfirmationRequiredError);
+    await expect(
+      executeSensitiveOperation("change_email", "  ", context, SECRET, action)
+    ).rejects.toThrow(ConfirmationRequiredError);
+    expect(action).not.toHaveBeenCalled();
+  });
+
   it("throws ConfirmationRequiredError when token is invalid", async () => {
     const action = vi.fn();
     await expect(
