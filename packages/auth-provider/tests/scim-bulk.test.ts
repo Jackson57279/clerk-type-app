@@ -173,6 +173,28 @@ describe("processBulkRequest", () => {
     expect(response.Operations).toEqual([]);
   });
 
+  it("accepts paths with /v2/ prefix (path normalization)", async () => {
+    const userStore = memoryUserStore();
+    const groupStore = memoryGroupStore();
+    const response = await processBulkRequest({
+      request: {
+        schemas: [BULK_REQUEST_SCHEMA],
+        Operations: [
+          { method: "POST", path: "/v2/Users", bulkId: "u1", data: { userName: "v2path@example.com" } },
+          { method: "POST", path: "/v2/Groups", bulkId: "g1", data: { externalId: "grp-v2", displayName: "V2 Group" } },
+        ],
+      },
+      userStore,
+      groupStore,
+      organizationId: orgId,
+      isAllowedEmail: () => true,
+    });
+    expect(response.Operations[0]!.status).toBe(201);
+    expect(response.Operations[1]!.status).toBe(201);
+    expect(await userStore.findByEmail("v2path@example.com")).not.toBeNull();
+    expect(await groupStore.findGroupByExternalId(orgId, "grp-v2")).not.toBeNull();
+  });
+
   it("bulk creates users via POST /Users", async () => {
     const userStore = memoryUserStore();
     const groupStore = memoryGroupStore();
