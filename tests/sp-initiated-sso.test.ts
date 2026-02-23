@@ -140,7 +140,7 @@ describe("createSpInitiatedLoginRequestUrl", () => {
     const sig = new SignedXml({ publicCert: TEST_CERT });
     const signatures = sig.findSignatures(dom as unknown as Document);
     expect(signatures.length).toBeGreaterThanOrEqual(1);
-    sig.loadSignature(signatures[0]);
+    sig.loadSignature(signatures[0]!);
     expect(sig.checkSignature(xml)).toBe(true);
   });
 

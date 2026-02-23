@@ -73,7 +73,7 @@ describe("saml-assertion-encryption", () => {
     const encrypted = await encryptAssertion(SAMPLE_ASSERTION, TEST_CERT);
     const innerMatch = encrypted.match(/<saml:EncryptedAssertion[^>]*>([\s\S]*)<\/saml:EncryptedAssertion>/);
     expect(innerMatch).toBeTruthy();
-    const encryptedDataXml = innerMatch![1].trim();
+    const encryptedDataXml = (innerMatch?.[1] ?? "").trim();
 
     const decrypted = await new Promise<string>((resolve, reject) => {
       xmlenc.decrypt(encryptedDataXml, { key: TEST_KEY }, (err: Error | null, result: string) => {
