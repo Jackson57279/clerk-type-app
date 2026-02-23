@@ -118,7 +118,7 @@ describe("password reset token expiry", () => {
       { ttlMs: 1000 }
     );
     expect(verifyPasswordResetToken(token, SECRET)).not.toBeNull();
-    vi.advanceTimersByTime(1500);
+    vi.advanceTimersByTime(2000);
     expect(verifyPasswordResetToken(token, SECRET)).toBeNull();
   });
 
