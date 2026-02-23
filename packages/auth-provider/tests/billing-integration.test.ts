@@ -4,6 +4,7 @@ import {
   createSeatUsageWebhookPayloads,
   deliverSeatUsageWebhooks,
   getBillingSeatPayloads,
+  syncSeatUsageToBilling,
 } from "../src/billing-integration.js";
 import type { OrganizationMembership } from "../src/member-approval.js";
 import type { WebhookSubscriptionStore } from "../src/realtime-webhook.js";
@@ -113,6 +114,51 @@ describe("getBillingSeatPayloads re-export", () => {
       seatCount: 1,
       at: "2026-02-23T12:00:00.000Z",
     });
+  });
+});
+
+describe("syncSeatUsageToBilling", () => {
+  it("calls billingReporter with billing seat payloads derived from memberships", async () => {
+    const organizations = [
+      {
+        organizationId: "org_a",
+        memberships: [
+          membership({ organizationId: "org_a", status: "active" }),
+          membership({ organizationId: "org_a", userId: "u2", status: "active" }),
+        ],
+      },
+      { organizationId: "org_b", memberships: [] },
+    ];
+    const at = new Date("2026-02-23T12:00:00.000Z");
+    const reportedPayloads: { organizationId: string; seatCount: number; at: string }[] = [];
+    const billingReporter = {
+      async reportSeatUsage(payloads: { organizationId: string; seatCount: number; at: string }[]) {
+        reportedPayloads.push(...payloads);
+      },
+    };
+    await syncSeatUsageToBilling({ organizations, billingReporter, at });
+    expect(reportedPayloads).toHaveLength(2);
+    expect(reportedPayloads).toContainEqual({
+      organizationId: "org_a",
+      seatCount: 2,
+      at: "2026-02-23T12:00:00.000Z",
+    });
+    expect(reportedPayloads).toContainEqual({
+      organizationId: "org_b",
+      seatCount: 0,
+      at: "2026-02-23T12:00:00.000Z",
+    });
+  });
+
+  it("does not call billingReporter when there are no organizations", async () => {
+    let called = false;
+    const billingReporter = {
+      async reportSeatUsage() {
+        called = true;
+      },
+    };
+    await syncSeatUsageToBilling({ organizations: [], billingReporter });
+    expect(called).toBe(false);
   });
 });
 

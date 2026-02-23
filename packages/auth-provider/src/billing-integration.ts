@@ -61,6 +61,21 @@ export interface DeliverSeatUsageWebhooksResult {
   }[];
 }
 
+export interface SyncSeatUsageToBillingParams {
+  organizations: OrganizationMembershipsInput[];
+  billingReporter: BillingReporter;
+  at?: Date;
+}
+
+export async function syncSeatUsageToBilling(
+  params: SyncSeatUsageToBillingParams
+): Promise<void> {
+  const { organizations, billingReporter, at = new Date() } = params;
+  const payloads = getBillingSeatPayloads(organizations, at);
+  if (payloads.length === 0) return;
+  await billingReporter.reportSeatUsage(payloads);
+}
+
 export async function deliverSeatUsageWebhooks(
   params: DeliverSeatUsageWebhooksParams
 ): Promise<DeliverSeatUsageWebhooksResult> {
