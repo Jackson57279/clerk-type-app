@@ -183,6 +183,84 @@ describe("PasskeyStore (multiple passkeys)", () => {
   });
 });
 
+describe("Passkey metadata (name, device info, last used)", () => {
+  it("save and list preserve friendlyName, deviceInfo, and lastUsedAt", async () => {
+    const store = createMemoryPasskeyStore();
+    const userId = "user-1";
+    const lastUsedAt = "2025-02-20T12:00:00.000Z";
+    await store.save({
+      userId,
+      credentialId: "cred-meta",
+      publicKey: new Uint8Array(1),
+      counter: 0,
+      deviceType: "singleDevice",
+      backedUp: false,
+      webauthnUserID: "w",
+      friendlyName: "My MacBook",
+      deviceInfo: "Chrome on macOS · internal",
+      lastUsedAt,
+    });
+    const list = await store.listByUserId(userId);
+    expect(list).toHaveLength(1);
+    expect(list[0]!.friendlyName).toBe("My MacBook");
+    expect(list[0]!.deviceInfo).toBe("Chrome on macOS · internal");
+    expect(list[0]!.lastUsedAt).toBe(lastUsedAt);
+  });
+
+  it("updateLastUsed sets lastUsedAt on the credential", async () => {
+    const store = createMemoryPasskeyStore();
+    const userId = "user-1";
+    await store.save({
+      userId,
+      credentialId: "cred-1",
+      publicKey: new Uint8Array(1),
+      counter: 0,
+      deviceType: "singleDevice",
+      backedUp: false,
+      webauthnUserID: "w",
+    });
+    expect((await store.listByUserId(userId))[0]!.lastUsedAt).toBeUndefined();
+    const before = Date.now();
+    await store.updateLastUsed(userId, "cred-1");
+    const after = Date.now();
+    const list = await store.listByUserId(userId);
+    expect(list[0]!.lastUsedAt).toBeDefined();
+    const ts = new Date(list[0]!.lastUsedAt!).getTime();
+    expect(ts).toBeGreaterThanOrEqual(before - 1000);
+    expect(ts).toBeLessThanOrEqual(after + 1000);
+  });
+
+  it("updateLastUsed only updates the matching credential", async () => {
+    const store = createMemoryPasskeyStore();
+    const userId = "user-1";
+    await store.save({
+      userId,
+      credentialId: "cred-a",
+      publicKey: new Uint8Array(1),
+      counter: 0,
+      deviceType: "singleDevice",
+      backedUp: false,
+      webauthnUserID: "w",
+    });
+    await store.save({
+      userId,
+      credentialId: "cred-b",
+      publicKey: new Uint8Array(1),
+      counter: 0,
+      deviceType: "singleDevice",
+      backedUp: false,
+      webauthnUserID: "w",
+      lastUsedAt: "2025-01-01T00:00:00.000Z",
+    });
+    await store.updateLastUsed(userId, "cred-a");
+    const list = await store.listByUserId(userId);
+    const a = list.find((p) => p.credentialId === "cred-a");
+    const b = list.find((p) => p.credentialId === "cred-b");
+    expect(a!.lastUsedAt).toBeDefined();
+    expect(b!.lastUsedAt).toBe("2025-01-01T00:00:00.000Z");
+  });
+});
+
 describe("startRegistration", () => {
   it("returns registration options with no excludeCredentials when user has no passkeys", async () => {
     const credentialStore = createMemoryPasskeyStore();

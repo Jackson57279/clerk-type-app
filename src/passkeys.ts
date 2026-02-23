@@ -24,6 +24,8 @@ export interface StoredPasskey {
   backedUp: boolean;
   webauthnUserID: string;
   friendlyName?: string;
+  deviceInfo?: string;
+  lastUsedAt?: string;
 }
 
 export interface PasskeyStore {
@@ -31,6 +33,7 @@ export interface PasskeyStore {
   findByCredentialId(userId: string, credentialId: string): Promise<StoredPasskey | null>;
   save(credential: StoredPasskey): Promise<void>;
   updateCounter(userId: string, credentialId: string, counter: number): Promise<void>;
+  updateLastUsed(userId: string, credentialId: string): Promise<void>;
   delete(userId: string, credentialId: string): Promise<void>;
 }
 
@@ -83,6 +86,8 @@ export interface FinishRegistrationOptions {
   credentialStore: PasskeyStore;
   challengeStore: PasskeyChallengeStore;
   rpConfig: PasskeyRpConfig;
+  name?: string;
+  deviceInfo?: string;
 }
 
 export interface FinishRegistrationResult {
@@ -114,6 +119,9 @@ export async function finishRegistration(
   }
   const { credential, credentialDeviceType, credentialBackedUp } = verification.registrationInfo;
   const webauthnUserID = expectedOptions.user.id;
+  const deviceInfo =
+    options.deviceInfo ??
+    deriveDeviceInfo(credentialDeviceType, credential.transports);
   const stored: StoredPasskey = {
     userId,
     credentialId: credential.id,
@@ -123,6 +131,8 @@ export async function finishRegistration(
     deviceType: credentialDeviceType,
     backedUp: credentialBackedUp,
     webauthnUserID,
+    friendlyName: options.name,
+    deviceInfo,
   };
   await credentialStore.save(stored);
   return { verified: true, credentialId: credential.id };
@@ -205,7 +215,17 @@ export async function finishAuthentication(
     response.id,
     verification.authenticationInfo.newCounter
   );
+  await credentialStore.updateLastUsed(userId, response.id);
   return { verified: true, credentialId: response.id };
+}
+
+function deriveDeviceInfo(
+  deviceType: CredentialDeviceType,
+  transports?: AuthenticatorTransportFuture[]
+): string {
+  const parts = [deviceType];
+  if (transports?.length) parts.push(transports.join(", "));
+  return parts.join(" · ");
 }
 
 export function createMemoryPasskeyStore(): PasskeyStore {
@@ -231,6 +251,11 @@ export function createMemoryPasskeyStore(): PasskeyStore {
       const list = byUser.get(userId) ?? [];
       const p = list.find((c) => c.credentialId === credentialId);
       if (p) p.counter = counter;
+    },
+    async updateLastUsed(userId: string, credentialId: string) {
+      const list = byUser.get(userId) ?? [];
+      const p = list.find((c) => c.credentialId === credentialId);
+      if (p) p.lastUsedAt = new Date().toISOString();
     },
     async delete(userId: string, credentialId: string) {
       const list = byUser.get(userId) ?? [];
