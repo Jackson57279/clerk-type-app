@@ -7,6 +7,7 @@ import {
 } from "../src/link-format.js";
 import { createMagicLinkToken, verifyMagicLinkToken } from "../src/magic-link.js";
 import { createConfirmationToken, verifyConfirmationToken } from "../src/double-opt-in.js";
+import { createPasswordResetToken, verifyPasswordResetToken } from "../src/password-reset.js";
 
 const SECRET = "link-format-secret";
 
@@ -104,6 +105,24 @@ describe("JWT-based link with short expiry (confirmation)", () => {
     expect(payload).not.toBeNull();
     expect(payload?.email).toBe("u@example.com");
     expect(payload?.operation).toBe("change_email");
+    const ttlMs = expiresAt - Date.now();
+    expect(ttlMs).toBeLessThanOrEqual(DEFAULT_LINK_TTL_MS + 2000);
+    expect(ttlMs).toBeGreaterThanOrEqual(DEFAULT_LINK_TTL_MS - 2000);
+  });
+});
+
+describe("JWT-based link with short expiry (password reset)", () => {
+  it("buildJwtLink produces URL whose token is valid JWT with short expiry", () => {
+    const { token, expiresAt } = createPasswordResetToken(
+      { userId: "u1", email: "u@example.com" },
+      SECRET
+    );
+    const link = buildJwtLink("https://app.example.com/reset", token);
+    const extracted = parseJwtFromLink(link);
+    expect(extracted).toBe(token);
+    const payload = verifyPasswordResetToken(extracted!, SECRET);
+    expect(payload).not.toBeNull();
+    expect(payload?.email).toBe("u@example.com");
     const ttlMs = expiresAt - Date.now();
     expect(ttlMs).toBeLessThanOrEqual(DEFAULT_LINK_TTL_MS + 2000);
     expect(ttlMs).toBeGreaterThanOrEqual(DEFAULT_LINK_TTL_MS - 2000);
