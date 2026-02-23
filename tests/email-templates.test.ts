@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   renderPasswordResetEmail,
   renderDoubleOptInEmail,
+  renderMagicLinkEmail,
 } from "../src/email-templates.js";
 
 describe("renderPasswordResetEmail", () => {
@@ -124,5 +125,72 @@ describe("renderDoubleOptInEmail", () => {
     expect(result.text).toBe(
       "Confirm delete account: https://confirm.com (20 min)"
     );
+  });
+});
+
+describe("renderMagicLinkEmail", () => {
+  it("renders html and text with placeholders replaced", () => {
+    const result = renderMagicLinkEmail({
+      magicLink: "https://app.example.com/login?token=xyz",
+      expiresInMinutes: 15,
+    });
+    expect(result.html).toContain("https://app.example.com/login?token=xyz");
+    expect(result.html).toContain("15");
+    expect(result.html).not.toContain("{{magicLink}}");
+    expect(result.html).not.toContain("{{expiresInMinutes}}");
+    expect(result.text).toContain("https://app.example.com/login?token=xyz");
+    expect(result.text).toContain("15");
+  });
+
+  it("uses default branding when not provided", () => {
+    const result = renderMagicLinkEmail({
+      magicLink: "https://x.com/l",
+      expiresInMinutes: 15,
+    });
+    expect(result.html).toContain("#2563eb");
+    expect(result.html).toContain("Sign in");
+  });
+
+  it("injects branding logo and colors in default template", () => {
+    const result = renderMagicLinkEmail(
+      { magicLink: "https://x.com/l", expiresInMinutes: 10 },
+      {
+        branding: {
+          logoUrl: "https://cdn.example.com/logo.png",
+          primaryColor: "#059669",
+          secondaryColor: "#475569",
+          companyName: "MyProduct",
+        },
+      }
+    );
+    expect(result.html).toContain("https://cdn.example.com/logo.png");
+    expect(result.html).toContain("#059669");
+    expect(result.html).toContain("#475569");
+    expect(result.html).toContain("MyProduct");
+  });
+
+  it("uses custom html and text templates when provided", () => {
+    const result = renderMagicLinkEmail(
+      { magicLink: "https://go.com/ml", expiresInMinutes: 5 },
+      {
+        htmlTemplate: "<p>Link: {{magicLink}} ({{expiresInMinutes}} min)</p>",
+        textTemplate: "Link: {{magicLink}} ({{expiresInMinutes}} min)",
+      }
+    );
+    expect(result.html).toBe("<p>Link: https://go.com/ml (5 min)</p>");
+    expect(result.text).toBe("Link: https://go.com/ml (5 min)");
+  });
+
+  it("replaces branding placeholders in custom template", () => {
+    const result = renderMagicLinkEmail(
+      { magicLink: "https://l.com", expiresInMinutes: 15 },
+      {
+        branding: { companyName: "Acme", primaryColor: "#111" },
+        htmlTemplate: "{{companyName}} {{primaryColor}} {{magicLink}}",
+      }
+    );
+    expect(result.html).toContain("Acme");
+    expect(result.html).toContain("#111");
+    expect(result.html).toContain("https://l.com");
   });
 });
