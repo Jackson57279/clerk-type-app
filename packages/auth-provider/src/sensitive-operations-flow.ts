@@ -39,6 +39,7 @@ export interface RequestSensitiveOperationOptions {
   buildConfirmLink: (token: string) => string;
   operationParams?: Record<string, string>;
   sendEmail?: SendEmailFn;
+  fallbackSendEmail?: SendEmailFn;
   usedTokenStore?: SingleUseConfirmationStore;
   branding?: BrandingConfig | null;
   htmlTemplate?: string;
@@ -81,6 +82,7 @@ export async function requestSensitiveOperation(
     buildConfirmLink,
     operationParams,
     sendEmail,
+    fallbackSendEmail,
     branding,
     htmlTemplate,
     textTemplate,
@@ -122,7 +124,20 @@ export async function requestSensitiveOperation(
   );
 
   if (sendEmail) {
-    await sendEmail({ to: email, html, text });
+    const payload = { to: email, html, text };
+    try {
+      await sendEmail(payload);
+    } catch {
+      if (fallbackSendEmail) {
+        try {
+          await fallbackSendEmail(payload);
+        } catch {
+          throw new Error("Failed to send confirmation email");
+        }
+      } else {
+        throw new Error("Failed to send confirmation email");
+      }
+    }
   }
 
   if (resendPolicyStore) {

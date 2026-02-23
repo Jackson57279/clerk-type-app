@@ -90,6 +90,64 @@ describe("requestSensitiveOperation", () => {
     expect(payload?.html).toContain("#059669");
   });
 
+  it("uses fallbackSendEmail when primary sendEmail fails", async () => {
+    const sendEmail = vi.fn().mockRejectedValue(new Error("SMTP down"));
+    const fallbackSendEmail = vi.fn().mockResolvedValue(undefined);
+    const result = await requestSensitiveOperation({
+      operation: "change_password",
+      userId: "u2",
+      email: "u2@example.com",
+      secret: SECRET,
+      buildConfirmLink: (t) => `https://app.example.com/confirm?token=${t}`,
+      sendEmail,
+      fallbackSendEmail,
+    });
+    if (!isRequestSensitiveOperationSuccess(result)) throw new Error("expected success");
+    expect(result.sent).toBe(true);
+    expect(sendEmail).toHaveBeenCalledTimes(1);
+    expect(fallbackSendEmail).toHaveBeenCalledTimes(1);
+    expect(fallbackSendEmail).toHaveBeenCalledWith(
+      expect.objectContaining({
+        to: "u2@example.com",
+        html: expect.any(String),
+        text: expect.any(String),
+      })
+    );
+  });
+
+  it("throws when both sendEmail and fallbackSendEmail fail", async () => {
+    const sendEmail = vi.fn().mockRejectedValue(new Error("SMTP down"));
+    const fallbackSendEmail = vi.fn().mockRejectedValue(new Error("Fallback down"));
+    await expect(
+      requestSensitiveOperation({
+        operation: "change_password",
+        userId: "u2",
+        email: "u2@example.com",
+        secret: SECRET,
+        buildConfirmLink: (t) => `https://app.example.com/confirm?token=${t}`,
+        sendEmail,
+        fallbackSendEmail,
+      })
+    ).rejects.toThrow("Failed to send confirmation email");
+    expect(sendEmail).toHaveBeenCalledTimes(1);
+    expect(fallbackSendEmail).toHaveBeenCalledTimes(1);
+  });
+
+  it("throws when sendEmail fails and no fallback provided", async () => {
+    const sendEmail = vi.fn().mockRejectedValue(new Error("SMTP down"));
+    await expect(
+      requestSensitiveOperation({
+        operation: "change_password",
+        userId: "u2",
+        email: "u2@example.com",
+        secret: SECRET,
+        buildConfirmLink: (t) => `https://app.example.com/confirm?token=${t}`,
+        sendEmail,
+      })
+    ).rejects.toThrow("Failed to send confirmation email");
+    expect(sendEmail).toHaveBeenCalledTimes(1);
+  });
+
   it("uses custom htmlTemplate and textTemplate when provided", async () => {
     const sendEmail = vi.fn().mockResolvedValue(undefined);
     const result = await requestSensitiveOperation({
