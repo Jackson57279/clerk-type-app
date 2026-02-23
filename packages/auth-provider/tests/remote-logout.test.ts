@@ -79,4 +79,14 @@ describe("createDefaultRemoteLogoutStore", () => {
     expect(result.invalidatedSessionIds).toEqual([]);
     expect(result.invalidatedCount).toBe(0);
   });
+
+  it("returns JSON-serializable response suitable for HTTP endpoint", () => {
+    registerSession("s1", "u1", null);
+    const store = createDefaultRemoteLogoutStore();
+    const result = remoteLogout({ userId: "u1" }, store);
+    const json = JSON.stringify(result);
+    const parsed = JSON.parse(json) as typeof result;
+    expect(parsed).toEqual({ invalidatedSessionIds: ["s1"], invalidatedCount: 1 });
+    expect(Object.keys(parsed).sort()).toEqual(["invalidatedCount", "invalidatedSessionIds"]);
+  });
 });
