@@ -16,6 +16,7 @@
     "vitest": "^2.1.6"
   },
   "dependencies": {
-    "argon2": "^0.41.1"
+    "argon2": "^0.41.1",
+    "twilio": "^5.12.2"
   }
 }
