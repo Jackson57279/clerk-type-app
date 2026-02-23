@@ -1,6 +1,14 @@
+export const AUTH_SUBDOMAIN = "auth";
+
 export function normalizeHost(host: string): string {
   const withoutPort = host.includes(":") ? host.slice(0, host.indexOf(":")) : host;
   return withoutPort.toLowerCase().trim();
+}
+
+export function getSuggestedAuthHost(rootDomain: string): string {
+  const normalized = normalizeHost(rootDomain).replace(/^\.|\.$/g, "");
+  if (!normalized) return "";
+  return `${AUTH_SUBDOMAIN}.${normalized}`;
 }
 
 const LABEL = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?$/i;

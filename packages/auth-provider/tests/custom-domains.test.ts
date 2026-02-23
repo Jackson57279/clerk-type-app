@@ -1,7 +1,9 @@
 import { describe, it, expect } from "vitest";
 import {
+  AUTH_SUBDOMAIN,
   normalizeHost,
   isValidCustomDomain,
+  getSuggestedAuthHost,
   resolveOrganizationByHost,
   getAuthBaseUrl,
 } from "../src/custom-domains.js";
@@ -76,6 +78,37 @@ describe("resolveOrganizationByHost", () => {
       domain === "auth.acme.com" ? "org_acme" : null;
     expect(resolveOrganizationByHost("auth.acme.com", lookup)).toBe("org_acme");
     expect(resolveOrganizationByHost("auth.other.com", lookup)).toBe(null);
+  });
+});
+
+describe("getSuggestedAuthHost", () => {
+  it("returns auth.customer.com for customer.com", () => {
+    expect(getSuggestedAuthHost("customer.com")).toBe("auth.customer.com");
+  });
+
+  it("normalizes root domain (lowercase, trim)", () => {
+    expect(getSuggestedAuthHost("  Customer.COM  ")).toBe("auth.customer.com");
+  });
+
+  it("strips leading/trailing dots from root", () => {
+    expect(getSuggestedAuthHost(".customer.com.")).toBe("auth.customer.com");
+  });
+
+  it("returns empty string for empty root", () => {
+    expect(getSuggestedAuthHost("")).toBe("");
+    expect(getSuggestedAuthHost("   ")).toBe("");
+  });
+
+  it("works with multi-label roots", () => {
+    expect(getSuggestedAuthHost("app.customer.co.uk")).toBe(
+      "auth.app.customer.co.uk"
+    );
+  });
+});
+
+describe("AUTH_SUBDOMAIN", () => {
+  it("is auth", () => {
+    expect(AUTH_SUBDOMAIN).toBe("auth");
   });
 });
 
