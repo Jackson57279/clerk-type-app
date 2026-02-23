@@ -30,3 +30,12 @@ export function createDefaultRoleResolver(options: DefaultRoleByDomainOptions) {
     return getDefaultRoleForEmail(email, options);
   };
 }
+
+export function resolveMemberRole(
+  email: string,
+  explicitRole: MemberRole | undefined,
+  options: DefaultRoleByDomainOptions
+): MemberRole {
+  if (explicitRole !== undefined) return explicitRole;
+  return getDefaultRoleForEmail(email, options);
+}

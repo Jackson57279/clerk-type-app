@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   getDefaultRoleForEmail,
   createDefaultRoleResolver,
+  resolveMemberRole,
   type DefaultRoleByDomainOptions,
 } from "../src/default-role-by-domain.js";
 
@@ -108,5 +109,31 @@ describe("createDefaultRoleResolver", () => {
     });
     expect(resolve("a@internal.org")).toBe("owner");
     expect(resolve("a@external.com")).toBe("guest");
+  });
+});
+
+describe("resolveMemberRole", () => {
+  it("returns explicit role when provided", () => {
+    expect(
+      resolveMemberRole("user@company.com", "guest", baseOptions)
+    ).toBe("guest");
+    expect(
+      resolveMemberRole("user@gmail.com", "admin", baseOptions)
+    ).toBe("admin");
+    expect(
+      resolveMemberRole("bob@contractor.com", "owner", baseOptions)
+    ).toBe("owner");
+  });
+
+  it("returns domain-based role when explicit role is undefined", () => {
+    expect(
+      resolveMemberRole("user@company.com", undefined, baseOptions)
+    ).toBe("admin");
+    expect(
+      resolveMemberRole("bob@contractor.com", undefined, baseOptions)
+    ).toBe("guest");
+    expect(
+      resolveMemberRole("user@gmail.com", undefined, baseOptions)
+    ).toBe("member");
   });
 });
