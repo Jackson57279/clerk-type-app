@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import {
   provisionUser,
   deactivateUser,
@@ -8,6 +8,7 @@ import {
   type ProvisionedUser,
   type ProvisionUserData,
 } from "../src/user-provisioning.js";
+import type { WebhookSubscriptionStore } from "../src/realtime-webhook.js";
 
 function memoryStore(initial: ProvisionedUser[] = []): UserProvisioningStore {
   const users = new Map<string, ProvisionedUser>();
@@ -434,5 +435,89 @@ describe("deleteUser", () => {
   it("is no-op when user does not exist", async () => {
     const store = memoryStore();
     await expect(deleteUser(store, "nonexistent")).resolves.toBeUndefined();
+  });
+});
+
+describe("realtime sync webhook", () => {
+  const orgId = "org_1";
+  const delivered: { type: string; data: Record<string, unknown> }[] = [];
+  const webhookStore: WebhookSubscriptionStore = {
+    listSubscriptions: async () => [{ url: "https://hooks.example.com/sync", secret: "sec" }],
+  };
+  const mockFetch = vi.fn(async (_url: unknown, init?: RequestInit) => {
+    const body = init?.body as string;
+    if (body) {
+      const parsed = JSON.parse(body) as { type: string; data: Record<string, unknown> };
+      delivered.push({ type: parsed.type, data: parsed.data });
+    }
+    return new Response(null, { status: 200 });
+  });
+
+  beforeEach(() => {
+    delivered.length = 0;
+    mockFetch.mockClear();
+  });
+
+  it("delivers user.created when provisionUser creates a user with realtimeWebhook", async () => {
+    const store = memoryStore();
+    const result = await provisionUser(
+      store,
+      { email: "sync@example.com", name: "Sync User", externalId: "ext-sync" },
+      {
+        isAllowedEmail: () => true,
+        organizationId: orgId,
+        realtimeWebhook: { organizationId: orgId, webhookStore, webhookDeliveryOptions: { fetchFn: mockFetch } },
+      }
+    );
+    expect(result.created).toBe(true);
+    expect(delivered).toHaveLength(1);
+    expect(delivered[0]!.type).toBe("user.created");
+    expect(delivered[0]!.data.email).toBe("sync@example.com");
+    expect(delivered[0]!.data.externalId).toBe("ext-sync");
+  });
+
+  it("delivers user.updated when provisionUser updates existing user with realtimeWebhook", async () => {
+    const store = memoryStore([
+      {
+        id: "user_1",
+        email: "existing@example.com",
+        externalId: "ext-existing",
+        name: undefined,
+        firstName: undefined,
+        lastName: undefined,
+        active: true,
+      },
+    ]);
+    const result = await provisionUser(
+      store,
+      { email: "existing@example.com", externalId: "ext-existing", name: "Updated Name" },
+      {
+        realtimeWebhook: { organizationId: orgId, webhookStore, webhookDeliveryOptions: { fetchFn: mockFetch } },
+      }
+    );
+    expect(result.created).toBe(false);
+    expect(delivered).toHaveLength(1);
+    expect(delivered[0]!.type).toBe("user.updated");
+    expect(delivered[0]!.data.name).toBe("Updated Name");
+  });
+
+  it("delivers user.deleted when deprovisionUser called with realtimeWebhook", async () => {
+    const store = memoryStore([
+      {
+        id: "user_1",
+        email: "del@example.com",
+        externalId: "ext-del",
+        name: undefined,
+        firstName: undefined,
+        lastName: undefined,
+        active: true,
+      },
+    ]);
+    await deprovisionUser(store, "user_1", {
+      realtimeWebhook: { organizationId: orgId, webhookStore, webhookDeliveryOptions: { fetchFn: mockFetch } },
+    });
+    expect(delivered).toHaveLength(1);
+    expect(delivered[0]!.type).toBe("user.deleted");
+    expect(delivered[0]!.data.email).toBe("del@example.com");
   });
 });

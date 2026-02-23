@@ -31,6 +31,7 @@ export interface ProvisionOptions {
   organizationId?: string;
   reactivateIfDeactivated?: boolean;
   isAllowedEmail?: (email: string) => boolean;
+  realtimeWebhook?: RealtimeWebhookOptions;
 }
 
 export interface ProvisionResult {
@@ -45,14 +46,38 @@ import {
   deprovisionEntity,
   type DeprovisionOptions,
 } from "./soft-delete.js";
+import {
+  createRealtimeSyncPayload,
+  deliverRealtimeWebhook,
+  type DeliverWebhookOptions,
+  type WebhookSubscriptionStore,
+} from "./realtime-webhook.js";
 export type { DeprovisionOptions } from "./soft-delete.js";
+
+export interface RealtimeWebhookOptions {
+  organizationId: string;
+  webhookStore: WebhookSubscriptionStore;
+  webhookDeliveryOptions?: DeliverWebhookOptions;
+}
+
+function userToSyncData(user: ProvisionedUser): Record<string, unknown> {
+  return {
+    id: user.id,
+    email: user.email,
+    externalId: user.externalId,
+    name: user.name,
+    firstName: user.firstName,
+    lastName: user.lastName,
+    active: user.active,
+  };
+}
 
 export async function provisionUser(
   store: UserProvisioningStore,
   data: ProvisionUserData,
   options: ProvisionOptions = {}
 ): Promise<ProvisionResult> {
-  const { reactivateIfDeactivated = true, isAllowedEmail: isAllowedEmailOpt } = options;
+  const { reactivateIfDeactivated = true, isAllowedEmail: isAllowedEmailOpt, realtimeWebhook } = options;
 
   if (data.externalId) {
     const byExternal = await store.findByExternalId(data.externalId);
@@ -62,10 +87,28 @@ export async function provisionUser(
           ...data,
           active: data.active ?? true,
         });
+        if (realtimeWebhook) {
+          const payload = createRealtimeSyncPayload("user.updated", userToSyncData(updated));
+          await deliverRealtimeWebhook(
+            realtimeWebhook.webhookStore,
+            realtimeWebhook.organizationId,
+            payload,
+            realtimeWebhook.webhookDeliveryOptions
+          );
+        }
         return { user: updated, created: false };
       }
       if (byExternal.active) {
         const updated = await store.update(byExternal.id, data);
+        if (realtimeWebhook) {
+          const payload = createRealtimeSyncPayload("user.updated", userToSyncData(updated));
+          await deliverRealtimeWebhook(
+            realtimeWebhook.webhookStore,
+            realtimeWebhook.organizationId,
+            payload,
+            realtimeWebhook.webhookDeliveryOptions
+          );
+        }
         return { user: updated, created: false };
       }
     }
@@ -78,10 +121,28 @@ export async function provisionUser(
         ...data,
         active: data.active ?? true,
       });
+      if (realtimeWebhook) {
+        const payload = createRealtimeSyncPayload("user.updated", userToSyncData(updated));
+        await deliverRealtimeWebhook(
+          realtimeWebhook.webhookStore,
+          realtimeWebhook.organizationId,
+          payload,
+          realtimeWebhook.webhookDeliveryOptions
+        );
+      }
       return { user: updated, created: false };
     }
     if (byEmail.active) {
       const updated = await store.update(byEmail.id, data);
+      if (realtimeWebhook) {
+        const payload = createRealtimeSyncPayload("user.updated", userToSyncData(updated));
+        await deliverRealtimeWebhook(
+          realtimeWebhook.webhookStore,
+          realtimeWebhook.organizationId,
+          payload,
+          realtimeWebhook.webhookDeliveryOptions
+        );
+      }
       return { user: updated, created: false };
     }
   }
@@ -95,6 +156,15 @@ export async function provisionUser(
     ...data,
     active: data.active ?? true,
   });
+  if (realtimeWebhook) {
+    const payload = createRealtimeSyncPayload("user.created", userToSyncData(user));
+    await deliverRealtimeWebhook(
+      realtimeWebhook.webhookStore,
+      realtimeWebhook.organizationId,
+      payload,
+      realtimeWebhook.webhookDeliveryOptions
+    );
+  }
   return { user, created: true };
 }
 
@@ -112,10 +182,27 @@ export async function deleteUser(
   return deleteEntity(store, userId);
 }
 
+export interface DeprovisionUserOptions extends DeprovisionOptions {
+  realtimeWebhook?: RealtimeWebhookOptions;
+}
+
 export async function deprovisionUser(
   store: UserProvisioningStore,
   userId: string,
-  options: DeprovisionOptions = {}
+  options: DeprovisionUserOptions = {}
 ): Promise<void> {
-  return deprovisionEntity(store, userId, options);
+  const { realtimeWebhook, ...deprovisionOpts } = options;
+  if (realtimeWebhook) {
+    const user = await store.findById(userId);
+    if (user) {
+      const payload = createRealtimeSyncPayload("user.deleted", userToSyncData(user));
+      await deliverRealtimeWebhook(
+        realtimeWebhook.webhookStore,
+        realtimeWebhook.organizationId,
+        payload,
+        realtimeWebhook.webhookDeliveryOptions
+      );
+    }
+  }
+  return deprovisionEntity(store, userId, deprovisionOpts);
 }

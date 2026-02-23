@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import {
   syncGroup,
   syncGroups,
@@ -8,6 +8,7 @@ import {
   type GroupSyncStore,
   type SyncedGroup,
 } from "../src/group-sync.js";
+import type { WebhookSubscriptionStore } from "../src/realtime-webhook.js";
 
 function memoryStore(): GroupSyncStore {
   const groups = new Map<string, SyncedGroup & { organizationId: string }>();
@@ -322,5 +323,93 @@ describe("deactivateGroup / deleteGroup / deprovisionGroup (soft delete vs delet
   it("deprovisionGroup is no-op when group does not exist", async () => {
     const store = memoryStore();
     await expect(deprovisionGroup(store, "nonexistent")).resolves.toBeUndefined();
+  });
+});
+
+describe("realtime sync webhook", () => {
+  const orgId = "org_1";
+  const delivered: { type: string; data: Record<string, unknown> }[] = [];
+  const webhookStore: WebhookSubscriptionStore = {
+    listSubscriptions: async () => [{ url: "https://hooks.example.com/sync", secret: "sec" }],
+  };
+  const mockFetch = vi.fn(async (_url: unknown, init?: RequestInit) => {
+    const body = init?.body as string;
+    if (body) {
+      const parsed = JSON.parse(body) as { type: string; data: Record<string, unknown> };
+      delivered.push({ type: parsed.type, data: parsed.data });
+    }
+    return new Response(null, { status: 200 });
+  });
+
+  beforeEach(() => {
+    delivered.length = 0;
+    mockFetch.mockClear();
+  });
+
+  it("delivers group.created when syncGroup creates a group with realtimeWebhook", async () => {
+    const store = memoryStore();
+    const result = await syncGroup(
+      store,
+      { externalId: "ext-sync", displayName: "Sync Team", memberIds: ["user_1"] },
+      { organizationId: orgId, realtimeWebhook: { organizationId: orgId, webhookStore, webhookDeliveryOptions: { fetchFn: mockFetch } } }
+    );
+    expect(result.created).toBe(true);
+    expect(delivered).toHaveLength(1);
+    expect(delivered[0]!.type).toBe("group.created");
+    expect(delivered[0]!.data.displayName).toBe("Sync Team");
+    expect((delivered[0]!.data.members as { value: string }[])?.map((m) => m.value)).toEqual(["user_1"]);
+  });
+
+  it("delivers group.updated when syncGroup updates existing group with realtimeWebhook", async () => {
+    const store = memoryStore();
+    await syncGroup(
+      store,
+      { externalId: "ext-upd", displayName: "Original", memberIds: [] },
+      { organizationId: orgId }
+    );
+    delivered.length = 0;
+    const result = await syncGroup(
+      store,
+      { externalId: "ext-upd", displayName: "Updated Name", memberIds: ["user_1"] },
+      { organizationId: orgId, realtimeWebhook: { organizationId: orgId, webhookStore, webhookDeliveryOptions: { fetchFn: mockFetch } } }
+    );
+    expect(result.created).toBe(false);
+    expect(delivered).toHaveLength(1);
+    expect(delivered[0]!.type).toBe("group.updated");
+    expect(delivered[0]!.data.displayName).toBe("Updated Name");
+  });
+
+  it("delivers group.deleted for each removed group when syncGroups removeGroupsNotInSource with realtimeWebhook", async () => {
+    const store = memoryStore();
+    await syncGroup(
+      store,
+      { externalId: "ext-rm", displayName: "To Remove", memberIds: [] },
+      { organizationId: orgId }
+    );
+    await syncGroup(
+      store,
+      { externalId: "ext-keep", displayName: "To Keep", memberIds: [] },
+      { organizationId: orgId }
+    );
+    delivered.length = 0;
+    await syncGroups(
+      store,
+      [{ externalId: "ext-keep", displayName: "To Keep", memberIds: [] }],
+      { organizationId: orgId, removeGroupsNotInSource: true, realtimeWebhook: { organizationId: orgId, webhookStore, webhookDeliveryOptions: { fetchFn: mockFetch } } }
+    );
+    const deletedEvents = delivered.filter((d) => d.type === "group.deleted");
+    expect(deletedEvents).toHaveLength(1);
+    expect(deletedEvents[0]!.data.displayName).toBe("To Remove");
+  });
+
+  it("delivers group.deleted when deprovisionGroup called with realtimeWebhook", async () => {
+    const store = memoryStore();
+    const created = await store.createGroup("org_1", { externalId: "ext-dep", displayName: "Deprovisioned" });
+    await deprovisionGroup(store, created.id, {
+      realtimeWebhook: { organizationId: orgId, webhookStore, webhookDeliveryOptions: { fetchFn: mockFetch } },
+    });
+    expect(delivered).toHaveLength(1);
+    expect(delivered[0]!.type).toBe("group.deleted");
+    expect(delivered[0]!.data.displayName).toBe("Deprovisioned");
   });
 });

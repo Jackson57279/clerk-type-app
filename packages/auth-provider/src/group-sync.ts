@@ -1,3 +1,10 @@
+import {
+  createRealtimeSyncPayload,
+  deliverRealtimeWebhook,
+  type DeliverWebhookOptions,
+  type WebhookSubscriptionStore,
+} from "./realtime-webhook.js";
+
 export interface SyncGroupData {
   externalId: string;
   displayName: string;
@@ -23,8 +30,15 @@ export interface GroupSyncStore {
   setGroupMembers(groupId: string, userIds: string[]): Promise<void>;
 }
 
+export interface RealtimeWebhookOptions {
+  organizationId: string;
+  webhookStore: WebhookSubscriptionStore;
+  webhookDeliveryOptions?: DeliverWebhookOptions;
+}
+
 export interface SyncGroupOptions {
   organizationId: string;
+  realtimeWebhook?: RealtimeWebhookOptions;
 }
 
 export interface SyncGroupResult {
@@ -32,12 +46,23 @@ export interface SyncGroupResult {
   created: boolean;
 }
 
+function groupToSyncData(group: SyncedGroup, memberIds?: string[]): Record<string, unknown> {
+  const data: Record<string, unknown> = {
+    id: group.id,
+    externalId: group.externalId,
+    displayName: group.displayName,
+    active: group.active,
+  };
+  if (memberIds !== undefined) data.members = memberIds.map((id) => ({ value: id }));
+  return data;
+}
+
 export async function syncGroup(
   store: GroupSyncStore,
   data: SyncGroupData,
   options: SyncGroupOptions
 ): Promise<SyncGroupResult> {
-  const { organizationId } = options;
+  const { organizationId, realtimeWebhook } = options;
   const existing = await store.findGroupByExternalId(organizationId, data.externalId);
 
   let group: SyncedGroup;
@@ -51,6 +76,19 @@ export async function syncGroup(
   }
 
   await store.setGroupMembers(group.id, data.memberIds);
+
+  if (realtimeWebhook) {
+    const payload = createRealtimeSyncPayload(
+      existing ? "group.updated" : "group.created",
+      groupToSyncData(group, data.memberIds)
+    );
+    await deliverRealtimeWebhook(
+      realtimeWebhook.webhookStore,
+      realtimeWebhook.organizationId,
+      payload,
+      realtimeWebhook.webhookDeliveryOptions
+    );
+  }
   return { group, created: !existing };
 }
 
@@ -73,13 +111,13 @@ export async function syncGroups(
   groups: SyncGroupData[],
   options: SyncGroupsOptions
 ): Promise<SyncGroupsResult> {
-  const { organizationId, removeGroupsNotInSource = false } = options;
+  const { organizationId, removeGroupsNotInSource = false, realtimeWebhook } = options;
   const externalIds = new Set(groups.map((g) => g.externalId));
   const createdGroups: SyncedGroup[] = [];
   const updatedGroups: SyncedGroup[] = [];
 
   for (const data of groups) {
-    const result = await syncGroup(store, data, { organizationId });
+    const result = await syncGroup(store, data, { organizationId, realtimeWebhook });
     if (result.created) createdGroups.push(result.group);
     else updatedGroups.push(result.group);
   }
@@ -91,6 +129,15 @@ export async function syncGroups(
     for (const g of existing) {
       if (!externalIds.has(g.externalId)) {
         removedGroups.push(g);
+        if (realtimeWebhook) {
+          const payload = createRealtimeSyncPayload("group.deleted", groupToSyncData(g));
+          await deliverRealtimeWebhook(
+            realtimeWebhook.webhookStore,
+            realtimeWebhook.organizationId,
+            payload,
+            realtimeWebhook.webhookDeliveryOptions
+          );
+        }
         if (hardDeleteRemoved) await store.hardDeleteGroup(g.id);
         else await store.softDeleteGroup(g.id);
       }
@@ -109,6 +156,7 @@ export async function syncGroups(
 
 export interface GroupDeprovisionOptions {
   hard?: boolean;
+  realtimeWebhook?: RealtimeWebhookOptions;
 }
 
 export async function deactivateGroup(
@@ -136,7 +184,17 @@ export async function deprovisionGroup(
 ): Promise<void> {
   const group = await store.findGroupById(groupId);
   if (!group) return;
-  if (options.hard) {
+  const { realtimeWebhook, hard } = options;
+  if (realtimeWebhook) {
+    const payload = createRealtimeSyncPayload("group.deleted", groupToSyncData(group));
+    await deliverRealtimeWebhook(
+      realtimeWebhook.webhookStore,
+      realtimeWebhook.organizationId,
+      payload,
+      realtimeWebhook.webhookDeliveryOptions
+    );
+  }
+  if (hard) {
     await store.hardDeleteGroup(groupId);
   } else {
     await store.softDeleteGroup(groupId);
