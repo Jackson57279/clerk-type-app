@@ -4,6 +4,8 @@ import {
   canAddSeat,
   getSeatUsage,
   getBillingSeatReport,
+  canOrganizationAddMember,
+  getBillingSeatPayloads,
   type SeatUsage,
 } from "../src/seat-management.js";
 import type { OrganizationMembership } from "../src/member-approval.js";
@@ -125,5 +127,118 @@ describe("getBillingSeatReport", () => {
 
   it("returns empty array when no organizations", () => {
     expect(getBillingSeatReport([])).toEqual([]);
+  });
+});
+
+describe("canOrganizationAddMember", () => {
+  it("returns true when seatLimit is null", () => {
+    const info = {
+      organizationId: "org_1",
+      memberships: [
+        membership({ status: "active" }),
+        membership({ userId: "u2", status: "active" }),
+      ],
+      seatLimit: null,
+    };
+    expect(canOrganizationAddMember(info)).toBe(true);
+  });
+
+  it("returns true when below seat limit", () => {
+    const info = {
+      organizationId: "org_1",
+      memberships: [
+        membership({ status: "active" }),
+        membership({ userId: "u2", status: "active" }),
+      ],
+      seatLimit: 5,
+    };
+    expect(canOrganizationAddMember(info)).toBe(true);
+  });
+
+  it("returns false when at seat limit", () => {
+    const info = {
+      organizationId: "org_1",
+      memberships: [
+        membership({ status: "active" }),
+        membership({ userId: "u2", status: "active" }),
+        membership({ userId: "u3", status: "active" }),
+      ],
+      seatLimit: 3,
+    };
+    expect(canOrganizationAddMember(info)).toBe(false);
+  });
+
+  it("returns false when over seat limit", () => {
+    const info = {
+      organizationId: "org_1",
+      memberships: [
+        membership({ status: "active" }),
+        membership({ userId: "u2", status: "active" }),
+        membership({ userId: "u3", status: "active" }),
+      ],
+      seatLimit: 2,
+    };
+    expect(canOrganizationAddMember(info)).toBe(false);
+  });
+
+  it("counts only active members toward limit", () => {
+    const info = {
+      organizationId: "org_1",
+      memberships: [
+        membership({ status: "active" }),
+        membership({ userId: "u2", status: "active" }),
+        membership({ userId: "u3", status: "pending" }),
+      ],
+      seatLimit: 2,
+    };
+    expect(canOrganizationAddMember(info)).toBe(false);
+  });
+});
+
+describe("getBillingSeatPayloads", () => {
+  it("returns payloads with organizationId, seatCount, and at timestamp", () => {
+    const organizations = [
+      {
+        organizationId: "org_a",
+        memberships: [
+          membership({ organizationId: "org_a", status: "active" }),
+          membership({ organizationId: "org_a", userId: "u2", status: "active" }),
+        ],
+      },
+      {
+        organizationId: "org_b",
+        memberships: [],
+      },
+    ];
+    const at = new Date("2026-02-23T12:00:00.000Z");
+    const payloads = getBillingSeatPayloads(organizations, at);
+    expect(payloads).toHaveLength(2);
+    expect(payloads[0]).toEqual({
+      organizationId: "org_a",
+      seatCount: 2,
+      at: "2026-02-23T12:00:00.000Z",
+    });
+    expect(payloads[1]).toEqual({
+      organizationId: "org_b",
+      seatCount: 0,
+      at: "2026-02-23T12:00:00.000Z",
+    });
+  });
+
+  it("uses current date when at not provided", () => {
+    const organizations = [
+      { organizationId: "org_x", memberships: [membership({ status: "active" })] },
+    ];
+    const payloads = getBillingSeatPayloads(organizations);
+    expect(payloads).toHaveLength(1);
+    expect(payloads[0].organizationId).toBe("org_x");
+    expect(payloads[0].seatCount).toBe(1);
+    expect(payloads[0].at).toBeDefined();
+    expect(new Date(payloads[0].at).getTime()).toBeLessThanOrEqual(Date.now() + 1000);
+    expect(new Date(payloads[0].at).getTime()).toBeGreaterThanOrEqual(Date.now() - 1000);
+  });
+
+  it("returns empty array when no organizations", () => {
+    expect(getBillingSeatPayloads([])).toEqual([]);
   });
 });
