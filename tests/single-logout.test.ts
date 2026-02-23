@@ -5,6 +5,7 @@ import {
   createLogoutResponse,
   createLogoutRequest,
   handleSpInitiatedLogout,
+  handleIdpInitiatedLogoutToSp,
   type IdpLogoutConfig,
 } from "../src/single-logout.js";
 
@@ -196,5 +197,53 @@ describe("handleSpInitiatedLogout", () => {
       invalidateSession: () => new Promise<void>((r) => { setTimeout(() => { resolved = true; r(); }, 0); }),
     });
     expect(resolved).toBe(true);
+  });
+});
+
+describe("handleIdpInitiatedLogoutToSp", () => {
+  const idpInitiatedRequestXml = `<?xml version="1.0"?>
+<samlp:LogoutRequest xmlns:samlp="urn:oasis:names:tc:SAML:2.0:protocol" xmlns:saml="urn:oasis:names:tc:SAML:2.0:assertion" ID="_idp1" IssueInstant="2015-01-21T22:30:38.150Z" Version="2.0" Destination="https://sp.example.com/slo">
+  <saml:Issuer>https://idp.example.com/metadata</saml:Issuer>
+  <saml:NameID>user@example.com</saml:NameID>
+  <samlp:SessionIndex>sess_abc</samlp:SessionIndex>
+</samlp:LogoutRequest>`;
+  const deflatedIdpRequest = zlib.deflateRawSync(Buffer.from(idpInitiatedRequestXml, "utf8")).toString("base64");
+
+  it("returns redirect URL to IdP with SAMLResponse and invalidates session", async () => {
+    const invalidated: { nameId: string; sessionIndex?: string }[] = [];
+    const result = await handleIdpInitiatedLogoutToSp({
+      samlRequestBase64: deflatedIdpRequest,
+      spConfig: idpConfig(),
+      getIdpLogoutUrl: (issuer) => (issuer === "https://idp.example.com/metadata" ? "https://idp.example.com/slo" : null),
+      invalidateSession: (params) => { invalidated.push(params); },
+    });
+    expect(result.redirectUrl).toContain("https://idp.example.com/slo?");
+    expect(result.redirectUrl).toContain("SAMLResponse=");
+    expect(invalidated).toHaveLength(1);
+    expect(invalidated[0]?.nameId).toBe("user@example.com");
+    expect(invalidated[0]?.sessionIndex).toBe("sess_abc");
+  });
+
+  it("includes RelayState in redirect URL when provided", async () => {
+    const result = await handleIdpInitiatedLogoutToSp({
+      samlRequestBase64: deflatedIdpRequest,
+      relayState: "/signed-out",
+      spConfig: idpConfig(),
+      getIdpLogoutUrl: () => "https://idp.example.com/slo",
+      invalidateSession: () => {},
+    });
+    expect(result.redirectUrl).toContain("RelayState=");
+    expect(result.redirectUrl).toContain("signed-out");
+  });
+
+  it("throws when IdP issuer has no logout URL", async () => {
+    await expect(
+      handleIdpInitiatedLogoutToSp({
+        samlRequestBase64: deflatedIdpRequest,
+        spConfig: idpConfig(),
+        getIdpLogoutUrl: () => null,
+        invalidateSession: () => {},
+      })
+    ).rejects.toThrow("Unknown or unsupported IdP issuer for SLO");
   });
 });

@@ -195,3 +195,35 @@ export async function handleSpInitiatedLogout(
   const redirectUrl = `${destination}?SAMLResponse=${encodeURIComponent(samlResponseBase64)}${options.relayState != null && options.relayState !== "" ? "&RelayState=" + encodeURIComponent(options.relayState) : ""}`;
   return { redirectUrl };
 }
+
+export interface HandleIdpInitiatedLogoutToSpOptions {
+  samlRequestBase64: string;
+  relayState?: string;
+  spConfig: IdpLogoutConfig;
+  getIdpLogoutUrl: (issuer: string) => string | null;
+  invalidateSession: (params: { nameId: string; sessionIndex?: string }) => void | Promise<void>;
+}
+
+export interface HandleIdpInitiatedLogoutToSpResult {
+  redirectUrl: string;
+}
+
+export async function handleIdpInitiatedLogoutToSp(
+  options: HandleIdpInitiatedLogoutToSpOptions
+): Promise<HandleIdpInitiatedLogoutToSpResult> {
+  const parsed = parseLogoutRequest(options.samlRequestBase64);
+  const inResponseTo = parsed.requestId ?? "";
+  const destination = parsed.issuer ? options.getIdpLogoutUrl(parsed.issuer) : null;
+  if (!destination) {
+    throw new Error("Unknown or unsupported IdP issuer for SLO");
+  }
+  await Promise.resolve(options.invalidateSession({
+    nameId: parsed.nameId ?? "",
+    sessionIndex: parsed.sessionIndex,
+  }));
+  const { samlResponseBase64 } = createLogoutResponse(options.spConfig, destination, {
+    inResponseTo,
+  });
+  const redirectUrl = `${destination}?SAMLResponse=${encodeURIComponent(samlResponseBase64)}${options.relayState != null && options.relayState !== "" ? "&RelayState=" + encodeURIComponent(options.relayState) : ""}`;
+  return { redirectUrl };
+}
