@@ -1,8 +1,11 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, afterEach } from "vitest";
 import {
   getEmailDomain,
   checkEmailDomain,
   createEmailDomainChecker,
+  DEFAULT_ALLOWED_EMAIL_DOMAIN,
+  getDefaultAllowedDomain,
+  createDefaultEmailDomainChecker,
 } from "../src/email-domain-restriction.js";
 
 const COMPANY_OPTIONS = { allowedDomain: "company.com" };
@@ -91,5 +94,62 @@ describe("createEmailDomainChecker", () => {
     const isAllowed = createEmailDomainChecker(COMPANY_OPTIONS);
     expect(isAllowed("user@gmail.com")).toBe(false);
     expect(isAllowed("invalid")).toBe(false);
+  });
+});
+
+describe("DEFAULT_ALLOWED_EMAIL_DOMAIN", () => {
+  it("is company.com", () => {
+    expect(DEFAULT_ALLOWED_EMAIL_DOMAIN).toBe("company.com");
+  });
+});
+
+describe("getDefaultAllowedDomain", () => {
+  const orig = process.env.ALLOWED_EMAIL_DOMAIN;
+
+  afterEach(() => {
+    if (orig !== undefined) process.env.ALLOWED_EMAIL_DOMAIN = orig;
+    else delete process.env.ALLOWED_EMAIL_DOMAIN;
+  });
+
+  it("returns company.com when ALLOWED_EMAIL_DOMAIN is unset", () => {
+    delete process.env.ALLOWED_EMAIL_DOMAIN;
+    expect(getDefaultAllowedDomain()).toBe("company.com");
+  });
+
+  it("returns company.com when ALLOWED_EMAIL_DOMAIN is empty", () => {
+    process.env.ALLOWED_EMAIL_DOMAIN = "";
+    expect(getDefaultAllowedDomain()).toBe("company.com");
+  });
+
+  it("returns env value when ALLOWED_EMAIL_DOMAIN is set", () => {
+    process.env.ALLOWED_EMAIL_DOMAIN = "example.org";
+    expect(getDefaultAllowedDomain()).toBe("example.org");
+  });
+});
+
+describe("createDefaultEmailDomainChecker", () => {
+  const orig = process.env.ALLOWED_EMAIL_DOMAIN;
+
+  afterEach(() => {
+    if (orig !== undefined) process.env.ALLOWED_EMAIL_DOMAIN = orig;
+    else delete process.env.ALLOWED_EMAIL_DOMAIN;
+  });
+
+  it("allows only @company.com emails by default", () => {
+    delete process.env.ALLOWED_EMAIL_DOMAIN;
+    const isAllowed = createDefaultEmailDomainChecker();
+    expect(isAllowed("user@company.com")).toBe(true);
+    expect(isAllowed("admin@company.com")).toBe(true);
+    expect(isAllowed("u@Company.COM")).toBe(true);
+    expect(isAllowed("user@gmail.com")).toBe(false);
+    expect(isAllowed("user@other.com")).toBe(false);
+    expect(isAllowed("invalid")).toBe(false);
+  });
+
+  it("respects ALLOWED_EMAIL_DOMAIN when set", () => {
+    process.env.ALLOWED_EMAIL_DOMAIN = "example.org";
+    const isAllowed = createDefaultEmailDomainChecker();
+    expect(isAllowed("user@example.org")).toBe(true);
+    expect(isAllowed("user@company.com")).toBe(false);
   });
 });

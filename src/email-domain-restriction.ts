@@ -1,3 +1,10 @@
+export const DEFAULT_ALLOWED_EMAIL_DOMAIN = "company.com";
+
+export function getDefaultAllowedDomain(): string {
+  const env = process.env.ALLOWED_EMAIL_DOMAIN;
+  return (env != null && env.trim() !== "" ? env.trim() : null) ?? DEFAULT_ALLOWED_EMAIL_DOMAIN;
+}
+
 export interface EmailDomainRestrictionOptions {
   allowedDomain: string;
 }
@@ -34,4 +41,8 @@ export function createEmailDomainChecker(options: EmailDomainRestrictionOptions)
     if (!domain) return false;
     return domain === allowed;
   };
+}
+
+export function createDefaultEmailDomainChecker(): (email: string) => boolean {
+  return createEmailDomainChecker({ allowedDomain: getDefaultAllowedDomain() });
 }
