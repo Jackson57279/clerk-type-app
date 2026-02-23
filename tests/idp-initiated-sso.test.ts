@@ -3,6 +3,7 @@ import { createIdpInitiatedResponse, type IdpInitiatedIdpConfig, type IdpInitiat
 import {
   validateSpInitiatedPostResponse,
   validateIdpInitiatedPostResponse,
+  isIdpInitiatedAssertion,
   type SpInitiatedSpConfig,
   type SpInitiatedIdpConfig,
 } from "../src/sp-initiated-sso.js";
@@ -284,5 +285,38 @@ describe("validateIdpInitiatedPostResponse", () => {
         SAMLResponse: notSaml,
       })
     ).rejects.toThrow();
+  });
+
+  it("isIdpInitiatedAssertion is true when inResponseTo is empty (IdP-initiated flow)", async () => {
+    const result = await createIdpInitiatedResponse(
+      idpConfig(),
+      idpInitiatedSpConfig(),
+      { nameId: "idp-portal-user@example.com" }
+    );
+    const validated = await validateIdpInitiatedPostResponse(
+      spConfigForValidation(),
+      idpConfigForValidation(),
+      { SAMLResponse: result.samlResponseBase64 }
+    );
+    expect(validated.inResponseTo).toBe("");
+    expect(isIdpInitiatedAssertion(validated)).toBe(true);
+  });
+
+  it("isIdpInitiatedAssertion is false for SP-initiated flow", async () => {
+    const result = await createIdpInitiatedResponse(
+      idpConfig(),
+      idpInitiatedSpConfig(),
+      { nameId: "user@example.com", sessionIndex: "sess_456" }
+    );
+    const validated = await validateSpInitiatedPostResponse(
+      spConfigForValidation(),
+      idpConfigForValidation(),
+      { SAMLResponse: result.samlResponseBase64 },
+      { requireSessionIndex: true }
+    );
+    expect(validated.inResponseTo).toBe("");
+    expect(isIdpInitiatedAssertion(validated)).toBe(true);
+    const spInitiatedStyle = { ...validated, inResponseTo: "_req123" };
+    expect(isIdpInitiatedAssertion(spInitiatedStyle)).toBe(false);
   });
 });

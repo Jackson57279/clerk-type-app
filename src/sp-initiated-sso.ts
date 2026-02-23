@@ -227,6 +227,10 @@ export function validateIdpInitiatedPostResponse(
   });
 }
 
+export function isIdpInitiatedAssertion(result: SpInitiatedAssertionResult): boolean {
+  return result.inResponseTo === "";
+}
+
 export interface SpInitiatedLogoutRequestOptions {
   nameId: string;
   sessionIndex?: string;
