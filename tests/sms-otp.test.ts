@@ -114,6 +114,28 @@ describe("sendSmsOtp", () => {
       sendSmsOtp("+15550000000", { store })
     ).rejects.toThrow("SMS sender is required");
   });
+
+  it("uses fallback sender when primary fails", async () => {
+    const store = memoryStore();
+    const fallback = capturingSender();
+    const failingSender: SmsSender = {
+      send: async () => {
+        throw new Error("Provider down");
+      },
+    };
+    const phone = "+15558888001";
+    const result = await sendSmsOtp(phone, {
+      store,
+      sender: failingSender,
+      fallbackSender: fallback,
+      template: "Code: {{code}}",
+    });
+    expect(result.success).toBe(true);
+    expect(fallback.lastPhone).toBe(phone);
+    const code = /Code: (\d{6})/.exec(fallback.lastBody)?.[1];
+    expect(code).toBeDefined();
+    expect(await verifySmsOtp(phone, code!, { store })).toBe(true);
+  });
 });
 
 describe("verifySmsOtp", () => {

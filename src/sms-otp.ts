@@ -22,6 +22,7 @@ export interface SendSmsOtpOptions {
   ttlMs?: number;
   store?: SmsOtpStore;
   sender?: SmsSender;
+  fallbackSender?: SmsSender;
   rateLimitKey?: string;
 }
 
@@ -117,12 +118,21 @@ export async function sendSmsOtp(
   await store.set(phone, codeHash, expiresAt);
   smsRateLimiter.record(key);
 
+  const body = template.replace(/\{\{code\}\}/g, code);
   try {
-    const body = template.replace(/\{\{code\}\}/g, code);
     await sender.send(phone, body);
   } catch {
-    await store.delete(phone);
-    throw new Error("Failed to send SMS OTP");
+    if (options.fallbackSender) {
+      try {
+        await options.fallbackSender.send(phone, body);
+      } catch {
+        await store.delete(phone);
+        throw new Error("Failed to send SMS OTP");
+      }
+    } else {
+      await store.delete(phone);
+      throw new Error("Failed to send SMS OTP");
+    }
   }
 
   return { success: true };
