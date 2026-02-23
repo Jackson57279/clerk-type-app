@@ -167,4 +167,29 @@ describe("createSessionAfterLogin (session fixation + Set-Cookie)", () => {
     expect(setCookieHeader).toContain("Max-Age=3600");
     expect(setCookieHeader).toContain("Path=/");
   });
+
+  it("login response must set Set-Cookie with new session ID so pre-login session is invalid", () => {
+    const store = new Map<string, { userId: string; orgId: string | null }>();
+    const sessionStore = {
+      remove(id: string) {
+        store.delete(id);
+      },
+      register(id: string, userId: string, orgId: string | null) {
+        store.set(id, { userId, orgId });
+      },
+    };
+    const preLoginSessionId = "fixated-or-anonymous-session";
+    sessionStore.register(preLoginSessionId, "anonymous", null);
+
+    const { newSessionId, setCookieHeader } = createSessionAfterLogin(
+      preLoginSessionId,
+      "user1",
+      null,
+      sessionStore
+    );
+
+    expect(store.has(preLoginSessionId)).toBe(false);
+    expect(store.get(newSessionId)).toEqual({ userId: "user1", orgId: null });
+    expect(setCookieHeader).toContain(`session=${newSessionId}`);
+  });
 });
