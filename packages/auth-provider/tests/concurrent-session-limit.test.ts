@@ -625,4 +625,40 @@ describe("createLimitsResolver (configurable per user/org)", () => {
     expect(rEnt.allowed).toBe(true);
     expect(rEnt.evictSessionIds).toHaveLength(1);
   });
+
+  it("concurrent session limits are configurable per user and per org independently", () => {
+    const userLimits: Record<string, number> = { alice: 1, bob: 3, carol: 2 };
+    const orgLimits: Record<string, number> = { "org-a": 2, "org-b": 4 };
+    const limiter = createConcurrentSessionLimit({
+      defaultUserLimit: 2,
+      defaultOrgLimit: 3,
+      getLimits: createLimitsResolver({
+        defaultUserLimit: 2,
+        defaultOrgLimit: 3,
+        getUserLimit: (userId) => userLimits[userId],
+        getOrgLimit: (orgId) => orgLimits[orgId],
+      }),
+    });
+
+    limiter.register("a1", "alice", "org-a");
+    expect(limiter.check("alice", "org-a").allowed).toBe(true);
+    expect(limiter.check("alice", "org-a").evictSessionIds).toHaveLength(1);
+
+    limiter.register("b1", "bob", null);
+    limiter.register("b2", "bob", null);
+    limiter.register("b3", "bob", null);
+    expect(limiter.check("bob", null).allowed).toBe(true);
+    expect(limiter.check("bob", null).evictSessionIds).toHaveLength(1);
+
+    limiter.register("o1", "u1", "org-a");
+    limiter.register("o2", "u2", "org-a");
+    expect(limiter.check("u3", "org-a").allowed).toBe(true);
+    expect(limiter.check("u3", "org-a").evictSessionIds).toHaveLength(2);
+
+    limiter.register("ob1", "u1", "org-b");
+    limiter.register("ob2", "u2", "org-b");
+    limiter.register("ob3", "u3", "org-b");
+    expect(limiter.check("u4", "org-b").allowed).toBe(true);
+    expect(limiter.check("u4", "org-b").evictSessionIds).toEqual([]);
+  });
 });
