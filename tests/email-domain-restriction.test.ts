@@ -127,6 +127,16 @@ describe("getDefaultAllowedDomain", () => {
   });
 });
 
+describe("domain restriction: only @company.com emails", () => {
+  it("allows @company.com and rejects all other domains", () => {
+    const result = checkEmailDomain("user@company.com", COMPANY_OPTIONS);
+    expect(result.allowed).toBe(true);
+    expect(checkEmailDomain("user@gmail.com", COMPANY_OPTIONS).allowed).toBe(false);
+    expect(checkEmailDomain("user@mail.company.com", COMPANY_OPTIONS).allowed).toBe(false);
+    expect(checkEmailDomain("invalid", COMPANY_OPTIONS).allowed).toBe(false);
+  });
+});
+
 describe("createDefaultEmailDomainChecker", () => {
   const orig = process.env.ALLOWED_EMAIL_DOMAIN;
 
