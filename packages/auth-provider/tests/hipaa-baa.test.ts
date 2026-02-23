@@ -15,6 +15,11 @@ describe("isBaaAvailable", () => {
     const config: HipaaBaaConfig = { baaAvailable: false };
     expect(isBaaAvailable(config)).toBe(false);
   });
+
+  it("returns false when baaAvailable is undefined", () => {
+    const config = {} as HipaaBaaConfig;
+    expect(isBaaAvailable(config)).toBe(false);
+  });
 });
 
 describe("getHipaaComplianceStatus", () => {
@@ -26,6 +31,12 @@ describe("getHipaaComplianceStatus", () => {
 
   it("returns baaAvailable false when config has baaAvailable false", () => {
     const config: HipaaBaaConfig = { baaAvailable: false };
+    const status = getHipaaComplianceStatus(config);
+    expect(status.baaAvailable).toBe(false);
+  });
+
+  it("returns baaAvailable false when config has baaAvailable undefined", () => {
+    const config = {} as HipaaBaaConfig;
     const status = getHipaaComplianceStatus(config);
     expect(status.baaAvailable).toBe(false);
   });
