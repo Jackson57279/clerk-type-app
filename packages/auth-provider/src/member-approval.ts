@@ -50,3 +50,9 @@ export function isActiveMember(membership: OrganizationMembership): boolean {
 export function isPendingMember(membership: OrganizationMembership): boolean {
   return membership.status === "pending";
 }
+
+export function filterPendingMembers(
+  memberships: OrganizationMembership[]
+): OrganizationMembership[] {
+  return memberships.filter(isPendingMember);
+}

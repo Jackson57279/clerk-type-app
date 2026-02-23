@@ -6,6 +6,7 @@ import {
   rejectMembership,
   isActiveMember,
   isPendingMember,
+  filterPendingMembers,
   type OrganizationMembership,
 } from "../src/member-approval.js";
 
@@ -212,5 +213,27 @@ describe("approval workflow: new member approval required", () => {
     expect(rejected.status).toBe("rejected");
     expect(isActiveMember(rejected)).toBe(false);
     expect(isPendingMember(rejected)).toBe(false);
+  });
+});
+
+describe("filterPendingMembers", () => {
+  it("returns only memberships with status pending", () => {
+    const memberships: OrganizationMembership[] = [
+      { userId: "u1", organizationId: "o1", role: "member", status: "pending" },
+      { userId: "u2", organizationId: "o1", role: "member", status: "active" },
+      { userId: "u3", organizationId: "o1", role: "member", status: "pending" },
+      { userId: "u4", organizationId: "o1", role: "admin", status: "rejected" },
+    ];
+    const pending = filterPendingMembers(memberships);
+    expect(pending).toHaveLength(2);
+    expect(pending.every((m) => m.status === "pending")).toBe(true);
+    expect(pending.map((m) => m.userId)).toEqual(["u1", "u3"]);
+  });
+
+  it("returns empty array when no pending members", () => {
+    const memberships: OrganizationMembership[] = [
+      { userId: "u1", organizationId: "o1", role: "member", status: "active" },
+    ];
+    expect(filterPendingMembers(memberships)).toEqual([]);
   });
 });
