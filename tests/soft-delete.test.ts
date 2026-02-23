@@ -34,7 +34,7 @@ describe("deprovisionEntity", () => {
       { id: "e1", name: "Entity 1", active: true },
     ]);
     await deprovisionEntity(store, "e1");
-    const found = await store.findById("e1");
+    const found = (await store.findById("e1")) as Entity | null;
     expect(found).not.toBeNull();
     expect(found?.active).toBe(false);
   });
@@ -59,7 +59,7 @@ describe("deprovisionEntity", () => {
     ]);
     const options: DeprovisionOptions = { hard: false };
     await deprovisionEntity(store, "e1", options);
-    const found = await store.findById("e1");
+    const found = (await store.findById("e1")) as Entity | null;
     expect(found).not.toBeNull();
     expect(found?.active).toBe(false);
   });

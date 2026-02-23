@@ -438,6 +438,22 @@ describe("startRegistration", () => {
     expect(challengeStore.getRegistrationOptions("u1")).not.toBeNull();
     expect(challengeStore.getRegistrationOptions("u1")!.challenge).toBeDefined();
   });
+
+  it("can request resident keys on cross-platform hardware authenticators", async () => {
+    const credentialStore = createMemoryPasskeyStore();
+    const challengeStore = createMemoryPasskeyChallengeStore();
+    const options = await startRegistration({
+      userId: "u-hardware",
+      userName: "bob",
+      credentialStore,
+      challengeStore,
+      rpConfig,
+      residentKeyRequirement: "required",
+      authenticatorAttachment: "cross-platform",
+    });
+    expect(options.authenticatorSelection?.residentKey).toBe("required");
+    expect(options.authenticatorSelection?.authenticatorAttachment).toBe("cross-platform");
+  });
 });
 
 describe("finishRegistration", () => {

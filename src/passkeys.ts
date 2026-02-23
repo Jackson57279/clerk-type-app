@@ -57,17 +57,35 @@ export interface StartRegistrationOptions {
   credentialStore: PasskeyStore;
   challengeStore: PasskeyChallengeStore;
   rpConfig: PasskeyRpConfig;
+  residentKeyRequirement?: "discouraged" | "preferred" | "required";
+  authenticatorAttachment?: "platform" | "cross-platform";
 }
 
 export async function startRegistration(
   options: StartRegistrationOptions
 ): Promise<PublicKeyCredentialCreationOptionsJSON> {
-  const { userId, userName, userDisplayName, credentialStore, challengeStore, rpConfig } = options;
+  const {
+    userId,
+    userName,
+    userDisplayName,
+    credentialStore,
+    challengeStore,
+    rpConfig,
+    residentKeyRequirement,
+    authenticatorAttachment,
+  } = options;
   const existing = await credentialStore.listByUserId(userId);
   const excludeCredentials = existing.map((p) => ({
     id: p.credentialId,
     transports: p.transports,
   }));
+  const authenticatorSelection =
+    residentKeyRequirement || authenticatorAttachment
+      ? {
+          residentKey: residentKeyRequirement,
+          authenticatorAttachment,
+        }
+      : undefined;
   const regOptions = await generateRegistrationOptions({
     rpName: rpConfig.rpName,
     rpID: rpConfig.rpID,
@@ -75,6 +93,7 @@ export async function startRegistration(
     userDisplayName: userDisplayName ?? userName,
     attestationType: "none",
     excludeCredentials,
+    authenticatorSelection,
   });
   challengeStore.setRegistrationOptions(userId, regOptions);
   return regOptions;
@@ -261,7 +280,7 @@ function deriveDeviceInfo(
   deviceType: CredentialDeviceType,
   transports?: AuthenticatorTransportFuture[]
 ): string {
-  const parts = [deviceType];
+  const parts: string[] = [deviceType];
   if (transports?.length) parts.push(transports.join(", "));
   return parts.join(" · ");
 }
