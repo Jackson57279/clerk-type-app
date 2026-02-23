@@ -35,6 +35,15 @@ describe("parseEncryptionKey", () => {
 });
 
 describe("encryptAes256 / decryptAes256", () => {
+  it("uses AES-256-GCM: 32-byte key, 12-byte IV, 16-byte auth tag", () => {
+    const enc = encryptAes256("plain", KEY);
+    const raw = Buffer.from(enc, "base64");
+    expect(raw.length).toBeGreaterThanOrEqual(12 + 16 + 1);
+    expect(KEY.length).toBe(32);
+    const dec = decryptAes256(enc, KEY);
+    expect(dec.toString("utf8")).toBe("plain");
+  });
+
   it("roundtrips buffer", () => {
     const plain = Buffer.from("secret data");
     const enc = encryptAes256(plain, KEY);
