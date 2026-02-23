@@ -310,6 +310,40 @@ describe("processBulkRequest", () => {
     expect(user?.firstName).toBe("New");
   });
 
+  it("bulk updates user via PUT /Users/{id} (full replace)", async () => {
+    const userStore = memoryUserStore([
+      { id: "user_1", email: "old@example.com", externalId: "ext-1", name: undefined, firstName: "Old", lastName: "Name", active: true },
+    ]);
+    const groupStore = memoryGroupStore();
+    const response = await processBulkRequest({
+      request: {
+        schemas: [BULK_REQUEST_SCHEMA],
+        Operations: [
+          {
+            method: "PUT",
+            path: "Users/user_1",
+            data: {
+              userName: "replaced@example.com",
+              externalId: "ext-replaced",
+              name: { givenName: "Replaced", familyName: "User" },
+              active: false,
+            },
+          },
+        ],
+      },
+      userStore,
+      groupStore,
+      organizationId: orgId,
+    });
+    const putOp = response.Operations[0]!;
+    expect(putOp.status).toBe(200);
+    const user = await userStore.findById("user_1");
+    expect(user?.email).toBe("replaced@example.com");
+    expect(user?.externalId).toBe("ext-replaced");
+    expect(user?.firstName).toBe("Replaced");
+    expect(user?.active).toBe(false);
+  });
+
   it("bulk deletes user via DELETE /Users/{id}", async () => {
     const userStore = memoryUserStore([
       { id: "user_1", email: "del@example.com", externalId: "ext-del", name: undefined, firstName: undefined, lastName: undefined, active: true },
@@ -552,6 +586,39 @@ describe("processBulkRequest", () => {
     expect(response.Operations).toHaveLength(1);
     expect(response.Operations[0]!.status).toBe(201);
     expect(await userStore.findByEmail("one@example.com")).not.toBeNull();
+  });
+
+  it("bulk updates group via PUT /Groups/{id}", async () => {
+    const userStore = memoryUserStore([
+      { id: "user_1", email: "m@example.com", externalId: "ext-m", name: undefined, firstName: undefined, lastName: undefined, active: true },
+    ]);
+    const groupStore = memoryGroupStore();
+    await groupStore.createGroup(orgId, { externalId: "grp-put", displayName: "Old" });
+    await groupStore.setGroupMembers((await groupStore.findGroupByExternalId(orgId, "grp-put"))!.id, ["user_1"]);
+    const response = await processBulkRequest({
+      request: {
+        schemas: [BULK_REQUEST_SCHEMA],
+        Operations: [
+          {
+            method: "PUT",
+            path: "Groups/grp-put",
+            data: {
+              externalId: "grp-put",
+              displayName: "Updated Name",
+              members: [{ value: "ext-m", display: "m@example.com" }],
+            },
+          },
+        ],
+      },
+      userStore,
+      groupStore,
+      organizationId: orgId,
+    });
+    const putOp = response.Operations[0]!;
+    expect(putOp.status).toBe(200);
+    const group = await groupStore.findGroupByExternalId(orgId, "grp-put");
+    expect(group?.displayName).toBe("Updated Name");
+    expect(await groupStore.listGroupMemberIds(group!.id)).toEqual(["user_1"]);
   });
 
   it("resolves bulkId reference in path for PATCH /Groups/bulkId:g1", async () => {
