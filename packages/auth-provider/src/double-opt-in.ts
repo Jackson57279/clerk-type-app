@@ -183,7 +183,7 @@ export interface RequireConfirmationContext {
   operation: SensitiveOperationType;
 }
 
-export type RequirmationDeniedReason =
+export type RequireConfirmationDeniedReason =
   | "not_sensitive"
   | "missing_token"
   | "invalid_token"
@@ -191,11 +191,11 @@ export type RequirmationDeniedReason =
 
 export type RequireConfirmationResult =
   | { allowed: true; payload: VerifyConfirmationTokenResult }
-  | { allowed: false; reason: RequirmationDeniedReason };
+  | { allowed: false; reason: RequireConfirmationDeniedReason };
 
 export class ConfirmationRequiredError extends Error {
-  readonly reason: RequirmationDeniedReason;
-  constructor(reason: RequirmationDeniedReason, message?: string) {
+  readonly reason: RequireConfirmationDeniedReason;
+  constructor(reason: RequireConfirmationDeniedReason, message?: string) {
     super(message ?? `Confirmation required for sensitive operation: ${reason}`);
     this.name = "ConfirmationRequiredError";
     this.reason = reason;
