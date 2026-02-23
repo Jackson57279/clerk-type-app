@@ -3,6 +3,7 @@ import zlib from "zlib";
 import {
   createSpInitiatedLoginRequestUrl,
   validateSpInitiatedPostResponse,
+  validateIdpInitiatedPostResponse,
   createSpInitiatedLogoutRequestUrl,
   validateSpInitiatedLogoutResponse,
   type SpInitiatedSpConfig,
@@ -183,6 +184,32 @@ describe("validateSpInitiatedPostResponse", () => {
         SAMLResponse: "",
       })
     ).rejects.toThrow();
+  });
+});
+
+describe("validateIdpInitiatedPostResponse", () => {
+  it("accepts IdP-initiated SAML response without requiring SessionIndex", async () => {
+    const idpInitiatedIdpConfig = {
+      entityId: "https://idp.example.com/metadata",
+      privateKey: TEST_SP_KEY,
+      certificate: TEST_CERT,
+    };
+    const idpInitiatedSpConfig = {
+      entityId: "https://sp.example.com/metadata.xml",
+      assertEndpoint: "https://sp.example.com/assert",
+    };
+    const idpResponse = await createIdpInitiatedResponse(
+      idpInitiatedIdpConfig,
+      idpInitiatedSpConfig,
+      { nameId: "idp-user@example.com" }
+    );
+    const validated = await validateIdpInitiatedPostResponse(
+      spConfig({ allowUnencryptedAssertion: true }),
+      idpConfig(),
+      { SAMLResponse: idpResponse.samlResponseBase64 }
+    );
+    expect(validated.nameId).toBe("idp-user@example.com");
+    expect(validated.inResponseTo).toBe("");
   });
 });
 

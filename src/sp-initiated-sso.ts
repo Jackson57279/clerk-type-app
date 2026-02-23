@@ -212,6 +212,21 @@ export function validateSpInitiatedPostResponse(
   });
 }
 
+export interface ValidateIdpInitiatedPostResponseOptions {
+  requireSessionIndex?: boolean;
+}
+
+export function validateIdpInitiatedPostResponse(
+  spConfig: SpInitiatedSpConfig,
+  idpConfig: SpInitiatedIdpConfig,
+  requestBody: { SAMLResponse: string; RelayState?: string },
+  options: ValidateIdpInitiatedPostResponseOptions = {}
+): Promise<SpInitiatedAssertionResult> {
+  return validateSpInitiatedPostResponse(spConfig, idpConfig, requestBody, {
+    requireSessionIndex: options.requireSessionIndex ?? false,
+  });
+}
+
 export interface SpInitiatedLogoutRequestOptions {
   nameId: string;
   sessionIndex?: string;

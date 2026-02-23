@@ -1,6 +1,11 @@
 import { describe, it, expect } from "vitest";
 import { createIdpInitiatedResponse, type IdpInitiatedIdpConfig, type IdpInitiatedSpConfig } from "../src/idp-initiated-sso.js";
-import { validateSpInitiatedPostResponse, type SpInitiatedSpConfig, type SpInitiatedIdpConfig } from "../src/sp-initiated-sso.js";
+import {
+  validateSpInitiatedPostResponse,
+  validateIdpInitiatedPostResponse,
+  type SpInitiatedSpConfig,
+  type SpInitiatedIdpConfig,
+} from "../src/sp-initiated-sso.js";
 
 const TEST_KEY = `-----BEGIN PRIVATE KEY-----
 MIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQDBX9ZAnn+hUzzM
@@ -180,5 +185,70 @@ describe("createIdpInitiatedResponse", () => {
     );
     expect(validated.nameId).toBe("encuser@example.com");
     expect(validated.sessionIndex).toBe("sess_enc2");
+  });
+});
+
+describe("validateIdpInitiatedPostResponse", () => {
+  it("accepts IdP-initiated response and returns nameId and attributes", async () => {
+    const result = await createIdpInitiatedResponse(
+      idpConfig(),
+      idpInitiatedSpConfig(),
+      { nameId: "idp-user@example.com", sessionIndex: "sess_idp" }
+    );
+    const validated = await validateIdpInitiatedPostResponse(
+      spConfigForValidation(),
+      idpConfigForValidation(),
+      { SAMLResponse: result.samlResponseBase64 }
+    );
+    expect(validated.nameId).toBe("idp-user@example.com");
+    expect(validated.sessionIndex).toBe("sess_idp");
+    expect(validated.inResponseTo).toBe("");
+  });
+
+  it("accepts IdP-initiated response without SessionIndex by default", async () => {
+    const result = await createIdpInitiatedResponse(
+      idpConfig(),
+      idpInitiatedSpConfig(),
+      { nameId: "no-session@example.com" }
+    );
+    const validated = await validateIdpInitiatedPostResponse(
+      spConfigForValidation(),
+      idpConfigForValidation(),
+      { SAMLResponse: result.samlResponseBase64 }
+    );
+    expect(validated.nameId).toBe("no-session@example.com");
+    expect(validated.sessionIndex).toBeDefined();
+  });
+
+  it("preserves relayState", async () => {
+    const result = await createIdpInitiatedResponse(
+      idpConfig(),
+      idpInitiatedSpConfig(),
+      { nameId: "user@example.com" },
+      { relayState: "/dashboard" }
+    );
+    const validated = await validateIdpInitiatedPostResponse(
+      spConfigForValidation(),
+      idpConfigForValidation(),
+      { SAMLResponse: result.samlResponseBase64, RelayState: "/dashboard" }
+    );
+    expect(validated.relayState).toBe("/dashboard");
+  });
+
+  it("rejects invalid base64 SAMLResponse", async () => {
+    await expect(
+      validateIdpInitiatedPostResponse(spConfigForValidation(), idpConfigForValidation(), {
+        SAMLResponse: "not-valid-base64!!!",
+      })
+    ).rejects.toThrow();
+  });
+
+  it("rejects valid base64 but non-SAML content", async () => {
+    const notSaml = Buffer.from("<foo>bar</foo>", "utf8").toString("base64");
+    await expect(
+      validateIdpInitiatedPostResponse(spConfigForValidation(), idpConfigForValidation(), {
+        SAMLResponse: notSaml,
+      })
+    ).rejects.toThrow();
   });
 });
