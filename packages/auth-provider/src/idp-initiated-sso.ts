@@ -60,6 +60,7 @@ export interface IdpInitiatedUser {
 
 export interface CreateIdpInitiatedResponseOptions {
   relayState?: string;
+  inResponseTo?: string;
   notBeforeSkewSeconds?: number;
   notOnOrAfterSeconds?: number;
   sessionNotOnOrAfterSeconds?: number;
@@ -120,12 +121,13 @@ export function createIdpInitiatedResponse(
           .join("")}</saml:AttributeStatement>`
       : "";
 
+  const subjectConfirmationDataAttrs = `NotOnOrAfter="${notOnOrAfter}" Recipient="${escapeXml(spConfig.assertEndpoint)}"${options.inResponseTo != null ? ` InResponseTo="${escapeXml(options.inResponseTo)}"` : ""}`;
   const assertionXml = `<saml:Assertion xmlns:saml="${XMLNS_SAML}" ID="${assertionId}" IssueInstant="${authnInstant}" Version="2.0">
   <saml:Issuer>${escapeXml(idpConfig.entityId)}</saml:Issuer>
   <saml:Subject>
     <saml:NameID Format="${escapeXml(nameIdFormat)}">${escapeXml(user.nameId)}</saml:NameID>
     <saml:SubjectConfirmation Method="urn:oasis:names:tc:SAML:2.0:cm:bearer">
-      <saml:SubjectConfirmationData NotOnOrAfter="${notOnOrAfter}" Recipient="${escapeXml(spConfig.assertEndpoint)}"/>
+      <saml:SubjectConfirmationData ${subjectConfirmationDataAttrs}/>
     </saml:SubjectConfirmation>
   </saml:Subject>
   <saml:Conditions NotBefore="${notBefore}" NotOnOrAfter="${notOnOrAfter}">
@@ -141,10 +143,11 @@ export function createIdpInitiatedResponse(
   ${attributeMarkup}
 </saml:Assertion>`;
 
+  const responseAttrs = `ID="${responseId}" Version="2.0" IssueInstant="${authnInstant}" Destination="${escapeXml(spConfig.assertEndpoint)}"${options.inResponseTo != null ? ` InResponseTo="${escapeXml(options.inResponseTo)}"` : ""}`;
   if (spConfig.encryptionCertificate) {
     const signedAssertionXml = signAssertion(assertionXml, idpConfig);
     return encryptAssertion(signedAssertionXml, spConfig.encryptionCertificate).then((encryptedAssertionMarkup) => {
-      const responseXml = `<?xml version="1.0" encoding="UTF-8"?><samlp:Response xmlns:samlp="${XMLNS_SAMLP}" xmlns:saml="${XMLNS_SAML}" ID="${responseId}" Version="2.0" IssueInstant="${authnInstant}" Destination="${escapeXml(spConfig.assertEndpoint)}">
+      const responseXml = `<?xml version="1.0" encoding="UTF-8"?><samlp:Response xmlns:samlp="${XMLNS_SAMLP}" xmlns:saml="${XMLNS_SAML}" ${responseAttrs}>
   <saml:Issuer>${escapeXml(idpConfig.entityId)}</saml:Issuer>
   <samlp:Status>
     <samlp:StatusCode Value="urn:oasis:names:tc:SAML:2.0:status:Success"/>
@@ -162,7 +165,7 @@ export function createIdpInitiatedResponse(
     });
   }
 
-  const responseWithoutSignedAssertion = `<?xml version="1.0" encoding="UTF-8"?><samlp:Response xmlns:samlp="${XMLNS_SAMLP}" xmlns:saml="${XMLNS_SAML}" ID="${responseId}" Version="2.0" IssueInstant="${authnInstant}" Destination="${escapeXml(spConfig.assertEndpoint)}">
+  const responseWithoutSignedAssertion = `<?xml version="1.0" encoding="UTF-8"?><samlp:Response xmlns:samlp="${XMLNS_SAMLP}" xmlns:saml="${XMLNS_SAML}" ${responseAttrs}>
   <saml:Issuer>${escapeXml(idpConfig.entityId)}</saml:Issuer>
   <samlp:Status>
     <samlp:StatusCode Value="urn:oasis:names:tc:SAML:2.0:status:Success"/>
