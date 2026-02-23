@@ -9,6 +9,7 @@ import {
   type SpInitiatedIdpConfig,
 } from "../src/sp-initiated-sso.js";
 import { createLogoutResponse } from "../src/single-logout.js";
+import { createIdpInitiatedResponse } from "../src/idp-initiated-sso.js";
 import { DOMParser } from "@xmldom/xmldom";
 
 const TEST_SP_KEY = `-----BEGIN PRIVATE KEY-----
@@ -128,6 +129,33 @@ describe("createSpInitiatedLoginRequestUrl", () => {
     const deflated = Buffer.from(samlRequestB64!, "base64");
     const xml = zlib.inflateRawSync(deflated).toString("utf8");
     expect(xml).not.toContain("Signature");
+  });
+
+  it("full SP-initiated login flow: IdP response validates at SP assert endpoint", async () => {
+    const { loginUrl } = await createSpInitiatedLoginRequestUrl(spConfig(), idpConfig());
+    expect(loginUrl).toContain("SAMLRequest");
+    const idpInitiatedIdpConfig = {
+      entityId: "https://idp.example.com/metadata",
+      privateKey: TEST_SP_KEY,
+      certificate: TEST_CERT,
+    };
+    const idpInitiatedSpConfig = {
+      entityId: "https://sp.example.com/metadata.xml",
+      assertEndpoint: "https://sp.example.com/assert",
+    };
+    const idpResponse = await createIdpInitiatedResponse(
+      idpInitiatedIdpConfig,
+      idpInitiatedSpConfig,
+      { nameId: "user@example.com", sessionIndex: "sess_123" }
+    );
+    const validated = await validateSpInitiatedPostResponse(
+      spConfig({ allowUnencryptedAssertion: true }),
+      idpConfig(),
+      { SAMLResponse: idpResponse.samlResponseBase64 },
+      { requireSessionIndex: true }
+    );
+    expect(validated.nameId).toBe("user@example.com");
+    expect(validated.sessionIndex).toBe("sess_123");
   });
 });
 
