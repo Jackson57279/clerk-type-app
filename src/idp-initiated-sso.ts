@@ -3,6 +3,20 @@ import crypto from "crypto";
 
 const require = createRequire(import.meta.url);
 const { SignedXml } = require("xml-crypto") as { SignedXml: new (options?: { privateKey?: string; signatureAlgorithm?: string; canonicalizationAlgorithm?: string }) => SignedXmlInstance };
+const xmlenc = require("xml-encryption") as {
+  encrypt: (
+    content: string,
+    options: {
+      pem: Buffer | string;
+      rsa_pub: Buffer | string;
+      encryptionAlgorithm?: string;
+      keyEncryptionAlgorithm?: string;
+      keyEncryptionDigest?: string;
+      disallowEncryptionWithInsecureAlgorithm?: boolean;
+    },
+    callback: (err: Error | null, result: string) => void
+  ) => void;
+};
 
 interface SignedXmlInstance {
   addReference(opts: { xpath: string; transforms?: string[]; digestAlgorithm?: string }): void;
@@ -48,6 +62,7 @@ export interface IdpInitiatedIdpConfig {
 export interface IdpInitiatedSpConfig {
   entityId: string;
   assertEndpoint: string;
+  encryptionCertificate?: string;
 }
 
 export interface IdpInitiatedUser {
@@ -69,12 +84,52 @@ export interface IdpInitiatedResponseResult {
   relayState: string | undefined;
 }
 
+function signAssertion(assertionXml: string, idpConfig: IdpInitiatedIdpConfig): string {
+  const privateKeyPem = formatPem(idpConfig.privateKey, "PRIVATE KEY");
+  const signer = new SignedXml({
+    privateKey: privateKeyPem,
+    signatureAlgorithm: "http://www.w3.org/2001/04/xmldsig-more#rsa-sha256",
+    canonicalizationAlgorithm: "http://www.w3.org/2001/10/xml-exc-c14n#",
+  });
+  signer.addReference({
+    xpath: "//*[local-name(.)='Assertion']",
+    transforms: ["http://www.w3.org/2000/09/xmldsig#enveloped-signature", "http://www.w3.org/2001/10/xml-exc-c14n#"],
+    digestAlgorithm: "http://www.w3.org/2001/04/xmlenc#sha256",
+  });
+  signer.computeSignature(assertionXml, {
+    location: { reference: "//*[local-name(.)='Assertion']", action: "append" },
+  });
+  return signer.getSignedXml();
+}
+
+function encryptAssertion(assertionXml: string, spCertificatePem: string): Promise<string> {
+  const certPem = formatPem(spCertificatePem, "CERTIFICATE");
+  const certBuffer = Buffer.from(certPem, "utf8");
+  return new Promise((resolve, reject) => {
+    xmlenc.encrypt(
+      assertionXml,
+      {
+        pem: certBuffer,
+        rsa_pub: certBuffer,
+        encryptionAlgorithm: "http://www.w3.org/2001/04/xmlenc#aes128-cbc",
+        keyEncryptionAlgorithm: "http://www.w3.org/2001/04/xmlenc#rsa-oaep-mgf1p",
+        keyEncryptionDigest: "sha1",
+        disallowEncryptionWithInsecureAlgorithm: true,
+      },
+      (err: Error | null, encryptedData: string) => {
+        if (err) reject(err);
+        else resolve(`<saml:EncryptedAssertion xmlns:saml="${XMLNS_SAML}">${encryptedData}</saml:EncryptedAssertion>`);
+      }
+    );
+  });
+}
+
 export function createIdpInitiatedResponse(
   idpConfig: IdpInitiatedIdpConfig,
   spConfig: IdpInitiatedSpConfig,
   user: IdpInitiatedUser,
   options: CreateIdpInitiatedResponseOptions = {}
-): IdpInitiatedResponseResult {
+): Promise<IdpInitiatedResponseResult> {
   const now = new Date();
   const skew = (options.notBeforeSkewSeconds ?? 60) * 1000;
   const validity = (options.notOnOrAfterSeconds ?? 300) * 1000;
@@ -121,6 +176,27 @@ export function createIdpInitiatedResponse(
   ${attributeMarkup}
 </saml:Assertion>`;
 
+  if (spConfig.encryptionCertificate) {
+    const signedAssertionXml = signAssertion(assertionXml, idpConfig);
+    return encryptAssertion(signedAssertionXml, spConfig.encryptionCertificate).then((encryptedAssertionMarkup) => {
+      const responseXml = `<?xml version="1.0" encoding="UTF-8"?><samlp:Response xmlns:samlp="${XMLNS_SAMLP}" xmlns:saml="${XMLNS_SAML}" ID="${responseId}" Version="2.0" IssueInstant="${authnInstant}" Destination="${escapeXml(spConfig.assertEndpoint)}">
+  <saml:Issuer>${escapeXml(idpConfig.entityId)}</saml:Issuer>
+  <samlp:Status>
+    <samlp:StatusCode Value="urn:oasis:names:tc:SAML:2.0:status:Success"/>
+  </samlp:Status>
+  ${encryptedAssertionMarkup}
+</samlp:Response>`;
+
+      const samlResponseBase64 = Buffer.from(responseXml, "utf8").toString("base64");
+
+      return {
+        samlResponseBase64,
+        destination: spConfig.assertEndpoint,
+        relayState: options.relayState,
+      };
+    });
+  }
+
   const responseWithoutSignedAssertion = `<?xml version="1.0" encoding="UTF-8"?><samlp:Response xmlns:samlp="${XMLNS_SAMLP}" xmlns:saml="${XMLNS_SAML}" ID="${responseId}" Version="2.0" IssueInstant="${authnInstant}" Destination="${escapeXml(spConfig.assertEndpoint)}">
   <saml:Issuer>${escapeXml(idpConfig.entityId)}</saml:Issuer>
   <samlp:Status>
@@ -147,9 +223,9 @@ export function createIdpInitiatedResponse(
   const signedXml = signer.getSignedXml();
   const samlResponseBase64 = Buffer.from(signedXml, "utf8").toString("base64");
 
-  return {
+  return Promise.resolve({
     samlResponseBase64,
     destination: spConfig.assertEndpoint,
     relayState: options.relayState,
-  };
+  });
 }

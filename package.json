@@ -19,6 +19,7 @@
     "@xmldom/xmldom": "^0.8.11",
     "argon2": "^0.41.1",
     "saml2-js": "^4.0.4",
-    "twilio": "^5.12.2"
+    "twilio": "^5.12.2",
+    "xml-encryption": "^3.1.0"
   }
 }

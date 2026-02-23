@@ -93,8 +93,8 @@ function idpConfigForValidation(overrides: Partial<SpInitiatedIdpConfig> = {}): 
 }
 
 describe("createIdpInitiatedResponse", () => {
-  it("returns base64 SAMLResponse, destination, and optional relayState", () => {
-    const result = createIdpInitiatedResponse(
+  it("returns base64 SAMLResponse, destination, and optional relayState", async () => {
+    const result = await createIdpInitiatedResponse(
       idpConfig(),
       idpInitiatedSpConfig(),
       { nameId: "user@example.com", sessionIndex: "sess_123" }
@@ -105,8 +105,8 @@ describe("createIdpInitiatedResponse", () => {
     expect(Buffer.from(result.samlResponseBase64, "base64").toString("utf8")).toContain("Response");
   });
 
-  it("includes relayState when provided", () => {
-    const result = createIdpInitiatedResponse(
+  it("includes relayState when provided", async () => {
+    const result = await createIdpInitiatedResponse(
       idpConfig(),
       idpInitiatedSpConfig(),
       { nameId: "user@example.com" },
@@ -116,7 +116,7 @@ describe("createIdpInitiatedResponse", () => {
   });
 
   it("produces response that SP validation accepts (roundtrip)", async () => {
-    const result = createIdpInitiatedResponse(
+    const result = await createIdpInitiatedResponse(
       idpConfig(),
       idpInitiatedSpConfig(),
       { nameId: "user@example.com", sessionIndex: "sess_456" }
@@ -132,7 +132,7 @@ describe("createIdpInitiatedResponse", () => {
   });
 
   it("roundtrip with attributes", async () => {
-    const result = createIdpInitiatedResponse(
+    const result = await createIdpInitiatedResponse(
       idpConfig(),
       idpInitiatedSpConfig(),
       {
@@ -153,5 +153,32 @@ describe("createIdpInitiatedResponse", () => {
     expect(validated.nameId).toBe("user@example.com");
     expect(validated.attributes["http://schemas.xmlsoap.org/ws/2005/05/identity/claims/emailaddress"]).toEqual(["user@example.com"]);
     expect(validated.attributes["http://schemas.xmlsoap.org/ws/2005/05/identity/claims/givenname"]).toEqual(["Jane"]);
+  });
+
+  it("encrypts assertion when SP encryptionCertificate is provided", async () => {
+    const result = await createIdpInitiatedResponse(
+      idpConfig(),
+      idpInitiatedSpConfig({ encryptionCertificate: TEST_CERT }),
+      { nameId: "user@example.com", sessionIndex: "sess_enc" }
+    );
+    const xml = Buffer.from(result.samlResponseBase64, "base64").toString("utf8");
+    expect(xml).toContain("EncryptedAssertion");
+    expect(xml).not.toContain("<saml:Assertion ");
+  });
+
+  it("encrypted assertion roundtrip: SP decrypts and validates", async () => {
+    const result = await createIdpInitiatedResponse(
+      idpConfig(),
+      idpInitiatedSpConfig({ encryptionCertificate: TEST_CERT }),
+      { nameId: "encuser@example.com", sessionIndex: "sess_enc2" }
+    );
+    const validated = await validateSpInitiatedPostResponse(
+      spConfigForValidation(),
+      idpConfigForValidation(),
+      { SAMLResponse: result.samlResponseBase64 },
+      { requireSessionIndex: true }
+    );
+    expect(validated.nameId).toBe("encuser@example.com");
+    expect(validated.sessionIndex).toBe("sess_enc2");
   });
 });
