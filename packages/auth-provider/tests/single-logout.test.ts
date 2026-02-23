@@ -260,7 +260,9 @@ describe("handleSpInitiatedSloEndpoint", () => {
       {
         idpConfig: idpConfig(),
         getSpLogoutUrl: (issuer) => (issuer === "https://sp.example.com/metadata" ? "https://sp.example.com/slo" : null),
-        invalidateSession: (params) => invalidated.push(params),
+        invalidateSession: (params) => {
+          invalidated.push(params);
+        },
       }
     );
     expect(result.status).toBe(302);
@@ -343,7 +345,9 @@ describe("handleIdpInitiatedSloEndpoint", () => {
       {
         spConfig: idpConfig(),
         getIdpLogoutUrl: (issuer) => (issuer === "https://idp.example.com/metadata" ? "https://idp.example.com/slo" : null),
-        invalidateSession: (params) => invalidated.push(params),
+        invalidateSession: (params) => {
+          invalidated.push(params);
+        },
       }
     );
     expect(result.status).toBe(302);
