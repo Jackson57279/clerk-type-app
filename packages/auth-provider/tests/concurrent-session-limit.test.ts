@@ -484,12 +484,26 @@ describe("getConcurrentSessionLimitDefaults (configurable via env)", () => {
     expect(out.defaultOrgLimit).toBe(10);
   });
 
+  it("allows 0 for user and org (no new sessions)", () => {
+    const userZero = getConcurrentSessionLimitDefaults({ CONCURRENT_SESSION_LIMIT_USER: "0" });
+    expect(userZero.defaultUserLimit).toBe(0);
+    const orgZero = getConcurrentSessionLimitDefaults({ CONCURRENT_SESSION_LIMIT_ORG: "0" });
+    expect(orgZero.defaultOrgLimit).toBe(0);
+  });
+
   it("falls back to default when env invalid or out of range", () => {
     expect(getConcurrentSessionLimitDefaults({ CONCURRENT_SESSION_LIMIT_USER: "" }).defaultUserLimit).toBe(5);
-    expect(getConcurrentSessionLimitDefaults({ CONCURRENT_SESSION_LIMIT_USER: "0" }).defaultUserLimit).toBe(5);
     expect(getConcurrentSessionLimitDefaults({ CONCURRENT_SESSION_LIMIT_USER: "abc" }).defaultUserLimit).toBe(5);
     expect(getConcurrentSessionLimitDefaults({ CONCURRENT_SESSION_LIMIT_USER: "1001" }).defaultUserLimit).toBe(5);
-    expect(getConcurrentSessionLimitDefaults({ CONCURRENT_SESSION_LIMIT_ORG: "0" }).defaultOrgLimit).toBeUndefined();
+    expect(getConcurrentSessionLimitDefaults({ CONCURRENT_SESSION_LIMIT_ORG: "-1" }).defaultOrgLimit).toBeUndefined();
+  });
+
+  it("createConcurrentSessionLimit with env user 0 blocks new sessions", () => {
+    const defaults = getConcurrentSessionLimitDefaults({ CONCURRENT_SESSION_LIMIT_USER: "0" });
+    const limiter = createConcurrentSessionLimit(defaults);
+    const r = limiter.check("u1", null);
+    expect(r.allowed).toBe(false);
+    expect(r.evictSessionIds).toEqual([]);
   });
 
   it("createConcurrentSessionLimit with env defaults and getLimits gives per user/org configurable limits", () => {

@@ -1,7 +1,7 @@
 import { regenerateSessionId } from "./session-fixation.js";
 
 const DEFAULT_USER_LIMIT = 5;
-const MIN_LIMIT = 1;
+const MIN_ENV_LIMIT = 0;
 const MAX_LIMIT = 1000;
 
 export interface ConcurrentSessionLimitDefaults {
@@ -16,7 +16,7 @@ export function getConcurrentSessionLimitDefaults(
   let defaultUserLimit = DEFAULT_USER_LIMIT;
   if (userRaw !== undefined && userRaw !== "") {
     const n = Number(userRaw);
-    if (Number.isInteger(n) && n >= MIN_LIMIT && n <= MAX_LIMIT) {
+    if (Number.isInteger(n) && n >= MIN_ENV_LIMIT && n <= MAX_LIMIT) {
       defaultUserLimit = n;
     }
   }
@@ -24,7 +24,7 @@ export function getConcurrentSessionLimitDefaults(
   let defaultOrgLimit: number | undefined;
   if (orgRaw !== undefined && orgRaw !== "") {
     const n = Number(orgRaw);
-    if (Number.isInteger(n) && n >= MIN_LIMIT && n <= MAX_LIMIT) {
+    if (Number.isInteger(n) && n >= MIN_ENV_LIMIT && n <= MAX_LIMIT) {
       defaultOrgLimit = n;
     }
   }
