@@ -4,6 +4,7 @@ import {
   renderPasswordResetEmail,
   renderDoubleOptInEmail,
   renderMagicLinkEmail,
+  renderEmailVerificationEmail,
 } from "../src/email-templates.js";
 
 describe("renderPasswordResetEmail", () => {
@@ -285,6 +286,70 @@ describe("renderMagicLinkEmail", () => {
   });
 });
 
+describe("renderEmailVerificationEmail", () => {
+  it("renders html and text with placeholders replaced", () => {
+    const result = renderEmailVerificationEmail({
+      verificationLink: "https://app.example.com/verify?token=xyz",
+      expiresInMinutes: 15,
+    });
+    expect(result.html).toContain("https://app.example.com/verify?token=xyz");
+    expect(result.html).toContain("15");
+    expect(result.html).not.toContain("{{verificationLink}}");
+    expect(result.text).toContain("https://app.example.com/verify?token=xyz");
+    expect(result.text).toContain("15");
+  });
+
+  it("uses default branding when not provided", () => {
+    const result = renderEmailVerificationEmail({
+      verificationLink: "https://x.com/v",
+      expiresInMinutes: 15,
+    });
+    expect(result.html).toContain("#2563eb");
+    expect(result.html).toContain("Verify your email");
+  });
+
+  it("injects branding logo and colors in default template", () => {
+    const result = renderEmailVerificationEmail(
+      { verificationLink: "https://x.com/v", expiresInMinutes: 10 },
+      {
+        branding: {
+          logoUrl: "https://cdn.example.com/logo.png",
+          primaryColor: "#059669",
+          companyName: "MyProduct",
+        },
+      }
+    );
+    expect(result.html).toContain("https://cdn.example.com/logo.png");
+    expect(result.html).toContain("#059669");
+    expect(result.html).toContain("MyProduct");
+  });
+
+  it("uses custom html and text templates when provided", () => {
+    const result = renderEmailVerificationEmail(
+      { verificationLink: "https://go.com/v", expiresInMinutes: 5 },
+      {
+        htmlTemplate: "<p>Verify: {{verificationLink}} ({{expiresInMinutes}} min)</p>",
+        textTemplate: "Verify: {{verificationLink}} ({{expiresInMinutes}} min)",
+      }
+    );
+    expect(result.html).toBe("<p>Verify: https://go.com/v (5 min)</p>");
+    expect(result.text).toBe("Verify: https://go.com/v (5 min)");
+  });
+
+  it("replaces branding placeholders in custom template", () => {
+    const result = renderEmailVerificationEmail(
+      { verificationLink: "https://v.com", expiresInMinutes: 15 },
+      {
+        branding: { companyName: "Acme", primaryColor: "#111" },
+        htmlTemplate: "{{companyName}} {{primaryColor}} {{verificationLink}}",
+      }
+    );
+    expect(result.html).toContain("Acme");
+    expect(result.html).toContain("#111");
+    expect(result.html).toContain("https://v.com");
+  });
+});
+
 describe("EMAIL_TEMPLATE_PLACEHOLDERS", () => {
   it("exposes placeholder names for password reset templates", () => {
     expect(EMAIL_TEMPLATE_PLACEHOLDERS.passwordReset).toContain("resetLink");
@@ -295,5 +360,10 @@ describe("EMAIL_TEMPLATE_PLACEHOLDERS", () => {
   it("exposes placeholder names for double opt-in and magic link templates", () => {
     expect(EMAIL_TEMPLATE_PLACEHOLDERS.doubleOptIn).toContain("confirmationLink");
     expect(EMAIL_TEMPLATE_PLACEHOLDERS.magicLink).toContain("magicLink");
+  });
+
+  it("exposes placeholder names for email verification templates", () => {
+    expect(EMAIL_TEMPLATE_PLACEHOLDERS.emailVerification).toContain("verificationLink");
+    expect(EMAIL_TEMPLATE_PLACEHOLDERS.emailVerification).toContain("companyName");
   });
 });

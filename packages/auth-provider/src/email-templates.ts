@@ -29,6 +29,15 @@ export const EMAIL_TEMPLATE_PLACEHOLDERS = {
     "secondaryColor",
     "faviconUrl",
   ] as const,
+  emailVerification: [
+    "verificationLink",
+    "expiresInMinutes",
+    "companyName",
+    "logoUrl",
+    "primaryColor",
+    "secondaryColor",
+    "faviconUrl",
+  ] as const,
 };
 
 export interface PasswordResetEmailParams {
@@ -44,6 +53,11 @@ export interface DoubleOptInEmailParams {
 
 export interface MagicLinkEmailParams {
   magicLink: string;
+  expiresInMinutes: number;
+}
+
+export interface EmailVerificationEmailParams {
+  verificationLink: string;
   expiresInMinutes: number;
 }
 
@@ -137,6 +151,28 @@ function defaultMagicLinkText(): string {
   return `Sign in\n\nClick the link below (or copy and paste into your browser). This link expires in {{expiresInMinutes}} minutes.\n\n{{magicLink}}\n\nIf you didn't request this, you can ignore this email.`;
 }
 
+function defaultEmailVerificationHtml(brand: ReturnType<typeof mergeBranding>): string {
+  const logoBlock =
+    brand.logoUrl !== ""
+      ? `<img src="${brand.logoUrl}" alt="${brand.companyName}" style="max-width:180px;height:auto;display:block;margin-bottom:24px;" />`
+      : "";
+  return `<!DOCTYPE html>
+<html>
+<head>${defaultHead(brand)}</head>
+<body style="font-family:system-ui,sans-serif;line-height:1.5;color:#334155;max-width:480px;margin:0 auto;padding:24px;">
+  ${logoBlock}
+  <h1 style="color:${brand.primaryColor};font-size:1.5rem;margin:0 0 16px;">Verify your email</h1>
+  <p style="margin:0 0 16px;">Click the link below to verify your email address for ${brand.companyName}. This link expires in {{expiresInMinutes}} minutes.</p>
+  <p style="margin:0 0 24px;"><a href="{{verificationLink}}" style="color:${brand.primaryColor};font-weight:600;">Verify email</a></p>
+  <p style="font-size:0.875rem;color:${brand.secondaryColor};">If you didn't create an account, you can ignore this email.</p>
+</body>
+</html>`;
+}
+
+function defaultEmailVerificationText(): string {
+  return `Verify your email\n\nClick the link below (or copy and paste into your browser) to verify your email address. This link expires in {{expiresInMinutes}} minutes.\n\n{{verificationLink}}\n\nIf you didn't create an account, you can ignore this email.`;
+}
+
 export interface RenderPasswordResetEmailOptions {
   branding?: BrandingConfig | null;
   htmlTemplate?: string;
@@ -212,6 +248,35 @@ export function renderMagicLinkEmail(
   const textTemplate = options.textTemplate ?? defaultMagicLinkText();
   const vars = {
     magicLink: params.magicLink,
+    expiresInMinutes: params.expiresInMinutes,
+    companyName: brand.companyName,
+    logoUrl: brand.logoUrl,
+    primaryColor: brand.primaryColor,
+    secondaryColor: brand.secondaryColor,
+    faviconUrl: brand.faviconUrl,
+  };
+  return {
+    html: replaceAll(htmlTemplate, vars),
+    text: replaceAll(textTemplate, vars),
+  };
+}
+
+export interface RenderEmailVerificationEmailOptions {
+  branding?: BrandingConfig | null;
+  htmlTemplate?: string;
+  textTemplate?: string;
+}
+
+export function renderEmailVerificationEmail(
+  params: EmailVerificationEmailParams,
+  options: RenderEmailVerificationEmailOptions = {}
+): RenderedEmail {
+  const brand = mergeBranding(options.branding);
+  const htmlTemplate =
+    options.htmlTemplate ?? defaultEmailVerificationHtml(brand);
+  const textTemplate = options.textTemplate ?? defaultEmailVerificationText();
+  const vars = {
+    verificationLink: params.verificationLink,
     expiresInMinutes: params.expiresInMinutes,
     companyName: brand.companyName,
     logoUrl: brand.logoUrl,
