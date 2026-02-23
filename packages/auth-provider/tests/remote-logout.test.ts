@@ -127,6 +127,22 @@ describe("handleRemoteLogoutEndpoint", () => {
     }
   });
 
+  it("returns 400 when userId is undefined", () => {
+    const store: RemoteLogoutStore = {
+      invalidateAllSessionsForUser() {
+        return [];
+      },
+    };
+    const result = handleRemoteLogoutEndpoint(
+      { userId: undefined } as { userId: string },
+      { store }
+    );
+    expect(result.status).toBe(400);
+    if (result.status === 400) {
+      expect(result.body.error).toBe("invalid_request");
+    }
+  });
+
   it("returns 400 when userId is whitespace only", () => {
     const store: RemoteLogoutStore = {
       invalidateAllSessionsForUser() {
