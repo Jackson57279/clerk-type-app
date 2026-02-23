@@ -3,7 +3,20 @@ import {
   exchangeClientCredentials,
   verifyClientCredentialsToken,
   type ClientVerifier,
+  type TokenResponse,
 } from "../src/client-credentials.js";
+
+function isTokenResponse(
+  r: ReturnType<typeof exchangeClientCredentials>
+): r is TokenResponse {
+  return "access_token" in r;
+}
+
+function assertTokenResponse(
+  r: ReturnType<typeof exchangeClientCredentials>
+): asserts r is TokenResponse {
+  expect(isTokenResponse(r)).toBe(true);
+}
 
 const SECRET = "oauth-token-secret";
 
@@ -21,27 +34,26 @@ describe("exchangeClientCredentials", () => {
       secret: SECRET,
       clientVerifier: validVerifier,
     });
-    expect(result).not.toBeNull();
-    expect(result?.access_token).toBeDefined();
-    expect(result?.access_token.split(".")).toHaveLength(3);
-    expect(result?.token_type).toBe("Bearer");
-    expect(result?.expires_in).toBe(3600);
-    expect(result?.scope).toBe("read write");
+    assertTokenResponse(result);
+    expect(result.access_token).toBeDefined();
+    expect(result.access_token.split(".")).toHaveLength(3);
+    expect(result.token_type).toBe("Bearer");
+    expect(result.expires_in).toBe(3600);
+    expect(result.scope).toBe("read write");
   });
 
-  it("returns null for invalid client credentials", () => {
-    expect(
-      exchangeClientCredentials("wrong", "client-secret", {
-        secret: SECRET,
-        clientVerifier: validVerifier,
-      })
-    ).toBeNull();
-    expect(
-      exchangeClientCredentials("m2m-client", "wrong-secret", {
-        secret: SECRET,
-        clientVerifier: validVerifier,
-      })
-    ).toBeNull();
+  it("returns invalid_client error for invalid client credentials", () => {
+    const r1 = exchangeClientCredentials("wrong", "client-secret", {
+      secret: SECRET,
+      clientVerifier: validVerifier,
+    });
+    expect("error" in r1 && r1.error).toBe("invalid_client");
+    expect("error" in r1 && r1.error_description).toBeDefined();
+    const r2 = exchangeClientCredentials("m2m-client", "wrong-secret", {
+      secret: SECRET,
+      clientVerifier: validVerifier,
+    });
+    expect("error" in r2 && r2.error).toBe("invalid_client");
   });
 
   it("includes org_id and permissions when verifier returns them", () => {
@@ -49,8 +61,8 @@ describe("exchangeClientCredentials", () => {
       secret: SECRET,
       clientVerifier: validVerifier,
     });
-    expect(result).not.toBeNull();
-    const payload = verifyClientCredentialsToken(result!.access_token, SECRET);
+    assertTokenResponse(result);
+    const payload = verifyClientCredentialsToken(result.access_token, SECRET);
     expect(payload?.client_id).toBe("org-client");
     expect(payload?.scope).toBe("api");
     expect(payload?.org_id).toBe("org_123");
@@ -65,9 +77,9 @@ describe("exchangeClientCredentials", () => {
       iss: "https://auth.example.com",
       aud: "https://api.example.com",
     });
-    expect(result).not.toBeNull();
-    expect(result?.scope).toBe("openid");
-    const payload = verifyClientCredentialsToken(result!.access_token, SECRET);
+    assertTokenResponse(result);
+    expect(result.scope).toBe("openid");
+    const payload = verifyClientCredentialsToken(result.access_token, SECRET);
     expect(payload?.scope).toBe("openid");
     expect(payload?.iss).toBe("https://auth.example.com");
     expect(payload?.aud).toBe("https://api.example.com");
@@ -79,9 +91,9 @@ describe("exchangeClientCredentials", () => {
       clientVerifier: validVerifier,
       ttlMs: 5 * 60 * 1000,
     });
-    expect(result).not.toBeNull();
-    expect(result?.expires_in).toBe(300);
-    const payload = verifyClientCredentialsToken(result!.access_token, SECRET);
+    assertTokenResponse(result);
+    expect(result.expires_in).toBe(300);
+    const payload = verifyClientCredentialsToken(result.access_token, SECRET);
     expect(payload).not.toBeNull();
     expect(payload!.exp - payload!.iat).toBe(300);
   });
@@ -93,8 +105,8 @@ describe("verifyClientCredentialsToken", () => {
       secret: SECRET,
       clientVerifier: validVerifier,
     });
-    expect(issued).not.toBeNull();
-    const payload = verifyClientCredentialsToken(issued!.access_token, SECRET);
+    assertTokenResponse(issued);
+    const payload = verifyClientCredentialsToken(issued.access_token, SECRET);
     expect(payload).not.toBeNull();
     expect(payload?.sub).toBe("m2m-client");
     expect(payload?.client_id).toBe("m2m-client");
@@ -109,8 +121,8 @@ describe("verifyClientCredentialsToken", () => {
       secret: SECRET,
       clientVerifier: validVerifier,
     });
-    expect(issued).not.toBeNull();
-    expect(verifyClientCredentialsToken(issued!.access_token, "wrong-secret")).toBeNull();
+    assertTokenResponse(issued);
+    expect(verifyClientCredentialsToken(issued.access_token, "wrong-secret")).toBeNull();
   });
 
   it("returns null for malformed token", () => {
@@ -124,8 +136,8 @@ describe("verifyClientCredentialsToken", () => {
       secret: SECRET,
       clientVerifier: validVerifier,
     });
-    expect(issued).not.toBeNull();
-    const parts = issued!.access_token.split(".");
+    assertTokenResponse(issued);
+    const parts = issued.access_token.split(".");
     const tampered = `${parts[0]}.${parts[1]?.slice(0, -1) ?? ""}x.${parts[2] ?? ""}`;
     expect(verifyClientCredentialsToken(tampered, SECRET)).toBeNull();
   });
@@ -145,9 +157,9 @@ describe("client credentials token expiry", () => {
       clientVerifier: validVerifier,
       ttlMs: 1000,
     });
-    expect(result).not.toBeNull();
-    expect(verifyClientCredentialsToken(result!.access_token, SECRET)).not.toBeNull();
+    assertTokenResponse(result);
+    expect(verifyClientCredentialsToken(result.access_token, SECRET)).not.toBeNull();
     vi.advanceTimersByTime(2000);
-    expect(verifyClientCredentialsToken(result!.access_token, SECRET)).toBeNull();
+    expect(verifyClientCredentialsToken(result.access_token, SECRET)).toBeNull();
   });
 });

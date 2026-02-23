@@ -49,6 +49,11 @@ export interface TokenResponse {
   scope?: string;
 }
 
+export interface ClientCredentialsErrorResponse {
+  error: "invalid_client";
+  error_description: string;
+}
+
 export interface ClientCredentialsTokenPayload {
   sub: string;
   client_id: string;
@@ -66,9 +71,11 @@ export function exchangeClientCredentials(
   clientId: string,
   clientSecret: string,
   options: ExchangeClientCredentialsOptions
-): TokenResponse | null {
+): TokenResponse | ClientCredentialsErrorResponse {
   const client = options.clientVerifier(clientId, clientSecret);
-  if (!client) return null;
+  if (!client) {
+    return { error: "invalid_client", error_description: "Invalid client credentials" };
+  }
 
   const ttlMs = options.ttlMs ?? DEFAULT_ACCESS_TOKEN_TTL_MS;
   const nowMs = Date.now();
