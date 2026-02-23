@@ -4,6 +4,7 @@ import {
   parseLogoutRequest,
   createLogoutResponse,
   createLogoutRequest,
+  handleSpInitiatedLogout,
   type IdpLogoutConfig,
 } from "../src/single-logout.js";
 
@@ -76,6 +77,7 @@ describe("parseLogoutRequest", () => {
   it("parses deflated base64 LogoutRequest", () => {
     const deflated = zlib.deflateRawSync(Buffer.from(LOGOUT_REQUEST_XML, "utf8")).toString("base64");
     const parsed = parseLogoutRequest(deflated);
+    expect(parsed.requestId).toBe("_1");
     expect(parsed.issuer).toBe("https://sp.example.com/metadata");
     expect(parsed.nameId).toBe("tstudent");
     expect(parsed.sessionIndex).toBe("_2");
@@ -84,6 +86,7 @@ describe("parseLogoutRequest", () => {
   it("parses raw base64 LogoutRequest when not deflated", () => {
     const raw = Buffer.from(LOGOUT_REQUEST_XML, "utf8").toString("base64");
     const parsed = parseLogoutRequest(raw);
+    expect(parsed.requestId).toBe("_1");
     expect(parsed.nameId).toBe("tstudent");
   });
 
@@ -138,5 +141,58 @@ describe("createLogoutRequest", () => {
     expect(xml).toContain("LogoutRequest");
     expect(xml).toContain("user@example.com");
     expect(xml).not.toContain("SessionIndex");
+  });
+});
+
+describe("handleSpInitiatedLogout", () => {
+  const deflatedSamlRequest = zlib.deflateRawSync(Buffer.from(LOGOUT_REQUEST_XML, "utf8")).toString("base64");
+
+  it("returns redirect URL with SAMLResponse and destination, and invalidates session", async () => {
+    const invalidated: { nameId: string; sessionIndex?: string }[] = [];
+    const result = await handleSpInitiatedLogout({
+      samlRequestBase64: deflatedSamlRequest,
+      idpConfig: idpConfig(),
+      getSpLogoutUrl: (issuer) => (issuer === "https://sp.example.com/metadata" ? "https://sp.example.com/slo" : null),
+      invalidateSession: (params) => { invalidated.push(params); },
+    });
+    expect(result.redirectUrl).toContain("https://sp.example.com/slo?");
+    expect(result.redirectUrl).toContain("SAMLResponse=");
+    expect(invalidated).toHaveLength(1);
+    expect(invalidated[0].nameId).toBe("tstudent");
+    expect(invalidated[0].sessionIndex).toBe("_2");
+  });
+
+  it("includes RelayState in redirect URL when provided", async () => {
+    const result = await handleSpInitiatedLogout({
+      samlRequestBase64: deflatedSamlRequest,
+      relayState: "rs123",
+      idpConfig: idpConfig(),
+      getSpLogoutUrl: () => "https://sp.example.com/slo",
+      invalidateSession: () => {},
+    });
+    expect(result.redirectUrl).toContain("RelayState=");
+    expect(result.redirectUrl).toContain("rs123");
+  });
+
+  it("throws when SP issuer has no logout URL", async () => {
+    await expect(
+      handleSpInitiatedLogout({
+        samlRequestBase64: deflatedSamlRequest,
+        idpConfig: idpConfig(),
+        getSpLogoutUrl: () => null,
+        invalidateSession: () => {},
+      })
+    ).rejects.toThrow("Unknown or unsupported SP issuer for SLO");
+  });
+
+  it("awaits async invalidateSession", async () => {
+    let resolved = false;
+    await handleSpInitiatedLogout({
+      samlRequestBase64: deflatedSamlRequest,
+      idpConfig: idpConfig(),
+      getSpLogoutUrl: () => "https://sp.example.com/slo",
+      invalidateSession: () => new Promise<void>((r) => { setTimeout(() => { resolved = true; r(); }, 0); }),
+    });
+    expect(resolved).toBe(true);
   });
 });

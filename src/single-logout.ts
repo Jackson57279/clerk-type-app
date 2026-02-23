@@ -44,6 +44,7 @@ export interface IdpLogoutConfig {
 }
 
 export interface ParsedLogoutRequest {
+  requestId: string | undefined;
   issuer: string | undefined;
   nameId: string | undefined;
   sessionIndex: string | undefined;
@@ -60,10 +61,12 @@ export function parseLogoutRequest(samlRequestBase64: string): ParsedLogoutReque
   const dom = new DOMParser().parseFromString(xml);
   const logoutRequest = dom.getElementsByTagNameNS(XMLNS_SAMLP, "LogoutRequest");
   if (!logoutRequest.length) throw new Error("Expected LogoutRequest; not found");
+  const requestEl = logoutRequest[0] as Element;
   const issuerEl = dom.getElementsByTagNameNS(XMLNS_SAML, "Issuer");
   const nameIdEl = dom.getElementsByTagNameNS(XMLNS_SAML, "NameID");
   const sessionIndexEl = dom.getElementsByTagNameNS(XMLNS_SAMLP, "SessionIndex");
   return {
+    requestId: requestEl.getAttribute("ID") ?? undefined,
     issuer: issuerEl[0]?.firstChild?.nodeValue?.trim(),
     nameId: nameIdEl[0]?.firstChild?.nodeValue?.trim(),
     sessionIndex: sessionIndexEl[0]?.firstChild?.nodeValue?.trim(),
@@ -159,4 +162,36 @@ export function createLogoutRequest(
   const deflated = zlib.deflateRawSync(Buffer.from(signedXml, "utf8"));
   const samlRequestBase64 = deflated.toString("base64");
   return { samlRequestBase64, destination: spLogoutUrl };
+}
+
+export interface HandleSpInitiatedLogoutOptions {
+  samlRequestBase64: string;
+  relayState?: string;
+  idpConfig: IdpLogoutConfig;
+  getSpLogoutUrl: (issuer: string) => string | null;
+  invalidateSession: (params: { nameId: string; sessionIndex?: string }) => void | Promise<void>;
+}
+
+export interface HandleSpInitiatedLogoutResult {
+  redirectUrl: string;
+}
+
+export async function handleSpInitiatedLogout(
+  options: HandleSpInitiatedLogoutOptions
+): Promise<HandleSpInitiatedLogoutResult> {
+  const parsed = parseLogoutRequest(options.samlRequestBase64);
+  const inResponseTo = parsed.requestId ?? "";
+  const destination = parsed.issuer ? options.getSpLogoutUrl(parsed.issuer) : null;
+  if (!destination) {
+    throw new Error("Unknown or unsupported SP issuer for SLO");
+  }
+  await Promise.resolve(options.invalidateSession({
+    nameId: parsed.nameId ?? "",
+    sessionIndex: parsed.sessionIndex,
+  }));
+  const { samlResponseBase64 } = createLogoutResponse(options.idpConfig, destination, {
+    inResponseTo,
+  });
+  const redirectUrl = `${destination}?SAMLResponse=${encodeURIComponent(samlResponseBase64)}${options.relayState != null && options.relayState !== "" ? "&RelayState=" + encodeURIComponent(options.relayState) : ""}`;
+  return { redirectUrl };
 }
