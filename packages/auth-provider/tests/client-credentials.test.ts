@@ -269,4 +269,20 @@ describe("handleClientCredentialsFlow", () => {
     const payload = verifyClientCredentialsToken(result.access_token, SECRET);
     expect(payload?.scope).toBe("custom:scope");
   });
+
+  it("does not return refresh_token (M2M flow per RFC 6749)", () => {
+    const result = handleClientCredentialsFlow(
+      {
+        grant_type: "client_credentials",
+        client_id: "m2m-client",
+        client_secret: "client-secret",
+      },
+      flowOptions
+    );
+    assertTokenResponse(result);
+    expect(Object.keys(result)).toEqual(
+      expect.arrayContaining(["access_token", "token_type", "expires_in"])
+    );
+    expect("refresh_token" in result).toBe(false);
+  });
 });
