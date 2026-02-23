@@ -6,10 +6,12 @@
   "scripts": {
     "build": "tsc",
     "test": "vitest run",
-    "lint": "eslint src tests"
+    "lint": "eslint src tests",
+    "migrate": "bun run src/db/run-migrate.ts"
   },
   "devDependencies": {
     "@types/node": "^22.10.1",
+    "@types/pg": "^8.16.0",
     "@types/qrcode": "^1.5.6",
     "eslint": "^9.16.0",
     "typescript": "^5.7.2",
@@ -22,6 +24,7 @@
     "@xmldom/xmldom": "^0.8.11",
     "argon2": "^0.41.1",
     "hi-base32": "^0.5.1",
+    "pg": "^8.18.0",
     "qrcode": "^1.5.4",
     "saml2-js": "^4.0.4",
     "twilio": "^5.12.2",
