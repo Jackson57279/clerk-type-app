@@ -5,6 +5,7 @@ import {
   verifyAndConsumeBackupCode,
   getRemainingBackupCodeCount,
   addBackupCodesForUser,
+  generateAndStoreBackupCodes,
   createMemoryBackupCodeStore,
 } from "../src/backup-codes.js";
 
@@ -121,5 +122,41 @@ describe("addBackupCodesForUser", () => {
     await verifyAndConsumeBackupCode(userId, "first", store);
     await verifyAndConsumeBackupCode(userId, "second", store);
     expect(await getRemainingBackupCodeCount(userId, store)).toBe(0);
+  });
+});
+
+describe("generateAndStoreBackupCodes", () => {
+  it("generates default 8 codes, stores hashes, returns plain codes for one-time display", async () => {
+    const store = createMemoryBackupCodeStore();
+    const userId = "user-setup";
+    const codes = await generateAndStoreBackupCodes(userId, store);
+    expect(codes).toHaveLength(8);
+    expect(await getRemainingBackupCodeCount(userId, store)).toBe(8);
+    const alphabet = "23456789abcdefghjkmnpqrstuvwxyz";
+    for (const code of codes) {
+      expect(code).toHaveLength(8);
+      expect([...code].every((c) => alphabet.includes(c))).toBe(true);
+    }
+    const ok = await verifyAndConsumeBackupCode(userId, codes[0]!, store);
+    expect(ok).toBe(true);
+    expect(await getRemainingBackupCodeCount(userId, store)).toBe(7);
+  });
+
+  it("accepts custom count", async () => {
+    const store = createMemoryBackupCodeStore();
+    const codes = await generateAndStoreBackupCodes("u", store, 5);
+    expect(codes).toHaveLength(5);
+    expect(await getRemainingBackupCodeCount("u", store)).toBe(5);
+  });
+
+  it("appends to existing backup codes for user", async () => {
+    const store = createMemoryBackupCodeStore();
+    await addBackupCodesForUser("u", ["existing1"], store);
+    const codes = await generateAndStoreBackupCodes("u", store, 2);
+    expect(codes).toHaveLength(2);
+    expect(await getRemainingBackupCodeCount("u", store)).toBe(3);
+    const ok = await verifyAndConsumeBackupCode("u", "existing1", store);
+    expect(ok).toBe(true);
+    expect(await getRemainingBackupCodeCount("u", store)).toBe(2);
   });
 });

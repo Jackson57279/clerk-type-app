@@ -75,6 +75,16 @@ export async function addBackupCodesForUser(
   await store.setHashes(userId, existing.concat(newHashes));
 }
 
+export async function generateAndStoreBackupCodes(
+  userId: string,
+  store: BackupCodeStore,
+  count: number = DEFAULT_COUNT
+): Promise<string[]> {
+  const codes = generateBackupCodes(count);
+  await addBackupCodesForUser(userId, codes, store);
+  return codes;
+}
+
 export function createMemoryBackupCodeStore(): BackupCodeStore {
   const byUser = new Map<string, string[]>();
   return {
