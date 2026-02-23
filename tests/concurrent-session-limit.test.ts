@@ -10,6 +10,7 @@ import {
   clearAllSessions,
   invalidateAllSessionsForUser,
   enforceConcurrentLimitAndRegister,
+  regenerateSessionIdAndEnforceLimit,
 } from "../src/concurrent-session-limit.js";
 
 describe("concurrent session limit (default 5 per user)", () => {
@@ -166,6 +167,61 @@ describe("enforceConcurrentLimitAndRegister", () => {
   });
 });
 
+describe("regenerateSessionIdAndEnforceLimit (session fixation prevention)", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    clearAllSessions();
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("returns new session ID different from old (prevents fixation)", () => {
+    const oldId = "fixated-session-123";
+    const newId = regenerateSessionIdAndEnforceLimit(
+      oldId,
+      "u1",
+      null,
+      { user: 5 }
+    );
+    expect(newId).not.toBe(oldId);
+    expect(newId).toMatch(/^[a-f0-9]{64}$/);
+  });
+
+  it("removes old session and registers new one", () => {
+    registerSession("pre-existing", "u2", null);
+    const oldId = "old-sess";
+    registerSession(oldId, "u1", null);
+    const newId = regenerateSessionIdAndEnforceLimit(
+      oldId,
+      "u1",
+      null,
+      { user: 5 }
+    );
+    expect(newId).not.toBe(oldId);
+    expect(getActiveCountByUser("u1")).toBe(1);
+    expect(getActiveCountByUser("u2")).toBe(1);
+  });
+
+  it("enforces concurrent limit after regeneration", () => {
+    registerSession("s0", "u1", null);
+    vi.advanceTimersByTime(100);
+    registerSession("s1", "u1", null);
+    const evicted: string[] = [];
+    const newId = regenerateSessionIdAndEnforceLimit(
+      "fixated",
+      "u1",
+      null,
+      { user: 2 },
+      { onEvict: (ids) => evicted.push(...ids) }
+    );
+    expect(newId).toMatch(/^[a-f0-9]{64}$/);
+    expect(getActiveCountByUser("u1")).toBe(1);
+    expect(evicted).toContain("s0");
+    expect(evicted).toContain("s1");
+  });
+});
+
 describe("invalidateAllSessionsForUser (remote logout)", () => {
   beforeEach(() => {
     vi.useFakeTimers();
@@ -256,6 +312,17 @@ describe("createConcurrentSessionLimit (custom defaults)", () => {
     expect(revoked).toContain("s1");
     expect(limiter.getActiveCountByUser("u1")).toBe(0);
     expect(limiter.getActiveCountByUser("u2")).toBe(1);
+  });
+
+  it("regenerateAndEnforce returns new session ID and enforces limit", () => {
+    const limiter = createConcurrentSessionLimit({ defaultUserLimit: 2 });
+    limiter.register("s0", "u1", null);
+    vi.advanceTimersByTime(100);
+    limiter.register("s1", "u1", null);
+    const newId = limiter.regenerateAndEnforce("fixated-id", "u1", null);
+    expect(newId).not.toBe("fixated-id");
+    expect(newId).toMatch(/^[a-f0-9]{64}$/);
+    expect(limiter.getActiveCountByUser("u1")).toBe(2);
   });
 });
 

@@ -1,3 +1,5 @@
+import { regenerateSessionId } from "./session-fixation.js";
+
 const DEFAULT_USER_LIMIT = 5;
 const MIN_LIMIT = 1;
 const MAX_LIMIT = 1000;
@@ -146,6 +148,28 @@ export function enforceConcurrentLimitAndRegister(
   return result;
 }
 
+const globalSessionStore = {
+  remove: removeSession,
+  register: registerSession,
+};
+
+export function regenerateSessionIdAndEnforceLimit(
+  oldSessionId: string,
+  userId: string,
+  orgId: string | null,
+  limits: SessionLimits,
+  options?: EnforceAndRegisterOptions
+): string {
+  const newSessionId = regenerateSessionId(
+    oldSessionId,
+    userId,
+    orgId,
+    globalSessionStore
+  );
+  enforceConcurrentLimitAndRegister(newSessionId, userId, orgId, limits, options);
+  return newSessionId;
+}
+
 export function getActiveCountByUser(userId: string): number {
   let n = 0;
   for (const rec of sessions.values()) {
@@ -288,6 +312,20 @@ export function createConcurrentSessionLimit(
       const ids = getByUser(userId);
       for (const id of ids) store.delete(id);
       return ids;
+    },
+    regenerateAndEnforce(
+      oldSessionId: string,
+      userId: string,
+      orgId: string | null,
+      limits?: { user?: number; org?: number },
+      options?: EnforceAndRegisterOptions
+    ): string {
+      const result = this.check(userId, orgId, limits);
+      if (result.allowed) {
+        for (const id of result.evictSessionIds) this.remove(id);
+        options?.onEvict?.(result.evictSessionIds);
+      }
+      return regenerateSessionId(oldSessionId, userId, orgId, this);
     },
   };
 }
