@@ -46,3 +46,32 @@ export function createEmailDomainChecker(options: EmailDomainRestrictionOptions)
 export function createDefaultEmailDomainChecker(): (email: string) => boolean {
   return createEmailDomainChecker({ allowedDomain: getDefaultAllowedDomain() });
 }
+
+function normalizeAllowedDomainsList(domains: string[]): string[] {
+  const set = new Set<string>();
+  for (const d of domains) {
+    const n = normalizeDomain(d);
+    if (n) set.add(n);
+  }
+  return [...set];
+}
+
+export interface CreateCheckerFromAllowedDomainsOptions {
+  fallbackWhenEmpty?: () => (email: string) => boolean;
+}
+
+export function createEmailDomainCheckerFromAllowedDomains(
+  allowedDomains: string[],
+  options?: CreateCheckerFromAllowedDomainsOptions
+): (email: string) => boolean {
+  const normalized = normalizeAllowedDomainsList(allowedDomains);
+  if (normalized.length > 0) {
+    const set = new Set(normalized);
+    return function isAllowedEmail(email: string): boolean {
+      const domain = getEmailDomain(email);
+      if (!domain) return false;
+      return set.has(domain);
+    };
+  }
+  return options?.fallbackWhenEmpty?.() ?? createDefaultEmailDomainChecker();
+}

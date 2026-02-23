@@ -3,6 +3,7 @@ import {
   getEmailDomain,
   checkEmailDomain,
   createEmailDomainChecker,
+  createEmailDomainCheckerFromAllowedDomains,
   DEFAULT_ALLOWED_EMAIL_DOMAIN,
   getDefaultAllowedDomain,
   createDefaultEmailDomainChecker,
@@ -168,5 +169,77 @@ describe("createDefaultEmailDomainChecker", () => {
     const isAllowed = createDefaultEmailDomainChecker();
     expect(isAllowed("user@example.org")).toBe(true);
     expect(isAllowed("user@company.com")).toBe(false);
+  });
+});
+
+describe("createEmailDomainCheckerFromAllowedDomains", () => {
+  it("allows emails whose domain is in the list", () => {
+    const isAllowed = createEmailDomainCheckerFromAllowedDomains([
+      "company.com",
+      "acme.com",
+    ]);
+    expect(isAllowed("user@company.com")).toBe(true);
+    expect(isAllowed("admin@acme.com")).toBe(true);
+    expect(isAllowed("u@Company.COM")).toBe(true);
+    expect(isAllowed("u@ACME.com")).toBe(true);
+  });
+
+  it("rejects emails whose domain is not in the list", () => {
+    const isAllowed = createEmailDomainCheckerFromAllowedDomains([
+      "company.com",
+      "acme.com",
+    ]);
+    expect(isAllowed("user@gmail.com")).toBe(false);
+    expect(isAllowed("user@other.com")).toBe(false);
+    expect(isAllowed("invalid")).toBe(false);
+  });
+
+  it("rejects subdomain of allowed domain (exact match only)", () => {
+    const isAllowed = createEmailDomainCheckerFromAllowedDomains([
+      "company.com",
+    ]);
+    expect(isAllowed("user@mail.company.com")).toBe(false);
+    expect(isAllowed("user@company.com")).toBe(true);
+  });
+
+  it("normalizes and deduplicates allowed domains", () => {
+    const isAllowed = createEmailDomainCheckerFromAllowedDomains([
+      "Company.COM",
+      "company.com",
+      "  acme.com  ",
+    ]);
+    expect(isAllowed("u@company.com")).toBe(true);
+    expect(isAllowed("u@acme.com")).toBe(true);
+    expect(isAllowed("u@gmail.com")).toBe(false);
+  });
+
+  it("uses default checker when allowedDomains is empty", () => {
+    const orig = process.env.ALLOWED_EMAIL_DOMAIN;
+    process.env.ALLOWED_EMAIL_DOMAIN = "";
+    delete process.env.ALLOWED_EMAIL_DOMAIN;
+    const isAllowed = createEmailDomainCheckerFromAllowedDomains([]);
+    expect(isAllowed("user@company.com")).toBe(true);
+    expect(isAllowed("user@gmail.com")).toBe(false);
+    if (orig !== undefined) process.env.ALLOWED_EMAIL_DOMAIN = orig;
+    else delete process.env.ALLOWED_EMAIL_DOMAIN;
+  });
+
+  it("uses fallbackWhenEmpty when allowedDomains is empty", () => {
+    const allowAll = () => true;
+    const isAllowed = createEmailDomainCheckerFromAllowedDomains([], {
+      fallbackWhenEmpty: () => allowAll,
+    });
+    expect(isAllowed("user@gmail.com")).toBe(true);
+    expect(isAllowed("user@company.com")).toBe(true);
+    expect(isAllowed("invalid")).toBe(true);
+  });
+
+  it("ignores fallbackWhenEmpty when allowedDomains is non-empty", () => {
+    const isAllowed = createEmailDomainCheckerFromAllowedDomains(
+      ["acme.com"],
+      { fallbackWhenEmpty: () => () => true }
+    );
+    expect(isAllowed("user@acme.com")).toBe(true);
+    expect(isAllowed("user@gmail.com")).toBe(false);
   });
 });
