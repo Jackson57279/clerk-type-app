@@ -209,7 +209,7 @@ describe("exchangeRefreshToken", () => {
     });
     expect("access_token" in result1).toBe(true);
     expect("refresh_token" in result1).toBe(true);
-    const newRefresh = "refresh_token" in result1 ? result1.refresh_token : "";
+    const newRefresh: string = "refresh_token" in result1 ? (result1.refresh_token ?? "") : "";
     expect(newRefresh).not.toBe(first);
 
     const result2 = exchangeRefreshToken(newRefresh, {
