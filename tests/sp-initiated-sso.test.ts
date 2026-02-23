@@ -1,10 +1,14 @@
 import { describe, it, expect } from "vitest";
+import zlib from "zlib";
 import {
   createSpInitiatedLoginRequestUrl,
   validateSpInitiatedPostResponse,
+  createSpInitiatedLogoutRequestUrl,
+  validateSpInitiatedLogoutResponse,
   type SpInitiatedSpConfig,
   type SpInitiatedIdpConfig,
 } from "../src/sp-initiated-sso.js";
+import { createLogoutResponse } from "../src/single-logout.js";
 
 const TEST_SP_KEY = `-----BEGIN PRIVATE KEY-----
 MIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQDBX9ZAnn+hUzzM
@@ -123,6 +127,83 @@ describe("validateSpInitiatedPostResponse", () => {
       validateSpInitiatedPostResponse(spConfig(), idpConfig(), {
         SAMLResponse: "",
       })
+    ).rejects.toThrow();
+  });
+});
+
+describe("createSpInitiatedLogoutRequestUrl", () => {
+  it("returns logout URL with IdP host and SAMLRequest param", async () => {
+    const result = await createSpInitiatedLogoutRequestUrl(spConfig(), idpConfig(), {
+      nameId: "user@example.com",
+      sessionIndex: "sess_123",
+    });
+    expect(result.logoutUrl).toContain("https://idp.example.com/sso/logout");
+    const url = new URL(result.logoutUrl);
+    expect(url.searchParams.get("SAMLRequest")).toBeTruthy();
+    expect(result.requestId).toBeTruthy();
+  });
+
+  it("includes RelayState in URL when provided", async () => {
+    const result = await createSpInitiatedLogoutRequestUrl(spConfig(), idpConfig(), {
+      nameId: "user@example.com",
+      sessionIndex: "sess_1",
+      relayState: "/goodbye",
+    });
+    const url = new URL(result.logoutUrl);
+    expect(url.searchParams.get("RelayState")).toBe("/goodbye");
+  });
+
+  it("produces different requestId per call", async () => {
+    const a = await createSpInitiatedLogoutRequestUrl(spConfig(), idpConfig(), {
+      nameId: "u1",
+      sessionIndex: "s1",
+    });
+    const b = await createSpInitiatedLogoutRequestUrl(spConfig(), idpConfig(), {
+      nameId: "u1",
+      sessionIndex: "s1",
+    });
+    expect(a.requestId).not.toBe(b.requestId);
+    expect(a.logoutUrl).not.toBe(b.logoutUrl);
+  });
+});
+
+describe("validateSpInitiatedLogoutResponse", () => {
+  it("accepts valid LogoutResponse from IdP and returns inResponseTo and relayState", async () => {
+    const idpEntityId = "https://idp.example.com/metadata";
+    const { samlResponseBase64 } = createLogoutResponse(
+      { entityId: idpEntityId, privateKey: TEST_SP_KEY, certificate: TEST_CERT },
+      "https://sp.example.com/assert",
+      { inResponseTo: "req_123" }
+    );
+    const xml = zlib.inflateRawSync(Buffer.from(samlResponseBase64, "base64")).toString("utf8");
+    const postBody = { SAMLResponse: Buffer.from(xml, "utf8").toString("base64") };
+    const result = await validateSpInitiatedLogoutResponse(
+      spConfig(),
+      idpConfig(),
+      postBody
+    );
+    expect(result.inResponseTo).toBe("req_123");
+    expect(result.relayState).toBeUndefined();
+  });
+
+  it("returns relayState when present in request body", async () => {
+    const { samlResponseBase64 } = createLogoutResponse(
+      { entityId: "https://idp.example.com/metadata", privateKey: TEST_SP_KEY, certificate: TEST_CERT },
+      "https://sp.example.com/assert",
+      { inResponseTo: "req_456" }
+    );
+    const xml = zlib.inflateRawSync(Buffer.from(samlResponseBase64, "base64")).toString("utf8");
+    const result = await validateSpInitiatedLogoutResponse(spConfig(), idpConfig(), {
+      SAMLResponse: Buffer.from(xml, "utf8").toString("base64"),
+      RelayState: "/landing",
+    });
+    expect(result.relayState).toBe("/landing");
+  });
+
+  it("rejects when SAMLResponse is not a LogoutResponse", async () => {
+    const notLogout = Buffer.from("<foo>bar</foo>", "utf8").toString("base64");
+    await expect(
+      validateSpInitiatedLogoutResponse(spConfig(), idpConfig(), { SAMLResponse: notLogout })
     ).rejects.toThrow();
   });
 });

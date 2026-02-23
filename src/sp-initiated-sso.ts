@@ -31,10 +31,15 @@ interface ServiceProviderInstance {
     options: { relay_state?: string },
     cb: (err: Error | null, loginUrl: string, requestId: string) => void
   ): void;
+  create_logout_request_url(
+    idp: IdpInstance,
+    options: { name_id: string; session_index?: string; relay_state?: string },
+    cb: (err: Error | null, logoutUrl: string, requestId: string) => void
+  ): void;
   post_assert(
     idp: IdpInstance,
-    options: { request_body: { SAMLResponse: string; RelayState?: string }; require_session_index?: boolean },
-    cb: (err: Error | null, response: SamlAssertResponse) => void
+    options: { request_body: { SAMLResponse?: string; SAMLRequest?: string; RelayState?: string }; require_session_index?: boolean },
+    cb: (err: Error | null, response: SamlAssertResponse | SamlLogoutResponse) => void
   ): void;
 }
 
@@ -52,6 +57,11 @@ interface SamlAssertResponse {
     session_index: string | undefined;
     attributes: Record<string, string[]>;
   };
+}
+
+interface SamlLogoutResponse {
+  response_header: { id: string; destination: string; in_response_to: string };
+  type: "logout_response";
 }
 
 export interface SpInitiatedSpConfig {
@@ -147,14 +157,77 @@ export function validateSpInitiatedPostResponse(
         request_body: requestBody,
         require_session_index: options.requireSessionIndex ?? true,
       },
-      (err: Error | null, response: SamlAssertResponse) => {
+      (err: Error | null, response: SamlAssertResponse | SamlLogoutResponse) => {
         if (err) reject(err);
-        else if (!response?.user) reject(new Error("Invalid SAML response: no user"));
+        else if (response.type !== "authn_response" || !response.user) reject(new Error("Invalid SAML response: no user"));
         else
           resolve({
             nameId: response.user.name_id,
             sessionIndex: response.user.session_index,
             attributes: response.user.attributes ?? {},
+            inResponseTo: response.response_header?.in_response_to ?? "",
+            relayState: requestBody.RelayState,
+          });
+      }
+    );
+  });
+}
+
+export interface SpInitiatedLogoutRequestOptions {
+  nameId: string;
+  sessionIndex?: string;
+  relayState?: string;
+}
+
+export interface SpInitiatedLogoutResult {
+  logoutUrl: string;
+  requestId: string;
+}
+
+export function createSpInitiatedLogoutRequestUrl(
+  spConfig: SpInitiatedSpConfig,
+  idpConfig: SpInitiatedIdpConfig,
+  options: SpInitiatedLogoutRequestOptions
+): Promise<SpInitiatedLogoutResult> {
+  const sp = new saml2.ServiceProvider(toSpOptions(spConfig));
+  const idp = new saml2.IdentityProvider(toIdpOptions(idpConfig));
+  return new Promise((resolve, reject) => {
+    sp.create_logout_request_url(
+      idp,
+      {
+        name_id: options.nameId,
+        session_index: options.sessionIndex ?? "",
+        relay_state: options.relayState,
+      },
+      (err: Error | null, logoutUrl: string, requestId: string) => {
+        if (err) reject(err);
+        else resolve({ logoutUrl, requestId });
+      }
+    );
+  });
+}
+
+export interface SpInitiatedLogoutResponseResult {
+  inResponseTo: string;
+  relayState: string | undefined;
+}
+
+export function validateSpInitiatedLogoutResponse(
+  spConfig: SpInitiatedSpConfig,
+  idpConfig: SpInitiatedIdpConfig,
+  requestBody: { SAMLResponse: string; RelayState?: string }
+): Promise<SpInitiatedLogoutResponseResult> {
+  const sp = new saml2.ServiceProvider(toSpOptions(spConfig));
+  const idp = new saml2.IdentityProvider(toIdpOptions(idpConfig));
+  return new Promise((resolve, reject) => {
+    sp.post_assert(
+      idp,
+      { request_body: requestBody },
+      (err: Error | null, response: SamlAssertResponse | SamlLogoutResponse) => {
+        if (err) reject(err);
+        else if (response.type !== "logout_response") reject(new Error("Invalid SAML response: expected LogoutResponse"));
+        else
+          resolve({
             inResponseTo: response.response_header?.in_response_to ?? "",
             relayState: requestBody.RelayState,
           });
