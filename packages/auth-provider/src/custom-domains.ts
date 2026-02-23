@@ -34,6 +34,20 @@ export interface OrganizationWithCustomDomains {
   customDomains: string[];
 }
 
+export function validateAndNormalizeCustomDomains(domains: string[]): string[] {
+  const out: string[] = [];
+  for (const d of domains) {
+    const normalized = normalizeHost(d);
+    if (!isValidCustomDomain(normalized)) {
+      throw new Error(`Invalid custom domain: ${d}`);
+    }
+    if (!out.includes(normalized)) {
+      out.push(normalized);
+    }
+  }
+  return out;
+}
+
 export function createDomainLookup(
   organizations: OrganizationWithCustomDomains[]
 ): DomainLookup {

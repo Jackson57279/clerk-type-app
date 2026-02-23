@@ -28,6 +28,7 @@ function memoryStore(): OrganizationStore {
       faviconUrl: partial.faviconUrl ?? null,
       maxMembers: partial.maxMembers ?? null,
       allowedDomains: partial.allowedDomains ?? [],
+      customDomains: partial.customDomains ?? [],
       requireEmailVerification: partial.requireEmailVerification ?? true,
       samlEnabled: partial.samlEnabled ?? false,
       samlConfig: partial.samlConfig ?? null,
@@ -59,6 +60,7 @@ function memoryStore(): OrganizationStore {
         faviconUrl: data.faviconUrl ?? null,
         maxMembers: data.maxMembers ?? null,
         allowedDomains: data.allowedDomains ?? [],
+        customDomains: data.customDomains ?? [],
         requireEmailVerification: data.requireEmailVerification ?? true,
         samlEnabled: data.samlEnabled ?? false,
         samlConfig: data.samlConfig ?? null,
@@ -107,6 +109,7 @@ function memoryStore(): OrganizationStore {
         faviconUrl: data.faviconUrl !== undefined ? data.faviconUrl : existing.faviconUrl,
         maxMembers: data.maxMembers !== undefined ? data.maxMembers : existing.maxMembers,
         allowedDomains: data.allowedDomains ?? existing.allowedDomains,
+        customDomains: data.customDomains ?? existing.customDomains,
         requireEmailVerification: data.requireEmailVerification ?? existing.requireEmailVerification,
         samlEnabled: data.samlEnabled ?? existing.samlEnabled,
         samlConfig: data.samlConfig !== undefined ? data.samlConfig : existing.samlConfig,
@@ -134,6 +137,7 @@ function expectSettings(settings: OrganizationSettings, overrides: Partial<Organ
     faviconUrl: null,
     maxMembers: null,
     allowedDomains: [],
+    customDomains: [],
     requireEmailVerification: true,
     samlEnabled: false,
     samlConfig: null,
@@ -171,6 +175,21 @@ describe("getOrganizationSettings", () => {
     expect(settings!.maxMembers).toBe(50);
     expect(settings!.allowedDomains).toEqual(["acme.com"]);
     expect(settings!.requireEmailVerification).toBe(false);
+  });
+
+  it("returns and updates customDomains via settings", async () => {
+    const store = memoryStore();
+    const org = await createOrganization(store, {
+      name: "Acme",
+      slug: "acme",
+      customDomains: ["auth.acme.com"],
+    });
+    const settings = await getOrganizationSettings(store, org.id);
+    expect(settings!.customDomains).toEqual(["auth.acme.com"]);
+    const updated = await updateOrganizationSettings(store, org.id, {
+      customDomains: ["auth.acme.com", "login.acme.com"],
+    });
+    expect(updated.customDomains).toEqual(["auth.acme.com", "login.acme.com"]);
   });
 
   it("returns null for unknown organization id", async () => {

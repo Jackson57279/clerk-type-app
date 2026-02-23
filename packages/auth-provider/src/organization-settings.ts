@@ -11,6 +11,7 @@ export interface OrganizationSettings {
   faviconUrl: string | null;
   maxMembers: number | null;
   allowedDomains: string[];
+  customDomains: string[];
   requireEmailVerification: boolean;
   samlEnabled: boolean;
   samlConfig: Record<string, unknown> | null;
@@ -24,6 +25,7 @@ export interface UpdateOrganizationSettingsInput {
   faviconUrl?: string | null;
   maxMembers?: number | null;
   allowedDomains?: string[];
+  customDomains?: string[];
   requireEmailVerification?: boolean;
   samlEnabled?: boolean;
   samlConfig?: Record<string, unknown> | null;
@@ -38,6 +40,7 @@ function orgToSettings(org: Organization): OrganizationSettings {
     faviconUrl: org.faviconUrl,
     maxMembers: org.maxMembers,
     allowedDomains: org.allowedDomains,
+    customDomains: org.customDomains,
     requireEmailVerification: org.requireEmailVerification,
     samlEnabled: org.samlEnabled,
     samlConfig: org.samlConfig,

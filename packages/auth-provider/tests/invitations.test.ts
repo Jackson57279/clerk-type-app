@@ -156,6 +156,7 @@ function org(overrides: Partial<Organization> & { id: string; name: string; slug
     faviconUrl: null,
     maxMembers: overrides.maxMembers ?? null,
     allowedDomains: [],
+    customDomains: [],
     requireEmailVerification: true,
     samlEnabled: false,
     samlConfig: null,

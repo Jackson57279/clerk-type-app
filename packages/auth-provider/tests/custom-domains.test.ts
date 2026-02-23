@@ -3,6 +3,7 @@ import {
   AUTH_SUBDOMAIN,
   normalizeHost,
   isValidCustomDomain,
+  validateAndNormalizeCustomDomains,
   getSuggestedAuthHost,
   resolveOrganizationByHost,
   getAuthBaseUrl,
@@ -21,6 +22,25 @@ describe("normalizeHost", () => {
 
   it("trims whitespace", () => {
     expect(normalizeHost("  auth.customer.com  ")).toBe("auth.customer.com");
+  });
+});
+
+describe("validateAndNormalizeCustomDomains", () => {
+  it("returns normalized domains and deduplicates", () => {
+    expect(validateAndNormalizeCustomDomains(["AUTH.Customer.COM", "auth.customer.com"])).toEqual([
+      "auth.customer.com",
+    ]);
+  });
+
+  it("throws on invalid domain", () => {
+    expect(() => validateAndNormalizeCustomDomains(["localhost"])).toThrow("Invalid custom domain");
+    expect(() => validateAndNormalizeCustomDomains(["auth.customer.com", "singlelabel"])).toThrow(
+      "Invalid custom domain"
+    );
+  });
+
+  it("returns empty array for empty input", () => {
+    expect(validateAndNormalizeCustomDomains([])).toEqual([]);
   });
 });
 

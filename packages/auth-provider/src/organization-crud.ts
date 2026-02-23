@@ -1,3 +1,5 @@
+import { validateAndNormalizeCustomDomains } from "./custom-domains.js";
+
 export interface Organization {
   id: string;
   name: string;
@@ -7,6 +9,7 @@ export interface Organization {
   faviconUrl: string | null;
   maxMembers: number | null;
   allowedDomains: string[];
+  customDomains: string[];
   requireEmailVerification: boolean;
   samlEnabled: boolean;
   samlConfig: Record<string, unknown> | null;
@@ -25,6 +28,7 @@ export interface CreateOrganizationInput {
   faviconUrl?: string | null;
   maxMembers?: number | null;
   allowedDomains?: string[];
+  customDomains?: string[];
   requireEmailVerification?: boolean;
   samlEnabled?: boolean;
   samlConfig?: Record<string, unknown> | null;
@@ -40,6 +44,7 @@ export interface UpdateOrganizationInput {
   faviconUrl?: string | null;
   maxMembers?: number | null;
   allowedDomains?: string[];
+  customDomains?: string[];
   requireEmailVerification?: boolean;
   samlEnabled?: boolean;
   samlConfig?: Record<string, unknown> | null;
@@ -86,6 +91,7 @@ export async function createOrganization(
   if (existing && !existing.deletedAt) {
     throw new Error("An organization with this slug already exists");
   }
+  const customDomains = validateAndNormalizeCustomDomains(data.customDomains ?? []);
   return store.create({
     name: data.name.trim(),
     slug,
@@ -94,6 +100,7 @@ export async function createOrganization(
     faviconUrl: data.faviconUrl ?? null,
     maxMembers: data.maxMembers ?? null,
     allowedDomains: data.allowedDomains ?? [],
+    customDomains,
     requireEmailVerification: data.requireEmailVerification ?? true,
     samlEnabled: data.samlEnabled ?? false,
     samlConfig: data.samlConfig ?? null,
@@ -142,6 +149,9 @@ export async function updateOrganization(
   }
   if (data.name !== undefined && !data.name.trim()) {
     throw new Error("Name cannot be empty");
+  }
+  if (data.customDomains !== undefined) {
+    updateData.customDomains = validateAndNormalizeCustomDomains(data.customDomains);
   }
   return store.update(id, updateData);
 }

@@ -26,6 +26,7 @@ function memoryStore(): OrganizationStore {
       faviconUrl: partial.faviconUrl ?? null,
       maxMembers: partial.maxMembers ?? null,
       allowedDomains: partial.allowedDomains ?? [],
+      customDomains: partial.customDomains ?? [],
       requireEmailVerification: partial.requireEmailVerification ?? true,
       samlEnabled: partial.samlEnabled ?? false,
       samlConfig: partial.samlConfig ?? null,
@@ -57,6 +58,7 @@ function memoryStore(): OrganizationStore {
         faviconUrl: data.faviconUrl ?? null,
         maxMembers: data.maxMembers ?? null,
         allowedDomains: data.allowedDomains ?? [],
+        customDomains: data.customDomains ?? [],
         requireEmailVerification: data.requireEmailVerification ?? true,
         samlEnabled: data.samlEnabled ?? false,
         samlConfig: data.samlConfig ?? null,
@@ -106,6 +108,7 @@ function memoryStore(): OrganizationStore {
         faviconUrl: data.faviconUrl !== undefined ? data.faviconUrl : existing.faviconUrl,
         maxMembers: data.maxMembers !== undefined ? data.maxMembers : existing.maxMembers,
         allowedDomains: data.allowedDomains ?? existing.allowedDomains,
+        customDomains: data.customDomains ?? existing.customDomains,
         requireEmailVerification: data.requireEmailVerification ?? existing.requireEmailVerification,
         samlEnabled: data.samlEnabled ?? existing.samlEnabled,
         samlConfig: data.samlConfig !== undefined ? data.samlConfig : existing.samlConfig,
@@ -180,6 +183,23 @@ describe("createOrganization", () => {
   it("rejects invalid slug", async () => {
     const store = memoryStore();
     await expect(createOrganization(store, { name: "Acme", slug: "invalid slug" })).rejects.toThrow();
+  });
+
+  it("creates organization with custom domains (normalized)", async () => {
+    const store = memoryStore();
+    const org = await createOrganization(store, {
+      name: "Acme",
+      slug: "acme",
+      customDomains: ["AUTH.Acme.COM", "auth.acme.com"],
+    });
+    expect(org.customDomains).toEqual(["auth.acme.com"]);
+  });
+
+  it("rejects invalid custom domain on create", async () => {
+    const store = memoryStore();
+    await expect(
+      createOrganization(store, { name: "Acme", slug: "acme", customDomains: ["localhost"] })
+    ).rejects.toThrow("Invalid custom domain");
   });
 });
 
@@ -260,6 +280,23 @@ describe("updateOrganization", () => {
     await createOrganization(store, { name: "First", slug: "first" });
     const second = await createOrganization(store, { name: "Second", slug: "second" });
     await expect(updateOrganization(store, second.id, { slug: "first" })).rejects.toThrow("already exists");
+  });
+
+  it("updates custom domains (normalized)", async () => {
+    const store = memoryStore();
+    const created = await createOrganization(store, { name: "Acme", slug: "acme" });
+    const updated = await updateOrganization(store, created.id, {
+      customDomains: ["auth.customer.com", "AUTH.Other.COM"],
+    });
+    expect(updated.customDomains).toEqual(["auth.customer.com", "auth.other.com"]);
+  });
+
+  it("rejects invalid custom domain on update", async () => {
+    const store = memoryStore();
+    const created = await createOrganization(store, { name: "Acme", slug: "acme" });
+    await expect(
+      updateOrganization(store, created.id, { customDomains: ["not-a-valid-domain"] })
+    ).rejects.toThrow("Invalid custom domain");
   });
 });
 
