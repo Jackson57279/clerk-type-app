@@ -3,6 +3,7 @@ import {
   sendPhoneVerificationCode,
   verifyPhoneVerificationCode,
   createMemoryPhoneVerificationStore,
+  createDeleteAllPhoneVerificationForUser,
 } from "../src/phone-verification.js";
 import type { SmsSender } from "../src/sms-otp.js";
 
@@ -227,6 +228,78 @@ describe("verifyPhoneVerificationCode", () => {
     vi.advanceTimersByTime(10 * 60 * 1000 + 1);
     expect(
       await verifyPhoneVerificationCode(userId, phone, code, { store })
+    ).toBe(false);
+  });
+});
+
+describe("deleteAllForUser", () => {
+  it("removes all pending verifications for the user", async () => {
+    const store = createMemoryPhoneVerificationStore();
+    const sender = capturingSender();
+    const userId = "user-gdpr";
+    await sendPhoneVerificationCode(userId, "+15550000001", {
+      store,
+      sender,
+      template: "{{code}}",
+    });
+    const code1 = sender.lastBody;
+    await sendPhoneVerificationCode(userId, "+15550000002", {
+      store,
+      sender,
+      template: "{{code}}",
+    });
+    await store.deleteAllForUser(userId);
+    expect(
+      await verifyPhoneVerificationCode(userId, "+15550000001", code1, {
+        store,
+      })
+    ).toBe(false);
+  });
+
+  it("leaves other users pending verifications intact", async () => {
+    const store = createMemoryPhoneVerificationStore();
+    const sender = capturingSender();
+    await sendPhoneVerificationCode("user-a", "+15551111111", {
+      store,
+      sender,
+      template: "{{code}}",
+    });
+    const codeA = sender.lastBody;
+    await sendPhoneVerificationCode("user-b", "+15552222222", {
+      store,
+      sender,
+      template: "{{code}}",
+    });
+    const codeB = sender.lastBody;
+    await store.deleteAllForUser("user-a");
+    expect(
+      await verifyPhoneVerificationCode("user-b", "+15552222222", codeB, {
+        store,
+      })
+    ).toBe(true);
+    expect(
+      await verifyPhoneVerificationCode("user-a", "+15551111111", codeA, {
+        store,
+      })
+    ).toBe(false);
+  });
+});
+
+describe("createDeleteAllPhoneVerificationForUser", () => {
+  it("returns a function that calls store.deleteAllForUser", async () => {
+    const store = createMemoryPhoneVerificationStore();
+    const sender = capturingSender();
+    await sendPhoneVerificationCode("u1", "+15559999999", {
+      store,
+      sender,
+      template: "{{code}}",
+    });
+    const deleteAll = createDeleteAllPhoneVerificationForUser(store);
+    await deleteAll("u1");
+    expect(
+      await verifyPhoneVerificationCode("u1", "+15559999999", sender.lastBody, {
+        store,
+      })
     ).toBe(false);
   });
 });

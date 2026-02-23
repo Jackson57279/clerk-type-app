@@ -25,6 +25,7 @@ export interface PhoneVerificationStore {
     phone: string
   ): Promise<{ codeHash: string; expiresAt: number } | null>;
   delete(userId: string, phone: string): Promise<void>;
+  deleteAllForUser(userId: string): Promise<void>;
 }
 
 export interface SendPhoneVerificationOptions {
@@ -60,6 +61,12 @@ function inMemoryStore(): PhoneVerificationStore {
     async delete(userId: string, phone: string) {
       map.delete(verificationKey(userId, phone));
     },
+    async deleteAllForUser(userId: string) {
+      const prefix = userId + ":";
+      for (const key of Array.from(map.keys())) {
+        if (key.startsWith(prefix)) map.delete(key);
+      }
+    },
   };
 }
 
@@ -75,6 +82,12 @@ function hashCode(code: string): string {
 
 export function createMemoryPhoneVerificationStore(): PhoneVerificationStore {
   return inMemoryStore();
+}
+
+export function createDeleteAllPhoneVerificationForUser(
+  store: PhoneVerificationStore
+): (userId: string) => void | Promise<void> {
+  return (userId: string) => store.deleteAllForUser(userId);
 }
 
 export async function sendPhoneVerificationCode(
