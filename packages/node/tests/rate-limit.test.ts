@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import type { Request, Response, NextFunction } from "express";
-import { rateLimitMiddleware } from "../src/rate-limit.js";
+import { rateLimitMiddleware, loginRateLimitMiddleware } from "../src/rate-limit.js";
 
 function nextFn(): NextFunction {
   return vi.fn() as unknown as NextFunction;
@@ -146,5 +146,47 @@ describe("rateLimitMiddleware", () => {
     limiter(req, resAfter, next);
     expect(next).toHaveBeenCalledTimes(1);
     expect(resAfter.status).not.toHaveBeenCalled();
+  });
+});
+
+describe("loginRateLimitMiddleware (5 per 15 min per IP)", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("allows 5 requests then returns 429", () => {
+    const limiter = loginRateLimitMiddleware();
+    const req = mockReq();
+    for (let i = 0; i < 5; i++) {
+      const next = nextFn();
+      limiter(req, mockRes(), next);
+      expect(next).toHaveBeenCalledTimes(1);
+    }
+    const res = mockRes();
+    limiter(req, res, nextFn());
+    expect(res.status).toHaveBeenCalledWith(429);
+    expect(res.json).toHaveBeenCalledWith(
+      expect.objectContaining({
+        error: "Too Many Requests",
+        retryAfterSeconds: expect.any(Number),
+      })
+    );
+  });
+
+  it("allows again after 15 min", () => {
+    const limiter = loginRateLimitMiddleware();
+    const req = mockReq();
+    for (let i = 0; i < 5; i++) limiter(req, mockRes(), nextFn());
+    const resBefore = mockRes();
+    limiter(req, resBefore, nextFn());
+    expect(resBefore.status).toHaveBeenCalledWith(429);
+    vi.advanceTimersByTime(15 * 60 * 1000 + 1);
+    const next = nextFn();
+    limiter(req, mockRes(), next);
+    expect(next).toHaveBeenCalledTimes(1);
   });
 });

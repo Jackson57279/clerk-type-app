@@ -39,6 +39,10 @@ export function recordAttempt(ip: string): void {
   prune(ip, now);
 }
 
+export function clearAttempts(ip: string): void {
+  attemptsByIp.delete(ip);
+}
+
 export function createRateLimiter(
   windowMs: number = WINDOW_MS,
   maxAttempts: number = MAX_ATTEMPTS

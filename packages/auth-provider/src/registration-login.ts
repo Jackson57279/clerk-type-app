@@ -22,6 +22,7 @@ import {
   verifyAndConsumeBackupCode,
   type BackupCodeStore,
 } from "./backup-codes.js";
+import { checkRateLimit, recordAttempt } from "./rate-limit.js";
 import type { BruteForceResult } from "./brute-force.js";
 import type { AccountLockoutResult } from "./account-lockout.js";
 import type { LoginContext, SuspiciousActivityResult } from "./suspicious-activity.js";
@@ -143,6 +144,7 @@ export interface LoginInput {
   backupCode?: string;
   deviceFingerprint?: string | null;
   location?: { lat: number; lng: number } | null;
+  ip?: string;
 }
 
 export interface SmsMfaLoginOptions {
@@ -175,6 +177,7 @@ export interface LoginOptions {
   accountLockout?: AccountLockoutProtection;
   suspiciousActivityDetector?: SuspiciousActivityDetector;
   auditLogStore?: AuditLogStore;
+  useIpRateLimit?: boolean;
 }
 
 export interface LoginSuccess {
@@ -245,6 +248,17 @@ export async function login(
     return { success: false, reason: "invalid_credentials" };
   }
 
+  if (options.useIpRateLimit && input.ip) {
+    const limitResult = checkRateLimit(input.ip);
+    if (!limitResult.allowed) {
+      return {
+        success: false,
+        reason: "rate_limited",
+        retryAfterSeconds: limitResult.retryAfterSeconds ?? 1,
+      };
+    }
+  }
+
   const bruteForceKey =
     options.getBruteForceKey?.(input) ?? undefined;
   if (options.bruteForceProtection && bruteForceKey) {
@@ -266,6 +280,10 @@ export async function login(
         retryAfterSeconds: lock.retryAfterSeconds ?? 1,
       };
     }
+  }
+
+  if (options.useIpRateLimit && input.ip) {
+    recordAttempt(input.ip);
   }
 
   const user = await store.findUserByEmail(email);

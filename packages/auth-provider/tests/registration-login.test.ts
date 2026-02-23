@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { decode as base32Decode } from "hi-base32";
 import {
   register,
@@ -937,6 +937,123 @@ describe("login with brute force protection", () => {
       password: "PassWord1",
     });
     expect(result.success).toBe(true);
+  });
+});
+
+describe("login with IP rate limit (5 per 15 min)", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("allows first 5 attempts from same IP", async () => {
+    const store = memoryStore();
+    await register(store, { email: "ip@example.com", password: "PassWord1" });
+    const opts = { useIpRateLimit: true };
+    for (let i = 0; i < 5; i++) {
+      const result = await login(
+        store,
+        { email: "ip@example.com", password: "PassWord1", ip: "10.0.0.1" },
+        opts
+      );
+      expect(result.success).toBe(true);
+    }
+  });
+
+  it("blocks 6th attempt within 15 min", async () => {
+    const store = memoryStore();
+    await register(store, { email: "ip2@example.com", password: "PassWord1" });
+    const opts = { useIpRateLimit: true };
+    for (let i = 0; i < 5; i++) {
+      await login(
+        store,
+        { email: "ip2@example.com", password: "PassWord1", ip: "10.0.0.2" },
+        opts
+      );
+    }
+    const result = await login(
+      store,
+      { email: "ip2@example.com", password: "PassWord1", ip: "10.0.0.2" },
+      opts
+    );
+    expect(result.success).toBe(false);
+    if (result.success) return;
+    expect("reason" in result && result.reason).toBe("rate_limited");
+    expect("retryAfterSeconds" in result && result.retryAfterSeconds).toBeGreaterThan(0);
+  });
+
+  it("allows again after 15 min window", async () => {
+    const store = memoryStore();
+    await register(store, { email: "ip3@example.com", password: "PassWord1" });
+    const opts = { useIpRateLimit: true };
+    for (let i = 0; i < 5; i++) {
+      await login(
+        store,
+        { email: "ip3@example.com", password: "PassWord1", ip: "10.0.0.3" },
+        opts
+      );
+    }
+    let result = await login(
+      store,
+      { email: "ip3@example.com", password: "PassWord1", ip: "10.0.0.3" },
+      opts
+    );
+    expect(result.success).toBe(false);
+    if (result.success) return;
+    expect("reason" in result && result.reason).toBe("rate_limited");
+    vi.advanceTimersByTime(15 * 60 * 1000 + 1);
+    result = await login(
+      store,
+      { email: "ip3@example.com", password: "PassWord1", ip: "10.0.0.3" },
+      opts
+    );
+    expect(result.success).toBe(true);
+  });
+
+  it("tracks IPs independently", async () => {
+    const store = memoryStore();
+    await register(store, { email: "ip4@example.com", password: "PassWord1" });
+    const opts = { useIpRateLimit: true };
+    for (let i = 0; i < 5; i++) {
+      await login(
+        store,
+        { email: "ip4@example.com", password: "PassWord1", ip: "10.0.0.4" },
+        opts
+      );
+    }
+    await login(
+      store,
+      { email: "ip4@example.com", password: "PassWord1", ip: "10.0.0.5" },
+      opts
+    );
+    const blocked = await login(
+      store,
+      { email: "ip4@example.com", password: "PassWord1", ip: "10.0.0.4" },
+      opts
+    );
+    const allowed = await login(
+      store,
+      { email: "ip4@example.com", password: "PassWord1", ip: "10.0.0.5" },
+      opts
+    );
+    expect(blocked.success).toBe(false);
+    if (!blocked.success) expect(blocked.reason).toBe("rate_limited");
+    expect(allowed.success).toBe(true);
+  });
+
+  it("does not apply when ip is missing", async () => {
+    const store = memoryStore();
+    await register(store, { email: "ip5@example.com", password: "PassWord1" });
+    for (let i = 0; i < 6; i++) {
+      const result = await login(
+        store,
+        { email: "ip5@example.com", password: "PassWord1" },
+        { useIpRateLimit: true }
+      );
+      expect(result.success).toBe(true);
+    }
   });
 });
 

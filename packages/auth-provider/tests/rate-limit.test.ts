@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import {
   checkRateLimit,
   recordAttempt,
+  clearAttempts,
   createRateLimiter,
 } from "../src/rate-limit.js";
 
@@ -43,6 +44,14 @@ describe("rate limit (default 5 per 15 min)", () => {
     recordAttempt("10.0.0.2");
     expect(checkRateLimit("10.0.0.1").allowed).toBe(false);
     expect(checkRateLimit("10.0.0.2").allowed).toBe(true);
+  });
+
+  it("allows again after clearAttempts", () => {
+    const ip = "192.168.1.4";
+    for (let i = 0; i < 5; i++) recordAttempt(ip);
+    expect(checkRateLimit(ip).allowed).toBe(false);
+    clearAttempts(ip);
+    expect(checkRateLimit(ip).allowed).toBe(true);
   });
 });
 

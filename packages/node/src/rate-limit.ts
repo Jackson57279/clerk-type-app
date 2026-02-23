@@ -43,6 +43,13 @@ function createStore() {
   };
 }
 
+const LOGIN_WINDOW_MS = 15 * 60 * 1000;
+const LOGIN_MAX_ATTEMPTS = 5;
+
+export function loginRateLimitMiddleware(): ReturnType<typeof rateLimitMiddleware> {
+  return rateLimitMiddleware({ windowMs: LOGIN_WINDOW_MS, max: LOGIN_MAX_ATTEMPTS });
+}
+
 export function rateLimitMiddleware(options: RateLimitOptions = {}) {
   const windowMs = options.windowMs ?? 60_000;
   const max = options.max ?? 100;
