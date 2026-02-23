@@ -133,6 +133,61 @@ describe("magic link token expiry", () => {
   });
 });
 
+describe("magic link device binding", () => {
+  it("verify succeeds when no fingerprint was stored (optional)", () => {
+    const { token } = createMagicLinkToken({ email: "u@x.com" }, SECRET);
+    expect(verifyMagicLinkToken(token, SECRET)).not.toBeNull();
+    expect(verifyMagicLinkToken(token, SECRET, { deviceFingerprint: null })).not.toBeNull();
+    expect(verifyMagicLinkToken(token, SECRET, { deviceFingerprint: "any" })).not.toBeNull();
+  });
+
+  it("verify succeeds when token has fingerprint and current fingerprint matches", () => {
+    const { token } = createMagicLinkToken(
+      { email: "u@x.com", deviceFingerprint: "device-A" },
+      SECRET
+    );
+    const payload = verifyMagicLinkToken(token, SECRET, { deviceFingerprint: "device-A" });
+    expect(payload).not.toBeNull();
+    expect(payload?.email).toBe("u@x.com");
+  });
+
+  it("verify succeeds when fingerprint matches after trim", () => {
+    const { token } = createMagicLinkToken(
+      { email: "u@x.com", deviceFingerprint: " device-A " },
+      SECRET
+    );
+    expect(verifyMagicLinkToken(token, SECRET, { deviceFingerprint: "device-A" })).not.toBeNull();
+    expect(verifyMagicLinkToken(token, SECRET, { deviceFingerprint: "  device-A  " })).not.toBeNull();
+  });
+
+  it("verify returns null when token has fingerprint but current is missing", () => {
+    const { token } = createMagicLinkToken(
+      { email: "u@x.com", deviceFingerprint: "device-A" },
+      SECRET
+    );
+    expect(verifyMagicLinkToken(token, SECRET)).toBeNull();
+    expect(verifyMagicLinkToken(token, SECRET, { deviceFingerprint: null })).toBeNull();
+    expect(verifyMagicLinkToken(token, SECRET, { deviceFingerprint: undefined })).toBeNull();
+  });
+
+  it("verify returns null when token has fingerprint but current does not match", () => {
+    const { token } = createMagicLinkToken(
+      { email: "u@x.com", deviceFingerprint: "device-A" },
+      SECRET
+    );
+    expect(verifyMagicLinkToken(token, SECRET, { deviceFingerprint: "device-B" })).toBeNull();
+  });
+
+  it("create ignores empty string deviceFingerprint (no binding)", () => {
+    const { token } = createMagicLinkToken(
+      { email: "u@x.com", deviceFingerprint: "" },
+      SECRET
+    );
+    expect(verifyMagicLinkToken(token, SECRET)).not.toBeNull();
+    expect(verifyMagicLinkToken(token, SECRET, { deviceFingerprint: null })).not.toBeNull();
+  });
+});
+
 describe("DEFAULT_MAGIC_LINK_TTL_MS", () => {
   it("is 15 minutes in milliseconds", () => {
     expect(DEFAULT_MAGIC_LINK_TTL_MS).toBe(15 * 60 * 1000);

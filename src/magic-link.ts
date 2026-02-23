@@ -1,4 +1,5 @@
 import { createHmac, randomBytes } from "crypto";
+import { hashDeviceFingerprint, validateDeviceBinding } from "./device-binding.js";
 
 export const DEFAULT_MAGIC_LINK_TTL_MS = 15 * 60 * 1000;
 
@@ -20,6 +21,7 @@ function decodeBase64url(str: string): Buffer {
 export interface MagicLinkPayload {
   email: string;
   userId?: string;
+  deviceFingerprint?: string | null;
 }
 
 export interface CreateMagicLinkTokenOptions {
@@ -50,11 +52,16 @@ export function createMagicLinkToken(
   const expiresAt = Date.now() + ttlMs;
   const expSec = Math.floor(expiresAt / 1000);
   const jti = randomBytes(16).toString("hex");
+  const deviceFingerprintHash =
+    payload.deviceFingerprint != null && payload.deviceFingerprint !== ""
+      ? hashDeviceFingerprint(payload.deviceFingerprint)
+      : undefined;
   const data = {
     exp: expSec,
     jti,
     email: payload.email,
     ...(payload.userId !== undefined && { userId: payload.userId }),
+    ...(deviceFingerprintHash !== undefined && { deviceFingerprintHash }),
   };
   const payloadStr = JSON.stringify(data);
   const payloadB64 = base64url(Buffer.from(payloadStr, "utf8"));
@@ -67,6 +74,7 @@ export function createMagicLinkToken(
 
 export interface VerifyMagicLinkTokenOptions {
   usedTokenStore?: SingleUseTokenStore;
+  deviceFingerprint?: string | null;
 }
 
 export function verifyMagicLinkToken(
@@ -87,14 +95,15 @@ export function verifyMagicLinkToken(
   const expectedSig = createHmac("sha256", secret).update(payloadB64).digest();
   const expectedB64 = base64url(expectedSig);
   if (sigB64 !== expectedB64) return null;
-  let data: { exp: number; jti: string; email: string; userId?: string };
+  let data: {
+    exp: number;
+    jti: string;
+    email: string;
+    userId?: string;
+    deviceFingerprintHash?: string;
+  };
   try {
-    data = JSON.parse(payloadBuf.toString("utf8")) as {
-      exp: number;
-      jti: string;
-      email: string;
-      userId?: string;
-    };
+    data = JSON.parse(payloadBuf.toString("utf8")) as typeof data;
   } catch {
     return null;
   }
@@ -105,6 +114,15 @@ export function verifyMagicLinkToken(
   }
   const store = options.usedTokenStore;
   if (store?.isUsed(data.jti)) return null;
+  if (
+    data.deviceFingerprintHash != null &&
+    !validateDeviceBinding({
+      storedFingerprintHash: data.deviceFingerprintHash,
+      currentFingerprint: options.deviceFingerprint ?? null,
+    })
+  ) {
+    return null;
+  }
   if (store) store.markUsed(data.jti, data.exp * 1000);
   return {
     jti: data.jti,
