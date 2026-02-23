@@ -1,6 +1,12 @@
 import { describe, it, expect } from "vitest";
 import { generateSecureToken, SECURE_TOKEN_BYTES } from "../src/secure-token.js";
 
+describe("SECURE_TOKEN_BYTES", () => {
+  it("is 32 for cryptographically secure token length", () => {
+    expect(SECURE_TOKEN_BYTES).toBe(32);
+  });
+});
+
 describe("generateSecureToken", () => {
   it("returns a string", () => {
     expect(typeof generateSecureToken()).toBe("string");
