@@ -10,7 +10,12 @@ import {
   type SpInitiatedSpConfig,
   type SpInitiatedIdpConfig,
 } from "../src/sp-initiated-sso.js";
-import { createLogoutResponse } from "../src/single-logout.js";
+import {
+  createLogoutResponse,
+  handleSpInitiatedLogout,
+  parseLogoutRequest,
+  type IdpLogoutConfig,
+} from "../src/single-logout.js";
 import { createIdpInitiatedResponse } from "../src/idp-initiated-sso.js";
 import { DOMParser } from "@xmldom/xmldom";
 
@@ -310,5 +315,49 @@ describe("validateSpInitiatedLogoutResponse", () => {
     await expect(
       validateSpInitiatedLogoutResponse(spConfig(), idpConfig(), { SAMLResponse: notLogout })
     ).rejects.toThrow();
+  });
+});
+
+describe("SLO end-to-end", () => {
+  it("SP-initiated logout: SP creates logout URL, IdP handles request and returns response, SP validates response", async () => {
+    const nameId = "user@example.com";
+    const sessionIndex = "sess_abc";
+    const { logoutUrl } = await createSpInitiatedLogoutRequestUrl(
+      spConfig(),
+      idpConfig(),
+      { nameId, sessionIndex }
+    );
+    const samlRequest = new URL(logoutUrl).searchParams.get("SAMLRequest");
+    expect(samlRequest).toBeTruthy();
+    const parsed = parseLogoutRequest(samlRequest!);
+    expect(parsed.nameId).toBe(nameId);
+    expect(parsed.sessionIndex).toBe(sessionIndex);
+
+    const idpLogoutConfig: IdpLogoutConfig = {
+      entityId: "https://idp.example.com/metadata",
+      privateKey: TEST_SP_KEY,
+      certificate: TEST_CERT,
+    };
+    const invalidated: { nameId: string; sessionIndex?: string }[] = [];
+    const { redirectUrl } = await handleSpInitiatedLogout({
+      samlRequestBase64: samlRequest!,
+      idpConfig: idpLogoutConfig,
+      getSpLogoutUrl: (issuer) =>
+        issuer === "https://sp.example.com/metadata.xml" ? "https://sp.example.com/slo" : null,
+      invalidateSession: (params) => invalidated.push(params),
+    });
+    expect(invalidated).toHaveLength(1);
+    expect(invalidated[0]?.nameId).toBe(nameId);
+    expect(invalidated[0]?.sessionIndex).toBe(sessionIndex);
+
+    const responseUrl = new URL(redirectUrl);
+    const samlResponseDeflated = responseUrl.searchParams.get("SAMLResponse");
+    expect(samlResponseDeflated).toBeTruthy();
+    const xml = zlib.inflateRawSync(Buffer.from(samlResponseDeflated!, "base64")).toString("utf8");
+    const samlResponseBase64 = Buffer.from(xml, "utf8").toString("base64");
+    const validated = await validateSpInitiatedLogoutResponse(spConfig(), idpConfig(), {
+      SAMLResponse: samlResponseBase64,
+    });
+    expect(validated.inResponseTo).toBe(parsed.requestId);
   });
 });
