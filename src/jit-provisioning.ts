@@ -2,6 +2,7 @@ import type { SpInitiatedAssertionResult } from "./sp-initiated-sso.js";
 
 export interface JitAttributeMapping {
   emailAttribute?: string;
+  nameAttribute?: string;
   givenNameAttribute?: string;
   surnameAttribute?: string;
   groupsAttribute?: string;
@@ -10,6 +11,7 @@ export interface JitAttributeMapping {
 
 export interface JitMappedClaims {
   email: string | undefined;
+  name: string | undefined;
   firstName: string | undefined;
   lastName: string | undefined;
   groups: string[];
@@ -37,6 +39,9 @@ export function extractMappedClaims(
   const email = mapping.emailAttribute
     ? firstValue(attrs, mapping.emailAttribute)
     : undefined;
+  const name = mapping.nameAttribute
+    ? firstValue(attrs, mapping.nameAttribute)
+    : undefined;
   const firstName = mapping.givenNameAttribute
     ? firstValue(attrs, mapping.givenNameAttribute)
     : undefined;
@@ -49,12 +54,13 @@ export function extractMappedClaims(
   const roles = mapping.rolesAttribute
     ? allValues(attrs, mapping.rolesAttribute)
     : [];
-  return { email, firstName, lastName, groups, roles };
+  return { email, name, firstName, lastName, groups, roles };
 }
 
 export interface JitProvisionUserData {
   samlNameId: string;
   email: string;
+  name?: string;
   firstName?: string;
   lastName?: string;
   groups?: string[];
@@ -65,6 +71,7 @@ export interface JitUser {
   id: string;
   email: string;
   samlNameId?: string;
+  name?: string;
   firstName?: string;
   lastName?: string;
   groups?: string[];
@@ -118,6 +125,7 @@ export async function getOrProvisionUser(
   user = await store.createUser(organizationId, {
     samlNameId: assertion.nameId,
     email,
+    name: claims.name,
     firstName: claims.firstName,
     lastName: claims.lastName,
     groups: claims.groups.length > 0 ? claims.groups : undefined,

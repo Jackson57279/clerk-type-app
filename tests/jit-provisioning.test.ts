@@ -10,6 +10,7 @@ import {
 import type { SpInitiatedAssertionResult } from "../src/sp-initiated-sso.js";
 
 const EMAIL_ATTR = "http://schemas.xmlsoap.org/ws/2005/05/identity/claims/emailaddress";
+const NAME_ATTR = "http://schemas.xmlsoap.org/ws/2005/05/identity/claims/name";
 const GIVEN_ATTR = "http://schemas.xmlsoap.org/ws/2005/05/identity/claims/givenname";
 const SURNAME_ATTR = "http://schemas.xmlsoap.org/ws/2005/05/identity/claims/surname";
 
@@ -27,6 +28,7 @@ function assertion(overrides: Partial<SpInitiatedAssertionResult> = {}): SpIniti
 function mapping(overrides: Partial<JitAttributeMapping> = {}): JitAttributeMapping {
   return {
     emailAttribute: EMAIL_ATTR,
+    nameAttribute: NAME_ATTR,
     givenNameAttribute: GIVEN_ATTR,
     surnameAttribute: SURNAME_ATTR,
     groupsAttribute: "groups",
@@ -36,18 +38,31 @@ function mapping(overrides: Partial<JitAttributeMapping> = {}): JitAttributeMapp
 }
 
 describe("extractMappedClaims", () => {
-  it("extracts email, first name, last name from assertion attributes", () => {
+  it("extracts email, name, first name, last name from assertion attributes", () => {
     const a = assertion({
       attributes: {
         [EMAIL_ATTR]: ["jane@example.com"],
+        [NAME_ATTR]: ["Jane Doe"],
         [GIVEN_ATTR]: ["Jane"],
         [SURNAME_ATTR]: ["Doe"],
       },
     });
     const claims = extractMappedClaims(a, mapping());
     expect(claims.email).toBe("jane@example.com");
+    expect(claims.name).toBe("Jane Doe");
     expect(claims.firstName).toBe("Jane");
     expect(claims.lastName).toBe("Doe");
+  });
+
+  it("extracts name (single full-name attribute) when configured", () => {
+    const a = assertion({
+      attributes: {
+        displayName: ["Alice Smith"],
+      },
+    });
+    const claims = extractMappedClaims(a, { nameAttribute: "displayName" });
+    expect(claims.name).toBe("Alice Smith");
+    expect(claims.email).toBeUndefined();
   });
 
   it("extracts multi-valued groups and roles", () => {
@@ -66,6 +81,7 @@ describe("extractMappedClaims", () => {
     const a = assertion({ attributes: {} });
     const claims = extractMappedClaims(a, mapping());
     expect(claims.email).toBeUndefined();
+    expect(claims.name).toBeUndefined();
     expect(claims.firstName).toBeUndefined();
     expect(claims.lastName).toBeUndefined();
     expect(claims.groups).toEqual([]);
@@ -112,6 +128,7 @@ function memoryStore(initialUsers: JitUser[] = []): JitUserStore {
         id,
         email: data.email,
         samlNameId: data.samlNameId,
+        name: data.name,
         firstName: data.firstName,
         lastName: data.lastName,
         groups: data.groups,
@@ -169,9 +186,11 @@ describe("getOrProvisionUser", () => {
         nameId: "newuser@example.com",
         attributes: {
           [EMAIL_ATTR]: ["newuser@example.com"],
+          [NAME_ATTR]: ["New User"],
           [GIVEN_ATTR]: ["New"],
           [SURNAME_ATTR]: ["User"],
           groups: ["eng"],
+          roles: ["viewer"],
         },
       }),
       mapping(),
@@ -181,9 +200,11 @@ describe("getOrProvisionUser", () => {
     expect(result.created).toBe(true);
     expect(result.user.email).toBe("newuser@example.com");
     expect(result.user.samlNameId).toBe("newuser@example.com");
+    expect(result.user.name).toBe("New User");
     expect(result.user.firstName).toBe("New");
     expect(result.user.lastName).toBe("User");
     expect(result.user.groups).toEqual(["eng"]);
+    expect(result.user.roles).toEqual(["viewer"]);
   });
 
   it("uses nameId as email fallback when email attribute missing", async () => {
