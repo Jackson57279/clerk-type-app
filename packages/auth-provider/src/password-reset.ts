@@ -1,6 +1,6 @@
 import { createHmac, randomBytes } from "crypto";
 
-export const DEFAULT_PASSWORD_RESET_TTL_MS = 60 * 60 * 1000;
+export const DEFAULT_PASSWORD_RESET_TTL_MS = 15 * 60 * 1000;
 
 const JWT_HEADER = { alg: "HS256", typ: "JWT" } as const;
 

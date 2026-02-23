@@ -39,16 +39,16 @@ describe("createPasswordResetToken", () => {
     expect(ttlMs).toBeGreaterThanOrEqual(DEFAULT_PASSWORD_RESET_TTL_MS - 1000);
   });
 
-  it("uses default TTL of 1 hour", () => {
+  it("uses default TTL of 15 minutes", () => {
     const before = Date.now();
     const result = createPasswordResetToken(
       { userId: "u1", email: "u@example.com" },
       SECRET
     );
     const after = Date.now();
-    const oneHour = 60 * 60 * 1000;
-    expect(result.expiresAt).toBeGreaterThanOrEqual(before + oneHour - 1000);
-    expect(result.expiresAt).toBeLessThanOrEqual(after + oneHour + 1000);
+    const fifteenMin = 15 * 60 * 1000;
+    expect(result.expiresAt).toBeGreaterThanOrEqual(before + fifteenMin - 1000);
+    expect(result.expiresAt).toBeLessThanOrEqual(after + fifteenMin + 1000);
   });
 
   it("accepts custom ttlMs", () => {
@@ -57,9 +57,9 @@ describe("createPasswordResetToken", () => {
       SECRET,
       { ttlMs: 5 * 60 * 1000 }
     );
-    const fiveHoursFromNow = Date.now() + 5 * 60 * 1000;
-    expect(result.expiresAt).toBeGreaterThanOrEqual(fiveHoursFromNow - 2000);
-    expect(result.expiresAt).toBeLessThanOrEqual(fiveHoursFromNow + 2000);
+    const fiveMinFromNow = Date.now() + 5 * 60 * 1000;
+    expect(result.expiresAt).toBeGreaterThanOrEqual(fiveMinFromNow - 2000);
+    expect(result.expiresAt).toBeLessThanOrEqual(fiveMinFromNow + 2000);
   });
 
   it("produces different jti per call", () => {
@@ -73,6 +73,12 @@ describe("createPasswordResetToken", () => {
     );
     expect(a.jti).not.toBe(b.jti);
     expect(a.token).not.toBe(b.token);
+  });
+});
+
+describe("DEFAULT_PASSWORD_RESET_TTL_MS", () => {
+  it("is 15 minutes in milliseconds (short expiry for link format)", () => {
+    expect(DEFAULT_PASSWORD_RESET_TTL_MS).toBe(15 * 60 * 1000);
   });
 });
 
