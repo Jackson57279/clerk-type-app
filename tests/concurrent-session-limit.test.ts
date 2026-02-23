@@ -116,6 +116,14 @@ describe("concurrent session limit (default 5 per user)", () => {
     removeSession("s0");
     expect(getActiveCountByUser("u1")).toBe(1);
   });
+
+  it("limit 1 allows only one active session per user (evict oldest)", () => {
+    const userId = "u1";
+    registerSession("s0", userId, null);
+    const r = checkCanCreateSession(userId, null, { user: 1 });
+    expect(r.allowed).toBe(true);
+    expect(r.evictSessionIds).toEqual(["s0"]);
+  });
 });
 
 describe("createConcurrentSessionLimit (custom defaults)", () => {
