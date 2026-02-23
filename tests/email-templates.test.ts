@@ -78,6 +78,27 @@ describe("renderPasswordResetEmail", () => {
     expect(result.html).toContain("#000");
     expect(result.html).toContain("https://r.com");
   });
+
+  it("injects favicon link in default template when branding has faviconUrl", () => {
+    const result = renderPasswordResetEmail(
+      { resetLink: "https://x.com/r", expiresInMinutes: 15 },
+      { branding: { faviconUrl: "https://cdn.example.com/favicon.ico" } }
+    );
+    expect(result.html).toContain(
+      '<link rel="icon" href="https://cdn.example.com/favicon.ico" />'
+    );
+  });
+
+  it("replaces {{faviconUrl}} in custom template", () => {
+    const result = renderPasswordResetEmail(
+      { resetLink: "https://r.com", expiresInMinutes: 5 },
+      {
+        branding: { faviconUrl: "https://brand.com/fav.ico" },
+        htmlTemplate: "Favicon: {{faviconUrl}}",
+      }
+    );
+    expect(result.html).toContain("Favicon: https://brand.com/fav.ico");
+  });
 });
 
 describe("renderDoubleOptInEmail", () => {
@@ -124,6 +145,20 @@ describe("renderDoubleOptInEmail", () => {
     );
     expect(result.text).toBe(
       "Confirm delete account: https://confirm.com (20 min)"
+    );
+  });
+
+  it("injects favicon link in default template when branding has faviconUrl", () => {
+    const result = renderDoubleOptInEmail(
+      {
+        confirmationLink: "https://x.com/c",
+        operation: "change email",
+        expiresInMinutes: 15,
+      },
+      { branding: { faviconUrl: "https://example.com/fav.ico" } }
+    );
+    expect(result.html).toContain(
+      '<link rel="icon" href="https://example.com/fav.ico" />'
     );
   });
 });
@@ -192,5 +227,15 @@ describe("renderMagicLinkEmail", () => {
     expect(result.html).toContain("Acme");
     expect(result.html).toContain("#111");
     expect(result.html).toContain("https://l.com");
+  });
+
+  it("includes favicon link in default template when branding has faviconUrl", () => {
+    const result = renderMagicLinkEmail(
+      { magicLink: "https://x.com/l", expiresInMinutes: 10 },
+      { branding: { faviconUrl: "https://app.example.com/fav.ico" } }
+    );
+    expect(result.html).toContain(
+      '<link rel="icon" href="https://app.example.com/fav.ico" />'
+    );
   });
 });

@@ -32,6 +32,14 @@ function replaceAll(
   return out;
 }
 
+function defaultHead(brand: ReturnType<typeof mergeBranding>): string {
+  const faviconLink =
+    brand.faviconUrl !== ""
+      ? `<link rel="icon" href="${brand.faviconUrl}" />`
+      : "";
+  return `<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">${faviconLink}`;
+}
+
 function defaultPasswordResetHtml(brand: ReturnType<typeof mergeBranding>): string {
   const logoBlock =
     brand.logoUrl !== ""
@@ -39,7 +47,7 @@ function defaultPasswordResetHtml(brand: ReturnType<typeof mergeBranding>): stri
       : "";
   return `<!DOCTYPE html>
 <html>
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<head>${defaultHead(brand)}</head>
 <body style="font-family:system-ui,sans-serif;line-height:1.5;color:#334155;max-width:480px;margin:0 auto;padding:24px;">
   ${logoBlock}
   <h1 style="color:${brand.primaryColor};font-size:1.5rem;margin:0 0 16px;">Reset your password</h1>
@@ -61,7 +69,7 @@ function defaultDoubleOptInHtml(brand: ReturnType<typeof mergeBranding>): string
       : "";
   return `<!DOCTYPE html>
 <html>
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<head>${defaultHead(brand)}</head>
 <body style="font-family:system-ui,sans-serif;line-height:1.5;color:#334155;max-width:480px;margin:0 auto;padding:24px;">
   ${logoBlock}
   <h1 style="color:${brand.primaryColor};font-size:1.5rem;margin:0 0 16px;">Confirm your request</h1>
@@ -83,7 +91,7 @@ function defaultMagicLinkHtml(brand: ReturnType<typeof mergeBranding>): string {
       : "";
   return `<!DOCTYPE html>
 <html>
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<head>${defaultHead(brand)}</head>
 <body style="font-family:system-ui,sans-serif;line-height:1.5;color:#334155;max-width:480px;margin:0 auto;padding:24px;">
   ${logoBlock}
   <h1 style="color:${brand.primaryColor};font-size:1.5rem;margin:0 0 16px;">Sign in to ${brand.companyName}</h1>
@@ -119,6 +127,7 @@ export function renderPasswordResetEmail(
     logoUrl: brand.logoUrl,
     primaryColor: brand.primaryColor,
     secondaryColor: brand.secondaryColor,
+    faviconUrl: brand.faviconUrl,
   };
   return {
     html: replaceAll(htmlTemplate, vars),
@@ -148,6 +157,7 @@ export function renderDoubleOptInEmail(
     logoUrl: brand.logoUrl,
     primaryColor: brand.primaryColor,
     secondaryColor: brand.secondaryColor,
+    faviconUrl: brand.faviconUrl,
   };
   return {
     html: replaceAll(htmlTemplate, vars),
@@ -176,6 +186,7 @@ export function renderMagicLinkEmail(
     logoUrl: brand.logoUrl,
     primaryColor: brand.primaryColor,
     secondaryColor: brand.secondaryColor,
+    faviconUrl: brand.faviconUrl,
   };
   return {
     html: replaceAll(htmlTemplate, vars),
