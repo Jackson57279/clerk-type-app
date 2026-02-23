@@ -12,6 +12,7 @@ import {
   invalidateAllSessionsForUser,
   enforceConcurrentLimitAndRegister,
   regenerateSessionIdAndEnforceLimit,
+  createSessionAfterLoginWithConcurrentLimit,
 } from "../src/concurrent-session-limit.js";
 
 describe("concurrent session limit (default 5 per user)", () => {
@@ -217,9 +218,8 @@ describe("regenerateSessionIdAndEnforceLimit (session fixation prevention)", () 
       { onEvict: (ids) => evicted.push(...ids) }
     );
     expect(newId).toMatch(/^[a-f0-9]{64}$/);
-    expect(getActiveCountByUser("u1")).toBe(1);
-    expect(evicted).toContain("s0");
-    expect(evicted).toContain("s1");
+    expect(getActiveCountByUser("u1")).toBe(2);
+    expect(evicted).toEqual(["s0"]);
   });
 
   it("when user limit is 0 does not register new session, returns old id and removes old", () => {
@@ -228,6 +228,44 @@ describe("regenerateSessionIdAndEnforceLimit (session fixation prevention)", () 
     const out = regenerateSessionIdAndEnforceLimit(oldId, "u1", null, { user: 0 });
     expect(out).toBe(oldId);
     expect(getActiveCountByUser("u1")).toBe(0);
+  });
+});
+
+describe("createSessionAfterLoginWithConcurrentLimit", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    clearAllSessions();
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("returns new session ID, Set-Cookie header, and evicted ids; enforces limit", () => {
+    registerSession("s0", "u1", null);
+    vi.advanceTimersByTime(100);
+    registerSession("s1", "u1", null);
+    const out = createSessionAfterLoginWithConcurrentLimit(
+      "pre-login-session",
+      "u1",
+      null,
+      { user: 2 }
+    );
+    expect(out.newSessionId).not.toBe("pre-login-session");
+    expect(out.newSessionId).toMatch(/^[a-f0-9]{64}$/);
+    expect(out.setCookieHeader).toMatch(/^session=/);
+    expect(out.evictedSessionIds).toContain("s0");
+    expect(getActiveCountByUser("u1")).toBe(2);
+  });
+
+  it("uses custom cookie name when provided", () => {
+    const out = createSessionAfterLoginWithConcurrentLimit(
+      "old",
+      "u1",
+      null,
+      { user: 5 },
+      { cookieName: "sid" }
+    );
+    expect(out.setCookieHeader).toMatch(/^sid=/);
   });
 });
 

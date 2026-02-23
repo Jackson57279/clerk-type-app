@@ -1,4 +1,5 @@
 import { regenerateSessionId } from "./session-fixation.js";
+import { buildSessionCookie } from "./http-only-cookie.js";
 
 export {
   regenerateSessionId,
@@ -6,6 +7,7 @@ export {
   type SessionStore,
   type CreateSessionAfterLoginOptions,
 } from "./session-fixation.js";
+export type { SessionCookieOptions } from "./http-only-cookie.js";
 
 const DEFAULT_USER_LIMIT = 5;
 const MIN_ENV_LIMIT = 0;
@@ -140,6 +142,13 @@ export interface EnforceAndRegisterOptions {
   onEvict?: (sessionIds: string[]) => void;
 }
 
+export interface CreateSessionAfterLoginWithLimitOptions
+  extends EnforceAndRegisterOptions {
+  cookieName?: string;
+  maxAgeSeconds?: number;
+  path?: string;
+}
+
 export function enforceConcurrentLimitAndRegister(
   newSessionId: string,
   userId: string,
@@ -172,14 +181,45 @@ export function regenerateSessionIdAndEnforceLimit(
     removeSession(oldSessionId);
     return oldSessionId;
   }
+  for (const id of result.evictSessionIds) removeSession(id);
+  options?.onEvict?.(result.evictSessionIds);
   const newSessionId = regenerateSessionId(
     oldSessionId,
     userId,
     orgId,
     globalSessionStore
   );
-  enforceConcurrentLimitAndRegister(newSessionId, userId, orgId, limits, options);
+  registerSession(newSessionId, userId, orgId);
   return newSessionId;
+}
+
+export interface CreateSessionAfterLoginWithLimitResult {
+  newSessionId: string;
+  setCookieHeader: string;
+  evictedSessionIds: string[];
+}
+
+export function createSessionAfterLoginWithConcurrentLimit(
+  oldSessionId: string,
+  userId: string,
+  orgId: string | null,
+  limits: SessionLimits,
+  options: CreateSessionAfterLoginWithLimitOptions = {}
+): CreateSessionAfterLoginWithLimitResult {
+  const evictedSessionIds: string[] = [];
+  const { cookieName = "session", ...cookieOpts } = options;
+  const newSessionId = regenerateSessionIdAndEnforceLimit(
+    oldSessionId,
+    userId,
+    orgId,
+    limits,
+    { onEvict: (ids) => evictedSessionIds.push(...ids) }
+  );
+  const setCookieHeader = buildSessionCookie(cookieName, newSessionId, {
+    maxAgeSeconds: cookieOpts.maxAgeSeconds,
+    path: cookieOpts.path,
+  });
+  return { newSessionId, setCookieHeader, evictedSessionIds };
 }
 
 export function getActiveCountByUser(userId: string): number {
