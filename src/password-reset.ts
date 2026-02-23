@@ -111,9 +111,9 @@ export function verifyPasswordResetToken(
   ) {
     return null;
   }
-  const store = options.usedTokenStore;
-  if (store?.isUsed(data.jti)) return null;
-  if (store) store.markUsed(data.jti, data.exp * 1000);
+  const store = options.usedTokenStore ?? defaultUsedTokenStore;
+  if (store.isUsed(data.jti)) return null;
+  store.markUsed(data.jti, data.exp * 1000);
   return {
     jti: data.jti,
     userId: data.userId,
@@ -136,5 +136,14 @@ export function createMemoryUsedTokenStore(): SingleUseTokenStore {
     markUsed(jti: string, expiresAtMs: number): void {
       used.set(jti, expiresAtMs);
     },
+  };
+}
+
+const defaultUsedTokenStore = createMemoryUsedTokenStore();
+
+export function createNoOpUsedTokenStore(): SingleUseTokenStore {
+  return {
+    isUsed: () => false,
+    markUsed: () => {},
   };
 }

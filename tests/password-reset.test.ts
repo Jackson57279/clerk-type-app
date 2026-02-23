@@ -3,6 +3,7 @@ import {
   createPasswordResetToken,
   verifyPasswordResetToken,
   createMemoryUsedTokenStore,
+  createNoOpUsedTokenStore,
   DEFAULT_PASSWORD_RESET_TTL_MS,
 } from "../src/password-reset.js";
 
@@ -181,13 +182,23 @@ describe("single-use: token invalidated after use", () => {
     expect(second).toBeNull();
   });
 
-  it("without store, token can be verified multiple times (backward compatible)", () => {
+  it("token is invalidated after use by default (second verify returns null)", () => {
     const { token } = createPasswordResetToken(
       { userId: "u1", email: "e@x.com" },
       SECRET
     );
     expect(verifyPasswordResetToken(token, SECRET)).not.toBeNull();
-    expect(verifyPasswordResetToken(token, SECRET)).not.toBeNull();
+    expect(verifyPasswordResetToken(token, SECRET)).toBeNull();
+  });
+
+  it("with no-op store, token can be verified multiple times", () => {
+    const noop = createNoOpUsedTokenStore();
+    const { token } = createPasswordResetToken(
+      { userId: "u1", email: "e@x.com" },
+      SECRET
+    );
+    expect(verifyPasswordResetToken(token, SECRET, { usedTokenStore: noop })).not.toBeNull();
+    expect(verifyPasswordResetToken(token, SECRET, { usedTokenStore: noop })).not.toBeNull();
   });
 
   it("different tokens are independent with same store", () => {

@@ -3,6 +3,7 @@ import {
   createConfirmationToken,
   verifyConfirmationToken,
   createMemoryConfirmationStore,
+  createNoOpConfirmationStore,
   isSensitiveOperation,
   requireConfirmationForSensitiveOperation,
   SENSITIVE_OPERATIONS,
@@ -175,10 +176,17 @@ describe("single-use tracking", () => {
     expect(second).toBeNull();
   });
 
-  it("without store, token can be verified multiple times", () => {
+  it("token is invalidated after use by default (second verify returns null)", () => {
     const { token } = createConfirmationToken(basePayload, SECRET);
     expect(verifyConfirmationToken(token, SECRET)).not.toBeNull();
-    expect(verifyConfirmationToken(token, SECRET)).not.toBeNull();
+    expect(verifyConfirmationToken(token, SECRET)).toBeNull();
+  });
+
+  it("with no-op store, token can be verified multiple times", () => {
+    const noop = createNoOpConfirmationStore();
+    const { token } = createConfirmationToken(basePayload, SECRET);
+    expect(verifyConfirmationToken(token, SECRET, { usedTokenStore: noop })).not.toBeNull();
+    expect(verifyConfirmationToken(token, SECRET, { usedTokenStore: noop })).not.toBeNull();
   });
 
   it("different tokens are independent with same store", () => {

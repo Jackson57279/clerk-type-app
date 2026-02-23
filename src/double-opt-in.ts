@@ -132,9 +132,9 @@ export function verifyConfirmationToken(
   if (!SENSITIVE_OPERATIONS.includes(data.operation as SensitiveOperationType)) {
     return null;
   }
-  const store = options.usedTokenStore;
-  if (store?.isUsed(data.jti)) return null;
-  if (store) store.markUsed(data.jti, data.exp * 1000);
+  const store = options.usedTokenStore ?? defaultConfirmationStore;
+  if (store.isUsed(data.jti)) return null;
+  store.markUsed(data.jti, data.exp * 1000);
   return {
     jti: data.jti,
     userId: data.userId,
@@ -159,6 +159,15 @@ export function createMemoryConfirmationStore(): SingleUseConfirmationStore {
     markUsed(jti: string, expiresAtMs: number): void {
       used.set(jti, expiresAtMs);
     },
+  };
+}
+
+const defaultConfirmationStore = createMemoryConfirmationStore();
+
+export function createNoOpConfirmationStore(): SingleUseConfirmationStore {
+  return {
+    isUsed: () => false,
+    markUsed: () => {},
   };
 }
 
