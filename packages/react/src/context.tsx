@@ -4,6 +4,7 @@ import type { AuthState, Session, User } from "./types.js";
 
 export interface AuthContextValue extends AuthState {
   publishableKey: string;
+  apiUrl: string | null;
   reload: () => Promise<void>;
 }
 
@@ -61,9 +62,10 @@ export function AuthContextProvider(props: {
     () => ({
       ...state,
       publishableKey,
+      apiUrl: apiUrl ?? null,
       reload: load,
     }),
-    [state, publishableKey, load]
+    [state, publishableKey, apiUrl, load]
   );
 
   return (
