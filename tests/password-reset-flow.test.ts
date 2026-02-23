@@ -64,6 +64,79 @@ describe("requestPasswordReset", () => {
     const sentHtml = sentArgs && sentArgs[0] ? (sentArgs[0] as { html: string }).html : "";
     expect(sentHtml).toContain("https://app.example.com/reset?t=");
   });
+
+  it("uses fallbackSendEmail when primary sendEmail fails", async () => {
+    const findUserByEmail = vi.fn().mockResolvedValue({
+      userId: "user-1",
+      email: "user@example.com",
+    });
+    const sendEmail = vi.fn().mockRejectedValue(new Error("SMTP down"));
+    const fallbackSendEmail = vi.fn().mockResolvedValue(undefined);
+    const buildResetLink = (t: string) => `https://app.example.com/reset?t=${t}`;
+
+    const result = await requestPasswordReset({
+      email: "user@example.com",
+      secret: SECRET,
+      findUserByEmail,
+      buildResetLink,
+      sendEmail,
+      fallbackSendEmail,
+    });
+
+    expect(result).toEqual({ sent: true });
+    expect(sendEmail).toHaveBeenCalledTimes(1);
+    expect(fallbackSendEmail).toHaveBeenCalledTimes(1);
+    expect(fallbackSendEmail).toHaveBeenCalledWith(
+      expect.objectContaining({
+        to: "user@example.com",
+        html: expect.stringContaining("Reset your password"),
+        text: expect.stringContaining("Reset your password"),
+      })
+    );
+  });
+
+  it("throws when both sendEmail and fallbackSendEmail fail", async () => {
+    const findUserByEmail = vi.fn().mockResolvedValue({
+      userId: "user-1",
+      email: "user@example.com",
+    });
+    const sendEmail = vi.fn().mockRejectedValue(new Error("SMTP down"));
+    const fallbackSendEmail = vi.fn().mockRejectedValue(new Error("Fallback down"));
+    const buildResetLink = (t: string) => `https://app.example.com/reset?t=${t}`;
+
+    await expect(
+      requestPasswordReset({
+        email: "user@example.com",
+        secret: SECRET,
+        findUserByEmail,
+        buildResetLink,
+        sendEmail,
+        fallbackSendEmail,
+      })
+    ).rejects.toThrow("Failed to send password reset email");
+    expect(sendEmail).toHaveBeenCalledTimes(1);
+    expect(fallbackSendEmail).toHaveBeenCalledTimes(1);
+  });
+
+  it("throws when sendEmail fails and no fallback provided", async () => {
+    const findUserByEmail = vi.fn().mockResolvedValue({
+      userId: "user-1",
+      email: "user@example.com",
+    });
+    const sendEmail = vi.fn().mockRejectedValue(new Error("SMTP down"));
+    const buildResetLink = (t: string) => `https://app.example.com/reset?t=${t}`;
+
+    await expect(
+      requestPasswordReset({
+        email: "user@example.com",
+        secret: SECRET,
+        findUserByEmail,
+        buildResetLink,
+        sendEmail,
+      })
+    ).rejects.toThrow("Failed to send password reset email");
+    expect(sendEmail).toHaveBeenCalledTimes(1);
+  });
 });
 
 describe("resetPasswordWithToken", () => {

@@ -19,12 +19,19 @@ export interface UserByEmail {
   email: string;
 }
 
+export type SendEmailFn = (params: {
+  to: string;
+  html: string;
+  text: string;
+}) => Promise<void>;
+
 export interface RequestPasswordResetOptions {
   email: string;
   secret: string;
   findUserByEmail: (email: string) => Promise<UserByEmail | null>;
   buildResetLink: (token: string) => string;
-  sendEmail: (params: { to: string; html: string; text: string }) => Promise<void>;
+  sendEmail: SendEmailFn;
+  fallbackSendEmail?: SendEmailFn;
   usedTokenStore?: SingleUseTokenStore;
   branding?: BrandingConfig | null;
   ttlMs?: number;
@@ -43,6 +50,7 @@ export async function requestPasswordReset(
     findUserByEmail,
     buildResetLink,
     sendEmail,
+    fallbackSendEmail,
     branding,
     ttlMs = DEFAULT_PASSWORD_RESET_TTL_MS,
   } = options;
@@ -61,7 +69,20 @@ export async function requestPasswordReset(
     { resetLink, expiresInMinutes },
     { branding }
   );
-  await sendEmail({ to: user.email, html, text });
+  const payload = { to: user.email, html, text };
+  try {
+    await sendEmail(payload);
+  } catch {
+    if (fallbackSendEmail) {
+      try {
+        await fallbackSendEmail(payload);
+      } catch {
+        throw new Error("Failed to send password reset email");
+      }
+    } else {
+      throw new Error("Failed to send password reset email");
+    }
+  }
   return { sent: true };
 }
 
