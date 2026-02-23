@@ -8,6 +8,7 @@ import {
   createConcurrentSessionLimit,
   clearAllSessions,
   invalidateAllSessionsForUser,
+  enforceConcurrentLimitAndRegister,
 } from "../src/concurrent-session-limit.js";
 
 describe("concurrent session limit (default 5 per user)", () => {
@@ -124,6 +125,43 @@ describe("concurrent session limit (default 5 per user)", () => {
     const r = checkCanCreateSession(userId, null, { user: 1 });
     expect(r.allowed).toBe(true);
     expect(r.evictSessionIds).toEqual(["s0"]);
+  });
+});
+
+describe("enforceConcurrentLimitAndRegister", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    clearAllSessions();
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("registers new session when under limit", () => {
+    const r = enforceConcurrentLimitAndRegister("s1", "u1", null, { user: 5 });
+    expect(r.allowed).toBe(true);
+    expect(r.evictSessionIds).toEqual([]);
+    expect(getActiveCountByUser("u1")).toBe(1);
+  });
+
+  it("evicts oldest and registers new session when over limit", () => {
+    registerSession("s0", "u1", null);
+    vi.advanceTimersByTime(100);
+    registerSession("s1", "u1", null);
+    const evicted: string[] = [];
+    const r = enforceConcurrentLimitAndRegister("s2", "u1", null, { user: 2 }, {
+      onEvict: (ids) => evicted.push(...ids),
+    });
+    expect(r.allowed).toBe(true);
+    expect(r.evictSessionIds).toEqual(["s0"]);
+    expect(evicted).toEqual(["s0"]);
+    expect(getActiveCountByUser("u1")).toBe(2);
+  });
+
+  it("returns allowed false when user limit is 0", () => {
+    const r = enforceConcurrentLimitAndRegister("s1", "u1", null, { user: 0 });
+    expect(r.allowed).toBe(false);
+    expect(getActiveCountByUser("u1")).toBe(0);
   });
 });
 

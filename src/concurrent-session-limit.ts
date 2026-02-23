@@ -98,6 +98,25 @@ export function removeSession(sessionId: string): void {
   sessions.delete(sessionId);
 }
 
+export interface EnforceAndRegisterOptions {
+  onEvict?: (sessionIds: string[]) => void;
+}
+
+export function enforceConcurrentLimitAndRegister(
+  newSessionId: string,
+  userId: string,
+  orgId: string | null,
+  limits: SessionLimits,
+  options?: EnforceAndRegisterOptions
+): CheckResult {
+  const result = checkCanCreateSession(userId, orgId, limits);
+  if (!result.allowed) return result;
+  for (const id of result.evictSessionIds) removeSession(id);
+  options?.onEvict?.(result.evictSessionIds);
+  registerSession(newSessionId, userId, orgId);
+  return result;
+}
+
 export function getActiveCountByUser(userId: string): number {
   let n = 0;
   for (const rec of sessions.values()) {
