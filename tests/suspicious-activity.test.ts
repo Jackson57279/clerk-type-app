@@ -42,6 +42,11 @@ describe("suspicious activity detection", () => {
       const r = evaluateLogin({ userId: "user1" });
       expect(r.reasons).not.toContain("new_device");
     });
+
+    it("ignores when deviceFingerprint is empty string", () => {
+      const r = evaluateLogin({ userId: "user1", deviceFingerprint: "" });
+      expect(r.reasons).not.toContain("new_device");
+    });
   });
 
   describe("new location", () => {
