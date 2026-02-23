@@ -516,6 +516,65 @@ describe("processBulkRequest", () => {
     expect(await userStore.findByEmail("one@example.com")).not.toBeNull();
   });
 
+  it("resolves bulkId reference in path for PATCH /Groups/bulkId:g1", async () => {
+    const userStore = memoryUserStore();
+    const groupStore = memoryGroupStore();
+    const response = await processBulkRequest({
+      request: {
+        schemas: [BULK_REQUEST_SCHEMA],
+        Operations: [
+          {
+            method: "POST",
+            path: "Groups",
+            bulkId: "g1",
+            data: { externalId: "grp-patch", displayName: "Old Name" },
+          },
+          {
+            method: "PATCH",
+            path: "Groups/bulkId:g1",
+            data: { displayName: "New Name" },
+          },
+        ],
+      },
+      userStore,
+      groupStore,
+      organizationId: orgId,
+    });
+    expect(response.Operations[0]!.status).toBe(201);
+    expect(response.Operations[1]!.status).toBe(200);
+    const group = await groupStore.findGroupByExternalId(orgId, "grp-patch");
+    expect(group?.displayName).toBe("New Name");
+  });
+
+  it("resolves bulkId reference in path for DELETE /Groups/bulkId:g1", async () => {
+    const userStore = memoryUserStore();
+    const groupStore = memoryGroupStore();
+    const response = await processBulkRequest({
+      request: {
+        schemas: [BULK_REQUEST_SCHEMA],
+        Operations: [
+          {
+            method: "POST",
+            path: "Groups",
+            bulkId: "g1",
+            data: { externalId: "grp-del", displayName: "To Delete" },
+          },
+          {
+            method: "DELETE",
+            path: "Groups/bulkId:g1",
+          },
+        ],
+      },
+      userStore,
+      groupStore,
+      organizationId: orgId,
+    });
+    expect(response.Operations[0]!.status).toBe(201);
+    expect(response.Operations[1]!.status).toBe(204);
+    const group = await groupStore.findGroupByExternalId(orgId, "grp-del");
+    expect(group).toBeNull();
+  });
+
   describe("realtime webhook delivery", () => {
     it("delivers user.created webhook when webhookStore provided and user created via bulk", async () => {
       const userStore = memoryUserStore();
