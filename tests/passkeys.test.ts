@@ -41,6 +41,8 @@ const rpConfig: PasskeyRpConfig = {
   origin: "http://localhost",
 };
 
+const allowMfaBackupProvider = { hasMfaOrBackupCodes: async () => true };
+
 describe("PasskeyStore (multiple passkeys)", () => {
   it("user can register multiple passkeys and use any for auth", async () => {
     const credentialStore = createMemoryPasskeyStore();
@@ -310,6 +312,7 @@ describe("Passkey metadata (name, device info, last used)", () => {
       credentialStore,
       challengeStore,
       rpConfig,
+      mfaBackupProvider: allowMfaBackupProvider,
       name: "My MacBook",
       deviceInfo: "Chrome on macOS · internal",
     });
@@ -561,6 +564,7 @@ describe("finishRegistration", () => {
       credentialStore,
       challengeStore,
       rpConfig,
+      mfaBackupProvider: allowMfaBackupProvider,
     });
     expect(result.verified).toBe(false);
   });
@@ -682,6 +686,7 @@ describe("finishRegistration", () => {
       credentialStore,
       challengeStore,
       rpConfig,
+      mfaBackupProvider: allowMfaBackupProvider,
     });
     expect(r1.verified).toBe(true);
     expect(r1.credentialId).toBe("cred-first");
@@ -699,6 +704,7 @@ describe("finishRegistration", () => {
       credentialStore,
       challengeStore,
       rpConfig,
+      mfaBackupProvider: allowMfaBackupProvider,
     });
     expect(r2.verified).toBe(true);
     expect(r2.credentialId).toBe("cred-second");

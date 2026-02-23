@@ -111,7 +111,7 @@ export interface FinishRegistrationOptions {
   rpConfig: PasskeyRpConfig;
   name?: string;
   deviceInfo?: string;
-  mfaBackupProvider?: MfaBackupProvider;
+  mfaBackupProvider: MfaBackupProvider;
 }
 
 export interface FinishRegistrationResult {
@@ -143,14 +143,12 @@ export async function finishRegistration(
   if (!verification.verified || !verification.registrationInfo) {
     return { verified: false };
   }
-  if (mfaBackupProvider) {
-    const hasBackup = await mfaBackupProvider.hasMfaOrBackupCodes(userId);
-    if (!hasBackup) {
-      return {
-        verified: false,
-        requiresMfaOrBackup: true,
-      };
-    }
+  const hasBackup = await mfaBackupProvider.hasMfaOrBackupCodes(userId);
+  if (!hasBackup) {
+    return {
+      verified: false,
+      requiresMfaOrBackup: true,
+    };
   }
   const { credential, credentialDeviceType, credentialBackedUp } = verification.registrationInfo;
   const webauthnUserID = expectedOptions.user.id;
