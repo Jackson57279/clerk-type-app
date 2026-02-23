@@ -4,6 +4,7 @@ import {
   verifyConfirmationToken,
   createMemoryConfirmationStore,
   isSensitiveOperation,
+  requireConfirmationForSensitiveOperation,
   SENSITIVE_OPERATIONS,
   DEFAULT_CONFIRMATION_LINK_TTL_MS,
   type SensitiveOperationType,
@@ -216,5 +217,163 @@ describe("isSensitiveOperation", () => {
   it("returns false for unknown operation", () => {
     expect(isSensitiveOperation("unknown_op")).toBe(false);
     expect(isSensitiveOperation("")).toBe(false);
+  });
+});
+
+describe("requireConfirmationForSensitiveOperation", () => {
+  const context = {
+    userId: "user-1",
+    email: "user@example.com",
+    operation: "change_email" as SensitiveOperationType,
+  };
+
+  it("returns allowed: true when valid token matches context", () => {
+    const { token } = createConfirmationToken(
+      {
+        userId: context.userId,
+        email: context.email,
+        operation: context.operation,
+      },
+      SECRET
+    );
+    const result = requireConfirmationForSensitiveOperation(
+      "change_email",
+      token,
+      context,
+      SECRET
+    );
+    expect(result.allowed).toBe(true);
+    if (result.allowed) {
+      expect(result.payload.userId).toBe("user-1");
+      expect(result.payload.email).toBe("user@example.com");
+      expect(result.payload.operation).toBe("change_email");
+    }
+  });
+
+  it("returns not_sensitive for unknown operation", () => {
+    const result = requireConfirmationForSensitiveOperation(
+      "unknown_op",
+      "any-token",
+      context,
+      SECRET
+    );
+    expect(result.allowed).toBe(false);
+    if (!result.allowed) expect(result.reason).toBe("not_sensitive");
+  });
+
+  it("returns missing_token when token is undefined", () => {
+    const result = requireConfirmationForSensitiveOperation(
+      "change_password",
+      undefined,
+      { ...context, operation: "change_password" },
+      SECRET
+    );
+    expect(result.allowed).toBe(false);
+    if (!result.allowed) expect(result.reason).toBe("missing_token");
+  });
+
+  it("returns missing_token when token is empty string", () => {
+    const result = requireConfirmationForSensitiveOperation(
+      "delete_account",
+      "",
+      { ...context, operation: "delete_account" },
+      SECRET
+    );
+    expect(result.allowed).toBe(false);
+    if (!result.allowed) expect(result.reason).toBe("missing_token");
+  });
+
+  it("returns invalid_token when token is wrong or tampered", () => {
+    const r1 = requireConfirmationForSensitiveOperation(
+      "change_email",
+      "invalid.jwt.here",
+      context,
+      SECRET
+    );
+    expect(r1.allowed).toBe(false);
+    if (!r1.allowed) expect(r1.reason).toBe("invalid_token");
+
+    const { token } = createConfirmationToken(
+      { userId: "u", email: "e@x.com", operation: "change_email" },
+      SECRET
+    );
+    const r2 = requireConfirmationForSensitiveOperation(
+      "change_email",
+      token,
+      context,
+      "wrong-secret"
+    );
+    expect(r2.allowed).toBe(false);
+    if (!r2.allowed) expect(r2.reason).toBe("invalid_token");
+  });
+
+  it("returns user_mismatch when token userId does not match context", () => {
+    const { token } = createConfirmationToken(
+      { userId: "other-user", email: context.email, operation: context.operation },
+      SECRET
+    );
+    const result = requireConfirmationForSensitiveOperation(
+      "change_email",
+      token,
+      context,
+      SECRET
+    );
+    expect(result.allowed).toBe(false);
+    if (!result.allowed) expect(result.reason).toBe("user_mismatch");
+  });
+
+  it("returns user_mismatch when token email does not match context", () => {
+    const { token } = createConfirmationToken(
+      { userId: context.userId, email: "other@example.com", operation: context.operation },
+      SECRET
+    );
+    const result = requireConfirmationForSensitiveOperation(
+      "change_email",
+      token,
+      context,
+      SECRET
+    );
+    expect(result.allowed).toBe(false);
+    if (!result.allowed) expect(result.reason).toBe("user_mismatch");
+  });
+
+  it("returns user_mismatch when token operation does not match context", () => {
+    const { token } = createConfirmationToken(
+      { userId: context.userId, email: context.email, operation: "delete_account" },
+      SECRET
+    );
+    const result = requireConfirmationForSensitiveOperation(
+      "change_email",
+      token,
+      context,
+      SECRET
+    );
+    expect(result.allowed).toBe(false);
+    if (!result.allowed) expect(result.reason).toBe("user_mismatch");
+  });
+
+  it("honors usedTokenStore so single-use tokens cannot be reused", () => {
+    const store = createMemoryConfirmationStore();
+    const { token } = createConfirmationToken(
+      { userId: context.userId, email: context.email, operation: context.operation },
+      SECRET
+    );
+    const first = requireConfirmationForSensitiveOperation(
+      "change_email",
+      token,
+      context,
+      SECRET,
+      { usedTokenStore: store }
+    );
+    expect(first.allowed).toBe(true);
+    const second = requireConfirmationForSensitiveOperation(
+      "change_email",
+      token,
+      context,
+      SECRET,
+      { usedTokenStore: store }
+    );
+    expect(second.allowed).toBe(false);
+    if (!second.allowed) expect(second.reason).toBe("invalid_token");
   });
 });

@@ -167,3 +167,47 @@ export function isSensitiveOperation(
 ): operation is SensitiveOperationType {
   return SENSITIVE_OPERATIONS.includes(operation as SensitiveOperationType);
 }
+
+export interface RequireConfirmationContext {
+  userId: string;
+  email: string;
+  operation: SensitiveOperationType;
+}
+
+export type RequireConfirmationResult =
+  | { allowed: true; payload: VerifyConfirmationTokenResult }
+  | {
+      allowed: false;
+      reason:
+        | "not_sensitive"
+        | "missing_token"
+        | "invalid_token"
+        | "user_mismatch";
+    };
+
+export function requireConfirmationForSensitiveOperation(
+  operation: string,
+  confirmationToken: string | undefined,
+  context: RequireConfirmationContext,
+  secret: string,
+  options: VerifyConfirmationTokenOptions = {}
+): RequireConfirmationResult {
+  if (!isSensitiveOperation(operation)) {
+    return { allowed: false, reason: "not_sensitive" };
+  }
+  if (!confirmationToken || confirmationToken.trim() === "") {
+    return { allowed: false, reason: "missing_token" };
+  }
+  const payload = verifyConfirmationToken(confirmationToken, secret, options);
+  if (!payload) {
+    return { allowed: false, reason: "invalid_token" };
+  }
+  if (
+    payload.userId !== context.userId ||
+    payload.email !== context.email ||
+    payload.operation !== context.operation
+  ) {
+    return { allowed: false, reason: "user_mismatch" };
+  }
+  return { allowed: true, payload };
+}
