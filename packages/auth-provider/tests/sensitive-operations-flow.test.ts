@@ -200,6 +200,19 @@ describe("requestSensitiveOperation", () => {
 });
 
 describe("double-opt-in required for sensitive operations", () => {
+  it("sensitive operations require double-opt-in: execution without token throws with reason missing_token", async () => {
+    const context = {
+      userId: "u1",
+      email: "u@example.com",
+      operation: "delete_account" as SensitiveOperationType,
+    };
+    const action = vi.fn().mockResolvedValue(undefined);
+    await expect(
+      executeSensitiveOperation("delete_account", undefined, context, SECRET, action)
+    ).rejects.toMatchObject({ reason: "missing_token" });
+    expect(action).not.toHaveBeenCalled();
+  });
+
   it("sensitive operations cannot be executed without a valid confirmation token", async () => {
     const context = {
       userId: "u1",
