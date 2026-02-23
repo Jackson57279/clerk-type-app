@@ -6,6 +6,11 @@ import {
   validatePassword,
   verifyPassword,
 } from "./password.js";
+import {
+  hasTotp,
+  verifyTotpChallenge,
+  type TotpStore,
+} from "./totp-authenticator.js";
 
 export interface CredentialUser {
   userId: string;
@@ -114,10 +119,21 @@ export async function register(
 export interface LoginInput {
   email: string;
   password: string;
+  totpCode?: string;
+}
+
+export interface LoginOptions {
+  totpStore?: TotpStore;
 }
 
 export interface LoginSuccess {
   success: true;
+  userId: string;
+}
+
+export interface LoginRequiresTotp {
+  success: false;
+  requiresTotp: true;
   userId: string;
 }
 
@@ -126,11 +142,15 @@ export interface LoginFailure {
   reason: "invalid_credentials";
 }
 
-export type LoginResult = LoginSuccess | LoginFailure;
+export type LoginResult =
+  | LoginSuccess
+  | LoginFailure
+  | LoginRequiresTotp;
 
 export async function login(
   store: RegistrationLoginStore,
-  input: LoginInput
+  input: LoginInput,
+  options: LoginOptions = {}
 ): Promise<LoginResult> {
   const email = input.email.trim().toLowerCase();
   if (!email || !input.password) {
@@ -145,6 +165,24 @@ export async function login(
   const valid = await verifyPassword(user.passwordHash, input.password);
   if (!valid) {
     return { success: false, reason: "invalid_credentials" };
+  }
+
+  const { totpStore } = options;
+  if (totpStore) {
+    const totpEnabled = await hasTotp(user.userId, totpStore);
+    if (totpEnabled) {
+      if (!input.totpCode) {
+        return { success: false, requiresTotp: true, userId: user.userId };
+      }
+      const totpValid = await verifyTotpChallenge(
+        user.userId,
+        input.totpCode,
+        totpStore
+      );
+      if (!totpValid) {
+        return { success: false, reason: "invalid_credentials" };
+      }
+    }
   }
 
   return { success: true, userId: user.userId };

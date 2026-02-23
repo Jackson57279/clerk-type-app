@@ -1,4 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
+import { decode as base32Decode } from "hi-base32";
 import {
   register,
   login,
@@ -6,6 +7,16 @@ import {
   type CredentialUser,
 } from "../src/registration-login.js";
 import { defaultPasswordPolicy } from "../src/password.js";
+import {
+  createMemoryTotpStore,
+  startTotpSetup,
+  confirmTotpSetup,
+} from "../src/totp-authenticator.js";
+import { generateTOTP } from "../src/totp.js";
+
+function secretToBuffer(secretBase32: string): Buffer {
+  return Buffer.from(base32Decode.asBytes(secretBase32));
+}
 
 function memoryStore(initial: CredentialUser[] = []): RegistrationLoginStore {
   const users = new Map<string, CredentialUser>();
@@ -196,7 +207,9 @@ describe("login", () => {
 
     expect(result.success).toBe(false);
     if (result.success) return;
-    expect(result.reason).toBe("invalid_credentials");
+    expect("reason" in result ? result.reason : undefined).toBe(
+      "invalid_credentials"
+    );
   });
 
   it("returns invalid_credentials when user not found", async () => {
@@ -207,7 +220,9 @@ describe("login", () => {
     });
     expect(result.success).toBe(false);
     if (result.success) return;
-    expect(result.reason).toBe("invalid_credentials");
+    expect("reason" in result ? result.reason : undefined).toBe(
+      "invalid_credentials"
+    );
   });
 
   it("returns invalid_credentials when user has no password", async () => {
@@ -222,7 +237,9 @@ describe("login", () => {
 
     expect(result.success).toBe(false);
     if (result.success) return;
-    expect(result.reason).toBe("invalid_credentials");
+    expect("reason" in result ? result.reason : undefined).toBe(
+      "invalid_credentials"
+    );
   });
 
   it("normalizes email for login", async () => {
@@ -248,7 +265,155 @@ describe("login", () => {
 
     expect(result.success).toBe(false);
     if (result.success) return;
-    expect(result.reason).toBe("invalid_credentials");
+    expect("reason" in result ? result.reason : undefined).toBe(
+      "invalid_credentials"
+    );
+  });
+});
+
+describe("login with TOTP MFA", () => {
+  it("returns requiresTotp and userId when TOTP enabled and no totpCode", async () => {
+    const store = memoryStore();
+    const reg = await register(store, {
+      email: "mfa@example.com",
+      password: "MyPassword1",
+    });
+    expect(reg.success).toBe(true);
+    if (!reg.success) return;
+
+    const totpStore = createMemoryTotpStore();
+    const { secret } = await startTotpSetup(
+      reg.userId,
+      "TestApp",
+      "mfa@example.com",
+      totpStore
+    );
+    const code = generateTOTP(secretToBuffer(secret), { period: 30, digits: 6 });
+    await confirmTotpSetup(reg.userId, code, totpStore);
+
+    const result = await login(
+      store,
+      { email: "mfa@example.com", password: "MyPassword1" },
+      { totpStore }
+    );
+
+    expect(result.success).toBe(false);
+    if (result.success) return;
+    expect("requiresTotp" in result && result.requiresTotp).toBe(true);
+    expect("userId" in result && result.userId).toBe(reg.userId);
+  });
+
+  it("returns success when TOTP enabled and valid totpCode", async () => {
+    const store = memoryStore();
+    const reg = await register(store, {
+      email: "mfa2@example.com",
+      password: "MyPassword1",
+    });
+    expect(reg.success).toBe(true);
+    if (!reg.success) return;
+
+    const totpStore = createMemoryTotpStore();
+    const { secret } = await startTotpSetup(
+      reg.userId,
+      "TestApp",
+      "mfa2@example.com",
+      totpStore
+    );
+    const code = generateTOTP(secretToBuffer(secret), { period: 30, digits: 6 });
+    await confirmTotpSetup(reg.userId, code, totpStore);
+    const nextCode = generateTOTP(secretToBuffer(secret), {
+      period: 30,
+      digits: 6,
+    });
+
+    const result = await login(
+      store,
+      {
+        email: "mfa2@example.com",
+        password: "MyPassword1",
+        totpCode: nextCode,
+      },
+      { totpStore }
+    );
+
+    expect(result.success).toBe(true);
+    if (!result.success) return;
+    expect(result.userId).toBe(reg.userId);
+  });
+
+  it("returns invalid_credentials when TOTP enabled and wrong totpCode", async () => {
+    const store = memoryStore();
+    const reg = await register(store, {
+      email: "mfa3@example.com",
+      password: "MyPassword1",
+    });
+    expect(reg.success).toBe(true);
+    if (!reg.success) return;
+
+    const totpStore = createMemoryTotpStore();
+    const { secret } = await startTotpSetup(
+      reg.userId,
+      "TestApp",
+      "mfa3@example.com",
+      totpStore
+    );
+    const code = generateTOTP(secretToBuffer(secret), { period: 30, digits: 6 });
+    await confirmTotpSetup(reg.userId, code, totpStore);
+
+    const result = await login(
+      store,
+      {
+        email: "mfa3@example.com",
+        password: "MyPassword1",
+        totpCode: "000000",
+      },
+      { totpStore }
+    );
+
+    expect(result.success).toBe(false);
+    if (result.success) return;
+    expect("reason" in result && result.reason).toBe("invalid_credentials");
+  });
+
+  it("returns success when no totpStore (TOTP not checked)", async () => {
+    const store = memoryStore();
+    const reg = await register(store, {
+      email: "nomfa@example.com",
+      password: "MyPassword1",
+    });
+    expect(reg.success).toBe(true);
+    if (!reg.success) return;
+
+    const result = await login(store, {
+      email: "nomfa@example.com",
+      password: "MyPassword1",
+    });
+
+    expect(result.success).toBe(true);
+    if (!result.success) return;
+    expect(result.userId).toBe(reg.userId);
+  });
+
+  it("returns success when TOTP not enabled for user even with totpStore", async () => {
+    const store = memoryStore();
+    const reg = await register(store, {
+      email: "nototp@example.com",
+      password: "MyPassword1",
+    });
+    expect(reg.success).toBe(true);
+    if (!reg.success) return;
+
+    const totpStore = createMemoryTotpStore();
+
+    const result = await login(
+      store,
+      { email: "nototp@example.com", password: "MyPassword1" },
+      { totpStore }
+    );
+
+    expect(result.success).toBe(true);
+    if (!result.success) return;
+    expect(result.userId).toBe(reg.userId);
   });
 });
 
