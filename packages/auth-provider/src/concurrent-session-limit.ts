@@ -1,5 +1,7 @@
 import { regenerateSessionId } from "./session-fixation.js";
 
+export { regenerateSessionId, type SessionStore } from "./session-fixation.js";
+
 const DEFAULT_USER_LIMIT = 5;
 const MIN_ENV_LIMIT = 0;
 const MAX_LIMIT = 1000;
