@@ -3,6 +3,7 @@ import {
   hashPassword,
   verifyPassword,
   validatePassword,
+  validatePasswordWithPolicy,
   isPasswordPwned,
   defaultPasswordPolicy,
   type PasswordPolicy,
@@ -90,6 +91,42 @@ describe("Password policy", () => {
     expect(validatePassword("short1a", policy).valid).toBe(false);
     expect(validatePassword("longenough1a", policy).valid).toBe(true);
   });
+
+  it("rejects password longer than max length (default 128)", () => {
+    const long = "a".repeat(127) + "1";
+    expect(validatePassword(long).valid).toBe(true);
+    const tooLong = "a".repeat(129) + "1";
+    const r = validatePassword(tooLong);
+    expect(r.valid).toBe(false);
+    expect(r.errors.some((e) => e.includes("at most 128"))).toBe(true);
+  });
+
+  it("enforces custom max length when set", () => {
+    const policy: PasswordPolicy = { ...defaultPasswordPolicy, maxLength: 16 };
+    expect(validatePassword("short1ab", policy).valid).toBe(true);
+    const r = validatePassword("thispasswordistoolong1", policy);
+    expect(r.valid).toBe(false);
+    expect(r.errors.some((e) => e.includes("at most 16"))).toBe(true);
+  });
+});
+
+describe("validatePasswordWithPolicy (policy + optional breach)", () => {
+  it("returns sync validation result when checkBreach is false", async () => {
+    const r = await validatePasswordWithPolicy("short1", defaultPasswordPolicy, { checkBreach: false });
+    expect(r.valid).toBe(false);
+    expect(r.errors.some((e) => e.includes("at least 8"))).toBe(true);
+  });
+
+  it("accepts valid password when checkBreach is false", async () => {
+    const r = await validatePasswordWithPolicy("validpass1", defaultPasswordPolicy, { checkBreach: false });
+    expect(r.valid).toBe(true);
+    expect(r.errors).toHaveLength(0);
+  });
+
+  it("does not call breach API when checkBreach is omitted", async () => {
+    const r = await validatePasswordWithPolicy("validpass1");
+    expect(r.valid).toBe(true);
+  });
 });
 
 describe("HaveIBeenPwned breach detection", () => {
@@ -118,6 +155,28 @@ describe("HaveIBeenPwned breach detection", () => {
   it("returns true when password is in breach list", async () => {
     const pwned = await isPasswordPwned("password");
     expect(pwned).toBe(true);
+  });
+
+  it("validatePasswordWithPolicy with checkBreach adds breach error when pwned", async () => {
+    const permissive: PasswordPolicy = { ...defaultPasswordPolicy, requireDigit: false };
+    const r = await validatePasswordWithPolicy("password", permissive, { checkBreach: true });
+    expect(r.valid).toBe(false);
+    expect(r.errors.some((e) => e.includes("data breach"))).toBe(true);
+  });
+
+  it("validatePasswordWithPolicy with checkBreach returns valid when not pwned", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() =>
+        Promise.resolve({
+          ok: true,
+          text: () => Promise.resolve("OTHERSUFFIX:1\r\nANOTHER:2"),
+        } as Response)
+      )
+    );
+    const r = await validatePasswordWithPolicy("uniqueUnbreachedPwd99!", defaultPasswordPolicy, { checkBreach: true });
+    expect(r.valid).toBe(true);
+    expect(r.errors).toHaveLength(0);
   });
 
   it("returns false when password is not in breach list", async () => {
