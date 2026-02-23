@@ -415,3 +415,61 @@ export async function handleSpInitiatedAssertEndpoint(
     };
   }
 }
+
+export interface SpInitiatedLogoutResponseEndpointParams {
+  SAMLResponse: string;
+  RelayState?: string;
+}
+
+export interface SpInitiatedLogoutResponseEndpointOptions {
+  spConfig: SpInitiatedSpConfig;
+  idpConfig: SpInitiatedIdpConfig;
+  defaultRedirectUrl?: string;
+}
+
+export interface SpInitiatedLogoutResponseEndpointSuccess {
+  status: 302;
+  redirectUrl: string;
+}
+
+export interface SpInitiatedLogoutResponseEndpointError {
+  status: 400;
+  error: string;
+  errorDescription: string;
+}
+
+export type SpInitiatedLogoutResponseEndpointResult =
+  | SpInitiatedLogoutResponseEndpointSuccess
+  | SpInitiatedLogoutResponseEndpointError;
+
+export async function handleSpInitiatedLogoutResponseEndpoint(
+  params: SpInitiatedLogoutResponseEndpointParams,
+  options: SpInitiatedLogoutResponseEndpointOptions
+): Promise<SpInitiatedLogoutResponseEndpointResult> {
+  const samlResponse = params.SAMLResponse?.trim();
+  if (!samlResponse) {
+    return {
+      status: 400,
+      error: "invalid_request",
+      errorDescription: "SAMLResponse is required",
+    };
+  }
+  try {
+    await validateSpInitiatedLogoutResponse(
+      options.spConfig,
+      options.idpConfig,
+      { SAMLResponse: samlResponse, RelayState: params.RelayState }
+    );
+    const redirectUrl =
+      (params.RelayState != null && params.RelayState !== "")
+        ? params.RelayState
+        : (options.defaultRedirectUrl ?? "/");
+    return { status: 302, redirectUrl };
+  } catch (err) {
+    return {
+      status: 400,
+      error: "invalid_request",
+      errorDescription: err instanceof Error ? err.message : "Invalid SAML logout response",
+    };
+  }
+}

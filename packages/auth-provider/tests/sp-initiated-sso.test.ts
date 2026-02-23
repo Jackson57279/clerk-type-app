@@ -11,6 +11,7 @@ import {
   validateSpInitiatedLogoutResponse,
   getSpInitiatedLoginRedirect,
   handleSpInitiatedAssertEndpoint,
+  handleSpInitiatedLogoutResponseEndpoint,
   type SpInitiatedSpConfig,
   type SpInitiatedIdpConfig,
 } from "../src/sp-initiated-sso.js";
@@ -451,6 +452,75 @@ describe("handleSpInitiatedAssertEndpoint", () => {
   it("returns 400 when SAMLResponse is invalid", async () => {
     const result = await handleSpInitiatedAssertEndpoint(
       { SAMLResponse: "not-valid-base64!!!" },
+      { spConfig: spConfig(), idpConfig: idpConfig() }
+    );
+    expect(result.status).toBe(400);
+    if (result.status === 400) {
+      expect(result.error).toBe("invalid_request");
+    }
+  });
+});
+
+describe("handleSpInitiatedLogoutResponseEndpoint", () => {
+  function logoutResponseBase64(inResponseTo: string): string {
+    const { samlResponseBase64 } = createLogoutResponse(
+      { entityId: "https://idp.example.com/metadata", privateKey: TEST_SP_KEY, certificate: TEST_CERT },
+      "https://sp.example.com/slo",
+      { inResponseTo }
+    );
+    const xml = zlib.inflateRawSync(Buffer.from(samlResponseBase64, "base64")).toString("utf8");
+    return Buffer.from(xml, "utf8").toString("base64");
+  }
+
+  it("returns 302 with RelayState as redirectUrl when valid LogoutResponse and RelayState provided", async () => {
+    const result = await handleSpInitiatedLogoutResponseEndpoint(
+      { SAMLResponse: logoutResponseBase64("req_1"), RelayState: "/signed-out" },
+      { spConfig: spConfig(), idpConfig: idpConfig() }
+    );
+    expect(result.status).toBe(302);
+    if (result.status === 302) {
+      expect(result.redirectUrl).toBe("/signed-out");
+    }
+  });
+
+  it("returns 302 with defaultRedirectUrl when valid LogoutResponse and no RelayState", async () => {
+    const result = await handleSpInitiatedLogoutResponseEndpoint(
+      { SAMLResponse: logoutResponseBase64("req_2") },
+      { spConfig: spConfig(), idpConfig: idpConfig(), defaultRedirectUrl: "/home" }
+    );
+    expect(result.status).toBe(302);
+    if (result.status === 302) {
+      expect(result.redirectUrl).toBe("/home");
+    }
+  });
+
+  it("returns 302 to / when no RelayState and no defaultRedirectUrl", async () => {
+    const result = await handleSpInitiatedLogoutResponseEndpoint(
+      { SAMLResponse: logoutResponseBase64("req_3") },
+      { spConfig: spConfig(), idpConfig: idpConfig() }
+    );
+    expect(result.status).toBe(302);
+    if (result.status === 302) {
+      expect(result.redirectUrl).toBe("/");
+    }
+  });
+
+  it("returns 400 when SAMLResponse is missing", async () => {
+    const result = await handleSpInitiatedLogoutResponseEndpoint(
+      { SAMLResponse: "" },
+      { spConfig: spConfig(), idpConfig: idpConfig() }
+    );
+    expect(result.status).toBe(400);
+    if (result.status === 400) {
+      expect(result.error).toBe("invalid_request");
+      expect(result.errorDescription).toContain("SAMLResponse");
+    }
+  });
+
+  it("returns 400 when SAMLResponse is not a LogoutResponse", async () => {
+    const notLogout = Buffer.from("<foo>bar</foo>", "utf8").toString("base64");
+    const result = await handleSpInitiatedLogoutResponseEndpoint(
+      { SAMLResponse: notLogout },
       { spConfig: spConfig(), idpConfig: idpConfig() }
     );
     expect(result.status).toBe(400);
