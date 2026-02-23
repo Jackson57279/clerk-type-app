@@ -1054,3 +1054,143 @@ describe("finishAuthentication", () => {
     expect(result.verified).toBe(false);
   });
 });
+
+describe("Resident key (discoverable credentials) authentication", () => {
+  it("startAuthentication with useDiscoverableCredentials omits allowCredentials and stores by challenge", async () => {
+    const credentialStore = createMemoryPasskeyStore();
+    const challengeStore = createMemoryPasskeyChallengeStore();
+    const options = await startAuthentication({
+      credentialStore,
+      challengeStore,
+      rpConfig,
+      useDiscoverableCredentials: true,
+    });
+    expect(options.allowCredentials).toBeUndefined();
+    expect(options.challenge).toBeDefined();
+    const stored = challengeStore.getAuthenticationOptionsByChallenge?.(options.challenge);
+    expect(stored).not.toBeNull();
+    expect(stored!.challenge).toBe(options.challenge);
+  });
+
+  it("finishAuthentication without userId resolves user from credential (discoverable flow)", async () => {
+    const credentialStore = createMemoryPasskeyStore();
+    const challengeStore = createMemoryPasskeyChallengeStore();
+    await credentialStore.save({
+      userId: "user-resident",
+      credentialId: "resident-cred-1",
+      publicKey: new Uint8Array(32),
+      counter: 0,
+      deviceType: "singleDevice",
+      backedUp: false,
+      webauthnUserID: "w",
+    });
+    const authOptions = await startAuthentication({
+      credentialStore,
+      challengeStore,
+      rpConfig,
+      useDiscoverableCredentials: true,
+    });
+    vi.mocked(simplewebauthn.verifyAuthenticationResponse).mockImplementationOnce(async () =>
+      ({
+        verified: true,
+        authenticationInfo: {
+          newCounter: 1,
+          credentialID: "resident-cred-1",
+          credentialDeviceType: "singleDevice",
+          credentialBackedUp: false,
+        },
+      }) as unknown as VerifiedAuthenticationResponse
+    );
+    const clientDataJSON = Buffer.from(
+      JSON.stringify({
+        type: "webauthn.get",
+        challenge: authOptions.challenge,
+        origin: rpConfig.origin,
+      }),
+      "utf-8"
+    ).toString("base64url");
+    const result = await finishAuthentication({
+      response: {
+        id: "resident-cred-1",
+        rawId: "resident-cred-1",
+        type: "public-key",
+        response: {
+          clientDataJSON,
+          authenticatorData: "SZYN5YgOjGh0NBcPZHZgW4_krrmihjLHmVzzuoMdl2MFAAAAAA",
+          signature: "MEUCIQDxZWE",
+        },
+        clientExtensionResults: {},
+      },
+      credentialStore,
+      challengeStore,
+      rpConfig,
+    });
+    expect(result.verified).toBe(true);
+    expect(result.userId).toBe("user-resident");
+    expect(result.credentialId).toBe("resident-cred-1");
+  });
+
+  it("finishAuthentication without userId returns verified false when credential not found globally", async () => {
+    const credentialStore = createMemoryPasskeyStore();
+    const challengeStore = createMemoryPasskeyChallengeStore();
+    const authOptions = await startAuthentication({
+      credentialStore,
+      challengeStore,
+      rpConfig,
+      useDiscoverableCredentials: true,
+    });
+    const clientDataJSON = Buffer.from(
+      JSON.stringify({
+        type: "webauthn.get",
+        challenge: authOptions.challenge,
+        origin: rpConfig.origin,
+      }),
+      "utf-8"
+    ).toString("base64url");
+    const result = await finishAuthentication({
+      response: {
+        id: "unknown-cred-id",
+        rawId: "unknown-cred-id",
+        type: "public-key",
+        response: {
+          clientDataJSON,
+          authenticatorData: "SZYN5YgOjGh0NBcPZHZgW4_krrmihjLHmVzzuoMdl2MFAAAAAA",
+          signature: "MEUCIQDxZWE",
+        },
+        clientExtensionResults: {},
+      },
+      credentialStore,
+      challengeStore,
+      rpConfig,
+    });
+    expect(result.verified).toBe(false);
+    expect(result.userId).toBeUndefined();
+  });
+
+  it("findByCredentialIdGlobal returns passkey across users", async () => {
+    const store = createMemoryPasskeyStore();
+    const base = (
+      userId: string
+    ): Omit<StoredPasskey, "credentialId" | "publicKey"> => ({
+      userId,
+      counter: 0,
+      deviceType: "singleDevice",
+      backedUp: false,
+      webauthnUserID: "w",
+    });
+    await store.save({
+      ...base("user-a"),
+      credentialId: "cred-only-a",
+      publicKey: new Uint8Array(1),
+    });
+    await store.save({
+      ...base("user-b"),
+      credentialId: "cred-only-b",
+      publicKey: new Uint8Array(2),
+    });
+    const found = await store.findByCredentialIdGlobal?.("cred-only-b");
+    expect(found).not.toBeNull();
+    expect(found!.userId).toBe("user-b");
+    expect(found!.credentialId).toBe("cred-only-b");
+  });
+});

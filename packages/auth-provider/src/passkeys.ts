@@ -31,6 +31,7 @@ export interface StoredPasskey {
 export interface PasskeyStore {
   listByUserId(userId: string): Promise<StoredPasskey[]>;
   findByCredentialId(userId: string, credentialId: string): Promise<StoredPasskey | null>;
+  findByCredentialIdGlobal?(credentialId: string): Promise<StoredPasskey | null>;
   save(credential: StoredPasskey): Promise<void>;
   updateCounter(userId: string, credentialId: string, counter: number): Promise<void>;
   updateLastUsed(userId: string, credentialId: string): Promise<void>;
@@ -42,6 +43,8 @@ export interface PasskeyChallengeStore {
   getRegistrationOptions(userId: string): PublicKeyCredentialCreationOptionsJSON | null;
   setAuthenticationOptions(userId: string, options: PublicKeyCredentialRequestOptionsJSON): void;
   getAuthenticationOptions(userId: string): PublicKeyCredentialRequestOptionsJSON | null;
+  setAuthenticationOptionsByChallenge?(challenge: string, options: PublicKeyCredentialRequestOptionsJSON): void;
+  getAuthenticationOptionsByChallenge?(challenge: string): PublicKeyCredentialRequestOptionsJSON | null;
 }
 
 export interface PasskeyRpConfig {
@@ -185,33 +188,52 @@ export async function finishRegistration(
 }
 
 export interface StartAuthenticationOptions {
-  userId: string;
+  userId?: string;
   credentialStore: PasskeyStore;
   challengeStore: PasskeyChallengeStore;
   rpConfig: PasskeyRpConfig;
   userVerification?: UserVerification;
+  useDiscoverableCredentials?: boolean;
 }
 
 export async function startAuthentication(
   options: StartAuthenticationOptions
 ): Promise<PublicKeyCredentialRequestOptionsJSON> {
-  const { userId, credentialStore, challengeStore, rpConfig, userVerification } = options;
-  const passkeys = await credentialStore.listByUserId(userId);
-  const allowCredentials = passkeys.map((p) => ({
-    id: p.credentialId,
-    transports: p.transports,
-  }));
+  const {
+    userId,
+    credentialStore,
+    challengeStore,
+    rpConfig,
+    userVerification,
+    useDiscoverableCredentials,
+  } = options;
+  let allowCredentials: { id: string; transports?: AuthenticatorTransportFuture[] }[] | undefined;
+  if (useDiscoverableCredentials) {
+    allowCredentials = undefined;
+  } else if (userId) {
+    const passkeys = await credentialStore.listByUserId(userId);
+    allowCredentials = passkeys.map((p) => ({
+      id: p.credentialId,
+      transports: p.transports,
+    }));
+  } else {
+    allowCredentials = undefined;
+  }
   const authOptions = await generateAuthenticationOptions({
     rpID: rpConfig.rpID,
-    allowCredentials: allowCredentials.length > 0 ? allowCredentials : undefined,
+    allowCredentials: allowCredentials?.length ? allowCredentials : undefined,
     userVerification,
   });
-  challengeStore.setAuthenticationOptions(userId, authOptions);
+  if (useDiscoverableCredentials && challengeStore.setAuthenticationOptionsByChallenge) {
+    challengeStore.setAuthenticationOptionsByChallenge(authOptions.challenge, authOptions);
+  } else if (userId) {
+    challengeStore.setAuthenticationOptions(userId, authOptions);
+  }
   return authOptions;
 }
 
 export interface FinishAuthenticationOptions {
-  userId: string;
+  userId?: string;
   response: AuthenticationResponseJSON;
   credentialStore: PasskeyStore;
   challengeStore: PasskeyChallengeStore;
@@ -221,18 +243,44 @@ export interface FinishAuthenticationOptions {
 export interface FinishAuthenticationResult {
   verified: boolean;
   credentialId?: string;
+  userId?: string;
+}
+
+function decodeClientDataChallenge(clientDataJSON: string): string | null {
+  try {
+    const decoded = Buffer.from(clientDataJSON, "base64url").toString("utf-8");
+    const clientData = JSON.parse(decoded) as { challenge?: string };
+    return clientData.challenge ?? null;
+  } catch {
+    return null;
+  }
 }
 
 export async function finishAuthentication(
   options: FinishAuthenticationOptions
 ): Promise<FinishAuthenticationResult> {
   const { userId, response, credentialStore, challengeStore, rpConfig } = options;
-  const expectedOptions = challengeStore.getAuthenticationOptions(userId);
-  if (!expectedOptions) {
+  let expectedOptions: PublicKeyCredentialRequestOptionsJSON | null;
+  let passkey: StoredPasskey | null;
+  if (userId !== undefined) {
+    expectedOptions = challengeStore.getAuthenticationOptions(userId);
+    passkey = expectedOptions
+      ? await credentialStore.findByCredentialId(userId, response.id)
+      : null;
+  } else if (
+    challengeStore.getAuthenticationOptionsByChallenge &&
+    credentialStore.findByCredentialIdGlobal
+  ) {
+    const challenge = decodeClientDataChallenge(response.response.clientDataJSON);
+    if (!challenge) return { verified: false };
+    expectedOptions = challengeStore.getAuthenticationOptionsByChallenge(challenge);
+    passkey = expectedOptions
+      ? await credentialStore.findByCredentialIdGlobal(response.id)
+      : null;
+  } else {
     return { verified: false };
   }
-  const passkey = await credentialStore.findByCredentialId(userId, response.id);
-  if (!passkey) {
+  if (!expectedOptions || !passkey) {
     return { verified: false };
   }
   const publicKey = new Uint8Array(new ArrayBuffer(passkey.publicKey.length));
@@ -258,13 +306,14 @@ export async function finishAuthentication(
   if (!verification.verified) {
     return { verified: false };
   }
-  await credentialStore.updateCounter(
-    userId,
-    response.id,
-    verification.authenticationInfo.newCounter
-  );
-  await credentialStore.updateLastUsed(userId, response.id);
-  return { verified: true, credentialId: response.id };
+  const uid = passkey.userId;
+  await credentialStore.updateCounter(uid, response.id, verification.authenticationInfo.newCounter);
+  await credentialStore.updateLastUsed(uid, response.id);
+  return {
+    verified: true,
+    credentialId: response.id,
+    ...(userId === undefined ? { userId: uid } : {}),
+  };
 }
 
 export interface RevokePasskeyOptions {
@@ -320,6 +369,13 @@ export function createMemoryPasskeyStore(): PasskeyStore {
       const list = byUser.get(userId) ?? [];
       return list.find((p) => p.credentialId === credentialId) ?? null;
     },
+    async findByCredentialIdGlobal(credentialId: string) {
+      for (const list of byUser.values()) {
+        const p = list.find((c) => c.credentialId === credentialId);
+        if (p) return p;
+      }
+      return null;
+    },
     async save(credential: StoredPasskey) {
       const list = byUser.get(credential.userId) ?? [];
       if (list.some((p) => p.credentialId === credential.credentialId)) return;
@@ -351,6 +407,7 @@ export function createMemoryPasskeyStore(): PasskeyStore {
 export function createMemoryPasskeyChallengeStore(): PasskeyChallengeStore {
   const regByUser = new Map<string, PublicKeyCredentialCreationOptionsJSON>();
   const authByUser = new Map<string, PublicKeyCredentialRequestOptionsJSON>();
+  const authByChallenge = new Map<string, PublicKeyCredentialRequestOptionsJSON>();
   return {
     setRegistrationOptions(userId: string, options: PublicKeyCredentialCreationOptionsJSON) {
       regByUser.set(userId, options);
@@ -363,6 +420,15 @@ export function createMemoryPasskeyChallengeStore(): PasskeyChallengeStore {
     },
     getAuthenticationOptions(userId: string) {
       return authByUser.get(userId) ?? null;
+    },
+    setAuthenticationOptionsByChallenge(
+      challenge: string,
+      options: PublicKeyCredentialRequestOptionsJSON
+    ) {
+      authByChallenge.set(challenge, options);
+    },
+    getAuthenticationOptionsByChallenge(challenge: string) {
+      return authByChallenge.get(challenge) ?? null;
     },
   };
 }
