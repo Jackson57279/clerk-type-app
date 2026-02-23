@@ -162,6 +162,30 @@ describe("renderDoubleOptInEmail", () => {
       '<link rel="icon" href="https://example.com/fav.ico" />'
     );
   });
+
+  it("replaces all branding placeholders in custom template", () => {
+    const result = renderDoubleOptInEmail(
+      {
+        confirmationLink: "https://confirm.com",
+        operation: "change email",
+        expiresInMinutes: 20,
+      },
+      {
+        branding: {
+          logoUrl: "https://cdn.example.com/logo.png",
+          primaryColor: "#2563eb",
+          secondaryColor: "#64748b",
+          companyName: "Acme",
+          faviconUrl: "https://cdn.example.com/fav.ico",
+        },
+        htmlTemplate:
+          "{{companyName}}|{{logoUrl}}|{{primaryColor}}|{{secondaryColor}}|{{faviconUrl}}|{{confirmationLink}}|{{operation}}|{{expiresInMinutes}}",
+      }
+    );
+    expect(result.html).toBe(
+      "Acme|https://cdn.example.com/logo.png|#2563eb|#64748b|https://cdn.example.com/fav.ico|https://confirm.com|change email|20"
+    );
+  });
 });
 
 describe("renderMagicLinkEmail", () => {
