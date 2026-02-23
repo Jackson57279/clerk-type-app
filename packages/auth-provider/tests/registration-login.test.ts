@@ -19,6 +19,11 @@ import {
   sendLoginSmsOtp,
 } from "../src/sms-mfa.js";
 import type { SmsSender } from "../src/sms-otp.js";
+import {
+  createMemoryBackupCodeStore,
+  addBackupCodesForUser,
+  getRemainingBackupCodeCount,
+} from "../src/backup-codes.js";
 
 function secretToBuffer(secretBase32: string): Buffer {
   return Buffer.from(base32Decode.asBytes(secretBase32));
@@ -580,6 +585,146 @@ describe("login with SMS MFA", () => {
       store,
       { email: "both@example.com", password: "MyPassword1" },
       { totpStore, smsMfa: { phoneStore, challengeStore } }
+    );
+
+    expect(result.success).toBe(false);
+    if (result.success) return;
+    expect("requiresTotp" in result && result.requiresTotp).toBe(true);
+  });
+});
+
+describe("login with backup code", () => {
+  it("succeeds with valid backup code when TOTP required and consumes code", async () => {
+    const store = memoryStore();
+    const reg = await register(store, {
+      email: "backup@example.com",
+      password: "MyPassword1",
+    });
+    expect(reg.success).toBe(true);
+    if (!reg.success) return;
+
+    const totpStore = createMemoryTotpStore();
+    const { secret } = await startTotpSetup(
+      reg.userId,
+      "TestApp",
+      "backup@example.com",
+      totpStore
+    );
+    const code = generateTOTP(secretToBuffer(secret), { period: 30, digits: 6 });
+    await confirmTotpSetup(reg.userId, code, totpStore);
+
+    const backupCodeStore = createMemoryBackupCodeStore();
+    await addBackupCodesForUser(reg.userId, ["abcd1234", "wxyz5678"], backupCodeStore);
+
+    const result = await login(
+      store,
+      {
+        email: "backup@example.com",
+        password: "MyPassword1",
+        backupCode: "abcd1234",
+      },
+      { totpStore, backupCodeStore }
+    );
+
+    expect(result.success).toBe(true);
+    if (!result.success) return;
+    expect(result.userId).toBe(reg.userId);
+    expect(await getRemainingBackupCodeCount(reg.userId, backupCodeStore)).toBe(1);
+  });
+
+  it("returns invalid_credentials when TOTP required and backup code wrong", async () => {
+    const store = memoryStore();
+    const reg = await register(store, {
+      email: "backupbad@example.com",
+      password: "MyPassword1",
+    });
+    expect(reg.success).toBe(true);
+    if (!reg.success) return;
+
+    const totpStore = createMemoryTotpStore();
+    const { secret } = await startTotpSetup(
+      reg.userId,
+      "TestApp",
+      "backupbad@example.com",
+      totpStore
+    );
+    const code = generateTOTP(secretToBuffer(secret), { period: 30, digits: 6 });
+    await confirmTotpSetup(reg.userId, code, totpStore);
+
+    const backupCodeStore = createMemoryBackupCodeStore();
+    await addBackupCodesForUser(reg.userId, ["validcode"], backupCodeStore);
+
+    const result = await login(
+      store,
+      {
+        email: "backupbad@example.com",
+        password: "MyPassword1",
+        backupCode: "wrongcode",
+      },
+      { totpStore, backupCodeStore }
+    );
+
+    expect(result.success).toBe(false);
+    if (result.success) return;
+    expect("reason" in result && result.reason).toBe("invalid_credentials");
+    expect(await getRemainingBackupCodeCount(reg.userId, backupCodeStore)).toBe(1);
+  });
+
+  it("succeeds with valid backup code when SMS MFA required", async () => {
+    const store = memoryStore();
+    const reg = await register(store, {
+      email: "smsbackup@example.com",
+      password: "MyPassword1",
+    });
+    expect(reg.success).toBe(true);
+    if (!reg.success) return;
+
+    const phoneStore = createMemoryUserMfaPhoneStore();
+    const challengeStore = createMemorySmsMfaChallengeStore();
+    await phoneStore.set(reg.userId, "+15551112222");
+
+    const backupCodeStore = createMemoryBackupCodeStore();
+    await addBackupCodesForUser(reg.userId, ["smsbc12"], backupCodeStore);
+
+    const result = await login(
+      store,
+      {
+        email: "smsbackup@example.com",
+        password: "MyPassword1",
+        backupCode: "smsbc12",
+      },
+      { smsMfa: { phoneStore, challengeStore }, backupCodeStore }
+    );
+
+    expect(result.success).toBe(true);
+    if (!result.success) return;
+    expect(result.userId).toBe(reg.userId);
+    expect(await getRemainingBackupCodeCount(reg.userId, backupCodeStore)).toBe(0);
+  });
+
+  it("returns requiresTotp when TOTP required and no totpCode or backupCode", async () => {
+    const store = memoryStore();
+    const reg = await register(store, {
+      email: "nototpbackup@example.com",
+      password: "MyPassword1",
+    });
+    expect(reg.success).toBe(true);
+    if (!reg.success) return;
+
+    const totpStore = createMemoryTotpStore();
+    const { secret } = await startTotpSetup(
+      reg.userId,
+      "TestApp",
+      "nototpbackup@example.com",
+      totpStore
+    );
+    const code = generateTOTP(secretToBuffer(secret), { period: 30, digits: 6 });
+    await confirmTotpSetup(reg.userId, code, totpStore);
+
+    const result = await login(
+      store,
+      { email: "nototpbackup@example.com", password: "MyPassword1" },
+      { totpStore }
     );
 
     expect(result.success).toBe(false);

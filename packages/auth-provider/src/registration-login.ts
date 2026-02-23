@@ -18,6 +18,10 @@ import {
   type UserMfaPhoneStore,
   type SmsMfaChallengeStore,
 } from "./sms-mfa.js";
+import {
+  verifyAndConsumeBackupCode,
+  type BackupCodeStore,
+} from "./backup-codes.js";
 
 export interface CredentialUser {
   userId: string;
@@ -128,6 +132,7 @@ export interface LoginInput {
   password: string;
   totpCode?: string;
   smsOtpCode?: string;
+  backupCode?: string;
 }
 
 export interface SmsMfaLoginOptions {
@@ -138,6 +143,7 @@ export interface SmsMfaLoginOptions {
 export interface LoginOptions {
   totpStore?: TotpStore;
   smsMfa?: SmsMfaLoginOptions;
+  backupCodeStore?: BackupCodeStore;
 }
 
 export interface LoginSuccess {
@@ -189,20 +195,30 @@ export async function login(
     return { success: false, reason: "invalid_credentials" };
   }
 
-  const { totpStore, smsMfa } = options;
+  const { totpStore, smsMfa, backupCodeStore } = options;
   if (totpStore) {
     const totpEnabled = await hasTotp(user.userId, totpStore);
     if (totpEnabled) {
-      if (!input.totpCode) {
+      if (input.totpCode) {
+        const totpValid = await verifyTotpChallenge(
+          user.userId,
+          input.totpCode,
+          totpStore
+        );
+        if (!totpValid) {
+          return { success: false, reason: "invalid_credentials" };
+        }
+      } else if (input.backupCode && backupCodeStore) {
+        const backupValid = await verifyAndConsumeBackupCode(
+          user.userId,
+          input.backupCode,
+          backupCodeStore
+        );
+        if (!backupValid) {
+          return { success: false, reason: "invalid_credentials" };
+        }
+      } else {
         return { success: false, requiresTotp: true, userId: user.userId };
-      }
-      const totpValid = await verifyTotpChallenge(
-        user.userId,
-        input.totpCode,
-        totpStore
-      );
-      if (!totpValid) {
-        return { success: false, reason: "invalid_credentials" };
       }
     }
   }
@@ -210,7 +226,25 @@ export async function login(
   if (smsMfa) {
     const smsEnabled = await hasSmsMfa(user.userId, smsMfa.phoneStore);
     if (smsEnabled) {
-      if (!input.smsOtpCode) {
+      if (input.smsOtpCode) {
+        const smsValid = await verifyLoginSmsOtp(
+          user.userId,
+          input.smsOtpCode,
+          { challengeStore: smsMfa.challengeStore }
+        );
+        if (!smsValid) {
+          return { success: false, reason: "invalid_credentials" };
+        }
+      } else if (input.backupCode && backupCodeStore) {
+        const backupValid = await verifyAndConsumeBackupCode(
+          user.userId,
+          input.backupCode,
+          backupCodeStore
+        );
+        if (!backupValid) {
+          return { success: false, reason: "invalid_credentials" };
+        }
+      } else {
         const phone = await smsMfa.phoneStore.get(user.userId);
         return {
           success: false,
@@ -218,14 +252,6 @@ export async function login(
           userId: user.userId,
           phoneMasked: phone ? maskPhone(phone) : undefined,
         };
-      }
-      const smsValid = await verifyLoginSmsOtp(
-        user.userId,
-        input.smsOtpCode,
-        { challengeStore: smsMfa.challengeStore }
-      );
-      if (!smsValid) {
-        return { success: false, reason: "invalid_credentials" };
       }
     }
   }
