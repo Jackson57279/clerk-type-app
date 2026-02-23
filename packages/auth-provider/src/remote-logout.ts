@@ -42,3 +42,43 @@ export function remoteLogout(
 ): RemoteLogoutResponse {
   return invalidateAllSessions(request.userId, store);
 }
+
+export interface RemoteLogoutEndpointParams {
+  userId: string;
+}
+
+export interface RemoteLogoutEndpointOptions {
+  store: RemoteLogoutStore;
+}
+
+export interface RemoteLogoutEndpointSuccess {
+  status: 200;
+  body: RemoteLogoutResponse;
+}
+
+export interface RemoteLogoutEndpointError {
+  status: 400;
+  body: { error: string; error_description: string };
+}
+
+export type RemoteLogoutEndpointResult =
+  | RemoteLogoutEndpointSuccess
+  | RemoteLogoutEndpointError;
+
+export function handleRemoteLogoutEndpoint(
+  params: RemoteLogoutEndpointParams,
+  options: RemoteLogoutEndpointOptions
+): RemoteLogoutEndpointResult {
+  const userId = params.userId?.trim();
+  if (!userId) {
+    return {
+      status: 400,
+      body: {
+        error: "invalid_request",
+        error_description: "userId is required",
+      },
+    };
+  }
+  const body = remoteLogout({ userId }, options.store);
+  return { status: 200, body };
+}

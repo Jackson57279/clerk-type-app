@@ -3,6 +3,7 @@ import {
   invalidateAllSessions,
   createDefaultRemoteLogoutStore,
   remoteLogout,
+  handleRemoteLogoutEndpoint,
   type RemoteLogoutStore,
 } from "../src/remote-logout.js";
 import {
@@ -88,5 +89,74 @@ describe("createDefaultRemoteLogoutStore", () => {
     const parsed = JSON.parse(json) as typeof result;
     expect(parsed).toEqual({ invalidatedSessionIds: ["s1"], invalidatedCount: 1 });
     expect(Object.keys(parsed).sort()).toEqual(["invalidatedCount", "invalidatedSessionIds"]);
+  });
+});
+
+describe("handleRemoteLogoutEndpoint", () => {
+  it("returns 200 and invalidated sessions when userId is provided", () => {
+    const store: RemoteLogoutStore = {
+      invalidateAllSessionsForUser(userId: string) {
+        return userId === "u1" ? ["s1", "s2"] : [];
+      },
+    };
+    const result = handleRemoteLogoutEndpoint(
+      { userId: "u1" },
+      { store }
+    );
+    expect(result.status).toBe(200);
+    if (result.status === 200) {
+      expect(result.body.invalidatedSessionIds).toEqual(["s1", "s2"]);
+      expect(result.body.invalidatedCount).toBe(2);
+    }
+  });
+
+  it("returns 400 when userId is missing", () => {
+    const store: RemoteLogoutStore = {
+      invalidateAllSessionsForUser() {
+        return [];
+      },
+    };
+    const result = handleRemoteLogoutEndpoint(
+      { userId: "" },
+      { store }
+    );
+    expect(result.status).toBe(400);
+    if (result.status === 400) {
+      expect(result.body.error).toBe("invalid_request");
+      expect(result.body.error_description).toBe("userId is required");
+    }
+  });
+
+  it("returns 400 when userId is whitespace only", () => {
+    const store: RemoteLogoutStore = {
+      invalidateAllSessionsForUser() {
+        return [];
+      },
+    };
+    const result = handleRemoteLogoutEndpoint(
+      { userId: "   " },
+      { store }
+    );
+    expect(result.status).toBe(400);
+    if (result.status === 400) {
+      expect(result.body.error).toBe("invalid_request");
+    }
+  });
+
+  it("returns 200 with empty list when user has no sessions", () => {
+    const store: RemoteLogoutStore = {
+      invalidateAllSessionsForUser() {
+        return [];
+      },
+    };
+    const result = handleRemoteLogoutEndpoint(
+      { userId: "u99" },
+      { store }
+    );
+    expect(result.status).toBe(200);
+    if (result.status === 200) {
+      expect(result.body.invalidatedSessionIds).toEqual([]);
+      expect(result.body.invalidatedCount).toBe(0);
+    }
   });
 });
