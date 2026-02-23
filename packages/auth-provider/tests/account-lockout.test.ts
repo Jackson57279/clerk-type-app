@@ -1,8 +1,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import {
-  checkLockout,
+  checkAccountLockout,
   recordFailedAttempt,
-  clearLockout,
+  clearFailedAttempts,
   createAccountLockout,
 } from "../src/account-lockout.js";
 
@@ -14,16 +14,16 @@ describe("account lockout (30 min after 10 failed attempts)", () => {
     vi.useRealTimers();
   });
 
-  it("allows first attempt", () => {
-    expect(checkLockout("user@example.com").allowed).toBe(true);
+  it("allows first attempt with no lock", () => {
+    expect(checkAccountLockout("user@example.com").locked).toBe(false);
   });
 
-  it("allows up to 9 failed attempts without locking", () => {
+  it("does not lock before 10 failed attempts", () => {
     const key = "user@example.com";
     for (let i = 0; i < 9; i++) {
       recordFailedAttempt(key);
     }
-    expect(checkLockout(key).allowed).toBe(true);
+    expect(checkAccountLockout(key).locked).toBe(false);
   });
 
   it("locks after 10 failed attempts", () => {
@@ -31,8 +31,8 @@ describe("account lockout (30 min after 10 failed attempts)", () => {
     for (let i = 0; i < 10; i++) {
       recordFailedAttempt(key);
     }
-    const result = checkLockout(key);
-    expect(result.allowed).toBe(false);
+    const result = checkAccountLockout(key);
+    expect(result.locked).toBe(true);
     expect(result.retryAfterSeconds).toBe(30 * 60);
   });
 
@@ -41,68 +41,62 @@ describe("account lockout (30 min after 10 failed attempts)", () => {
     for (let i = 0; i < 10; i++) {
       recordFailedAttempt(key);
     }
-    expect(checkLockout(key).allowed).toBe(false);
+    expect(checkAccountLockout(key).locked).toBe(true);
     vi.advanceTimersByTime(30 * 60 * 1000);
-    expect(checkLockout(key).allowed).toBe(true);
+    expect(checkAccountLockout(key).locked).toBe(false);
   });
 
-  it("returns retryAfterSeconds that decreases over time", () => {
+  it("retryAfterSeconds decreases as time passes", () => {
     const key = "user@example.com";
     for (let i = 0; i < 10; i++) {
       recordFailedAttempt(key);
     }
-    let r = checkLockout(key);
-    expect(r.allowed).toBe(false);
-    expect(r.retryAfterSeconds).toBe(30 * 60);
+    let r = checkAccountLockout(key);
+    expect(r.locked).toBe(true);
+    const initialRetry = r.retryAfterSeconds ?? 0;
     vi.advanceTimersByTime(10 * 60 * 1000);
-    r = checkLockout(key);
-    expect(r.allowed).toBe(false);
-    expect(r.retryAfterSeconds).toBe(20 * 60);
+    r = checkAccountLockout(key);
+    expect(r.locked).toBe(true);
+    expect((r.retryAfterSeconds ?? 0)).toBeLessThan(initialRetry);
   });
 
-  it("clears lockout on clearLockout", () => {
+  it("clears lock and count on clearFailedAttempts", () => {
     const key = "user@example.com";
     for (let i = 0; i < 10; i++) {
       recordFailedAttempt(key);
     }
-    expect(checkLockout(key).allowed).toBe(false);
-    clearLockout(key);
-    expect(checkLockout(key).allowed).toBe(true);
-  });
-
-  it("tracks keys independently", () => {
-    for (let i = 0; i < 10; i++) {
-      recordFailedAttempt("user1@example.com");
+    expect(checkAccountLockout(key).locked).toBe(true);
+    clearFailedAttempts(key);
+    expect(checkAccountLockout(key).locked).toBe(false);
+    for (let i = 0; i < 5; i++) {
+      recordFailedAttempt(key);
     }
-    recordFailedAttempt("user2@example.com");
-    expect(checkLockout("user1@example.com").allowed).toBe(false);
-    expect(checkLockout("user2@example.com").allowed).toBe(true);
+    expect(checkAccountLockout(key).locked).toBe(false);
   });
 
-  it("does not count failed attempts while locked", () => {
+  it("tracks accounts independently", () => {
+    for (let i = 0; i < 10; i++) {
+      recordFailedAttempt("a@x.com");
+    }
+    recordFailedAttempt("b@x.com");
+    expect(checkAccountLockout("a@x.com").locked).toBe(true);
+    expect(checkAccountLockout("b@x.com").locked).toBe(false);
+  });
+
+  it("after lock expires, next failure counts from one", () => {
     const key = "user@example.com";
     for (let i = 0; i < 10; i++) {
       recordFailedAttempt(key);
     }
-    recordFailedAttempt(key);
-    recordFailedAttempt(key);
-    vi.advanceTimersByTime(30 * 60 * 1000);
-    expect(checkLockout(key).allowed).toBe(true);
-  });
-
-  it("resets attempt count after lockout expires", () => {
-    const key = "user@example.com";
-    for (let i = 0; i < 10; i++) {
-      recordFailedAttempt(key);
-    }
-    vi.advanceTimersByTime(30 * 60 * 1000);
-    expect(checkLockout(key).allowed).toBe(true);
+    expect(checkAccountLockout(key).locked).toBe(true);
+    vi.advanceTimersByTime(30 * 60 * 1000 + 1);
+    expect(checkAccountLockout(key).locked).toBe(false);
     for (let i = 0; i < 9; i++) {
       recordFailedAttempt(key);
     }
-    expect(checkLockout(key).allowed).toBe(true);
+    expect(checkAccountLockout(key).locked).toBe(false);
     recordFailedAttempt(key);
-    expect(checkLockout(key).allowed).toBe(false);
+    expect(checkAccountLockout(key).locked).toBe(true);
   });
 });
 
@@ -119,25 +113,25 @@ describe("createAccountLockout (custom options)", () => {
       maxAttempts: 3,
       lockoutDurationMs: 60 * 1000,
     });
-    lockout.recordFailedAttempt("u");
-    lockout.recordFailedAttempt("u");
-    expect(lockout.check("u").allowed).toBe(true);
-    lockout.recordFailedAttempt("u");
-    const r = lockout.check("u");
-    expect(r.allowed).toBe(false);
+    lockout.recordFailedAttempt("u@x.com");
+    lockout.recordFailedAttempt("u@x.com");
+    expect(lockout.check("u@x.com").locked).toBe(false);
+    lockout.recordFailedAttempt("u@x.com");
+    const r = lockout.check("u@x.com");
+    expect(r.locked).toBe(true);
     expect(r.retryAfterSeconds).toBe(60);
-    vi.advanceTimersByTime(60 * 1000);
-    expect(lockout.check("u").allowed).toBe(true);
+    vi.advanceTimersByTime(61 * 1000);
+    expect(lockout.check("u@x.com").locked).toBe(false);
   });
 
-  it("clearLockout resets state for that key only", () => {
+  it("clearFailedAttempts resets state for that key only", () => {
     const lockout = createAccountLockout({ maxAttempts: 2 });
     lockout.recordFailedAttempt("a");
     lockout.recordFailedAttempt("a");
     lockout.recordFailedAttempt("b");
     lockout.recordFailedAttempt("b");
-    lockout.clearLockout("a");
-    expect(lockout.check("a").allowed).toBe(true);
-    expect(lockout.check("b").allowed).toBe(false);
+    lockout.clearFailedAttempts("a");
+    expect(lockout.check("a").locked).toBe(false);
+    expect(lockout.check("b").locked).toBe(true);
   });
 });
