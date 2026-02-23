@@ -135,6 +135,13 @@ describe("domain restriction: only @company.com emails", () => {
     expect(checkEmailDomain("user@mail.company.com", COMPANY_OPTIONS).allowed).toBe(false);
     expect(checkEmailDomain("invalid", COMPANY_OPTIONS).allowed).toBe(false);
   });
+
+  it("rejects non-company domains regardless of casing", () => {
+    const emails = ["user@Gmail.com", "test@OTHER.com", "admin@Sub.Company.com"];
+    for (const email of emails) {
+      expect(checkEmailDomain(email, COMPANY_OPTIONS).allowed).toBe(false);
+    }
+  });
 });
 
 describe("createDefaultEmailDomainChecker", () => {
