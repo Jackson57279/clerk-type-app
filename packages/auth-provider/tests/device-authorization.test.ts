@@ -59,6 +59,17 @@ describe("createDeviceAuthorization", () => {
     expect(result.expires_in).toBe(600);
     expect(result.interval).toBe(10);
   });
+
+  it("strips trailing slash from verification_uri", () => {
+    const store = createMemoryDeviceCodeStore();
+    const result = createDeviceAuthorization({
+      clientId: "c",
+      verificationUri: "https://auth.example.com/device/",
+      store,
+    });
+    expect(result.verification_uri).toBe("https://auth.example.com/device");
+    expect(result.verification_uri_complete).toMatch(/^https:\/\/auth\.example\.com\/device\?user_code=/);
+  });
 });
 
 describe("approveDeviceByUserCode", () => {
