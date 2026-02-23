@@ -221,6 +221,14 @@ describe("regenerateSessionIdAndEnforceLimit (session fixation prevention)", () 
     expect(evicted).toContain("s0");
     expect(evicted).toContain("s1");
   });
+
+  it("when user limit is 0 does not register new session, returns old id and removes old", () => {
+    const oldId = "fixated-session";
+    registerSession(oldId, "u1", null);
+    const out = regenerateSessionIdAndEnforceLimit(oldId, "u1", null, { user: 0 });
+    expect(out).toBe(oldId);
+    expect(getActiveCountByUser("u1")).toBe(0);
+  });
 });
 
 describe("invalidateAllSessionsForUser (remote logout)", () => {
@@ -345,6 +353,15 @@ describe("createConcurrentSessionLimit (custom defaults)", () => {
     const limiter = createConcurrentSessionLimit({ defaultUserLimit: 5 });
     const r = limiter.enforceAndRegister("s1", "u1", null, { user: 0 });
     expect(r.allowed).toBe(false);
+    expect(limiter.getActiveCountByUser("u1")).toBe(0);
+  });
+
+  it("regenerateAndEnforce with limit 0 does not register new session, returns old id", () => {
+    const limiter = createConcurrentSessionLimit({ defaultUserLimit: 0 });
+    const oldId = "old-sess";
+    limiter.register(oldId, "u1", null);
+    const out = limiter.regenerateAndEnforce(oldId, "u1", null);
+    expect(out).toBe(oldId);
     expect(limiter.getActiveCountByUser("u1")).toBe(0);
   });
 });

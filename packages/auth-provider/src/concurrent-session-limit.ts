@@ -162,6 +162,11 @@ export function regenerateSessionIdAndEnforceLimit(
   limits: SessionLimits,
   options?: EnforceAndRegisterOptions
 ): string {
+  const result = checkCanCreateSession(userId, orgId, limits);
+  if (!result.allowed) {
+    removeSession(oldSessionId);
+    return oldSessionId;
+  }
   const newSessionId = regenerateSessionId(
     oldSessionId,
     userId,
@@ -361,10 +366,12 @@ export function createConcurrentSessionLimit(
       options?: EnforceAndRegisterOptions
     ): string {
       const result = this.check(userId, orgId, limits);
-      if (result.allowed) {
-        for (const id of result.evictSessionIds) this.remove(id);
-        options?.onEvict?.(result.evictSessionIds);
+      if (!result.allowed) {
+        this.remove(oldSessionId);
+        return oldSessionId;
       }
+      for (const id of result.evictSessionIds) this.remove(id);
+      options?.onEvict?.(result.evictSessionIds);
       return regenerateSessionId(oldSessionId, userId, orgId, this);
     },
   };
