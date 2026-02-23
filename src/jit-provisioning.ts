@@ -1,60 +1,18 @@
+import {
+  applyAttributeMapping,
+  type AttributeMappingConfig,
+  type MappedClaims,
+} from "./attribute-mapping.js";
 import type { SpInitiatedAssertionResult } from "./sp-initiated-sso.js";
 
-export interface JitAttributeMapping {
-  emailAttribute?: string;
-  nameAttribute?: string;
-  givenNameAttribute?: string;
-  surnameAttribute?: string;
-  groupsAttribute?: string;
-  rolesAttribute?: string;
-}
-
-export interface JitMappedClaims {
-  email: string | undefined;
-  name: string | undefined;
-  firstName: string | undefined;
-  lastName: string | undefined;
-  groups: string[];
-  roles: string[];
-}
-
-function firstValue(attributes: Record<string, string[]>, name: string): string | undefined {
-  const values = attributes[name];
-  if (!values || values.length === 0) return undefined;
-  const v = values[0]?.trim();
-  return v === "" ? undefined : v;
-}
-
-function allValues(attributes: Record<string, string[]>, name: string): string[] {
-  const values = attributes[name];
-  if (!values) return [];
-  return values.map((v) => v?.trim()).filter((v): v is string => Boolean(v));
-}
+export type JitAttributeMapping = AttributeMappingConfig;
+export type JitMappedClaims = MappedClaims;
 
 export function extractMappedClaims(
   assertion: SpInitiatedAssertionResult,
   mapping: JitAttributeMapping
 ): JitMappedClaims {
-  const attrs = assertion.attributes ?? {};
-  const email = mapping.emailAttribute
-    ? firstValue(attrs, mapping.emailAttribute)
-    : undefined;
-  const name = mapping.nameAttribute
-    ? firstValue(attrs, mapping.nameAttribute)
-    : undefined;
-  const firstName = mapping.givenNameAttribute
-    ? firstValue(attrs, mapping.givenNameAttribute)
-    : undefined;
-  const lastName = mapping.surnameAttribute
-    ? firstValue(attrs, mapping.surnameAttribute)
-    : undefined;
-  const groups = mapping.groupsAttribute
-    ? allValues(attrs, mapping.groupsAttribute)
-    : [];
-  const roles = mapping.rolesAttribute
-    ? allValues(attrs, mapping.rolesAttribute)
-    : [];
-  return { email, name, firstName, lastName, groups, roles };
+  return applyAttributeMapping(assertion.attributes ?? {}, mapping);
 }
 
 export interface JitProvisionUserData {
