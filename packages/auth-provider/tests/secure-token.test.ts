@@ -27,4 +27,10 @@ describe("generateSecureToken", () => {
       seen.add(token);
     }
   });
+
+  it("does not reuse tokens across immediate invocations", () => {
+    const first = generateSecureToken();
+    const second = generateSecureToken();
+    expect(first).not.toBe(second);
+  });
 });
