@@ -31,6 +31,11 @@ describe("encryption-in-transit", () => {
       const opts = getServerTlsOptions();
       expect(opts).toHaveProperty("minVersion", "TLSv1.3");
     });
+
+    it("can be used with createSecureContext", () => {
+      const opts = getServerTlsOptions();
+      expect(() => createSecureContext(opts)).not.toThrow();
+    });
   });
 
   describe("getClientTlsOptions", () => {
