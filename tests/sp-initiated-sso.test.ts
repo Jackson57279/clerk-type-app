@@ -9,6 +9,7 @@ import {
   type SpInitiatedIdpConfig,
 } from "../src/sp-initiated-sso.js";
 import { createLogoutResponse } from "../src/single-logout.js";
+import { DOMParser } from "@xmldom/xmldom";
 
 const TEST_SP_KEY = `-----BEGIN PRIVATE KEY-----
 MIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQDBX9ZAnn+hUzzM
@@ -101,6 +102,32 @@ describe("createSpInitiatedLoginRequestUrl", () => {
     const b = await createSpInitiatedLoginRequestUrl(spConfig(), idpConfig());
     expect(a.requestId).not.toBe(b.requestId);
     expect(a.loginUrl).not.toBe(b.loginUrl);
+  });
+
+  it("produces signed AuthnRequest by default (Signature inside SAMLRequest)", async () => {
+    const result = await createSpInitiatedLoginRequestUrl(spConfig(), idpConfig());
+    const samlRequestB64 = new URL(result.loginUrl).searchParams.get("SAMLRequest");
+    expect(samlRequestB64).toBeTruthy();
+    const deflated = Buffer.from(samlRequestB64!, "base64");
+    const xml = zlib.inflateRawSync(deflated).toString("utf8");
+    const dom = new DOMParser().parseFromString(xml, "text/xml");
+    const signature = dom.getElementsByTagNameNS("http://www.w3.org/2000/09/xmldsig#", "Signature");
+    expect(signature.length).toBe(1);
+    const signatureMethod = dom.getElementsByTagName("SignatureMethod")[0];
+    expect(signatureMethod?.getAttribute("Algorithm")).toBe(
+      "http://www.w3.org/2001/04/xmldsig-more#rsa-sha256"
+    );
+  });
+
+  it("when signAuthnRequest is false, produces unsigned AuthnRequest", async () => {
+    const result = await createSpInitiatedLoginRequestUrl(spConfig(), idpConfig(), {
+      signAuthnRequest: false,
+    });
+    const samlRequestB64 = new URL(result.loginUrl).searchParams.get("SAMLRequest");
+    expect(samlRequestB64).toBeTruthy();
+    const deflated = Buffer.from(samlRequestB64!, "base64");
+    const xml = zlib.inflateRawSync(deflated).toString("utf8");
+    expect(xml).not.toContain("Signature");
   });
 });
 

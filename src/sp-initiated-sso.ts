@@ -1,10 +1,14 @@
 import { createRequire } from "module";
+import zlib from "zlib";
+import { DOMParser } from "@xmldom/xmldom";
 
 const require = createRequire(import.meta.url);
 const saml2 = require("saml2-js") as {
   ServiceProvider: new (opts: SpOptions) => ServiceProviderInstance;
   IdentityProvider: new (opts: IdpOptions) => IdpInstance;
 };
+
+const XMLNS_SAMLP = "urn:oasis:names:tc:SAML:2.0:protocol";
 
 interface SpOptions {
   entity_id: string;
@@ -31,6 +35,7 @@ interface ServiceProviderInstance {
     options: { relay_state?: string },
     cb: (err: Error | null, loginUrl: string, requestId: string) => void
   ): void;
+  create_authn_request_xml(idp: IdpInstance, options?: { relay_state?: string }): string;
   create_logout_request_url(
     idp: IdpInstance,
     options: { name_id: string; session_index?: string; relay_state?: string },
@@ -119,13 +124,47 @@ function toIdpOptions(c: SpInitiatedIdpConfig): IdpOptions {
   };
 }
 
+function extractAuthnRequestId(signedAuthnRequestXml: string): string {
+  const dom = new DOMParser().parseFromString(signedAuthnRequestXml, "text/xml");
+  const authnRequest = dom.getElementsByTagNameNS(XMLNS_SAMLP, "AuthnRequest")[0];
+  if (!authnRequest) throw new Error("AuthnRequest element not found");
+  const id = authnRequest.getAttribute("ID");
+  if (!id) throw new Error("AuthnRequest ID attribute not found");
+  return id;
+}
+
+export interface CreateSpInitiatedLoginRequestUrlOptions {
+  relayState?: string;
+  signAuthnRequest?: boolean;
+}
+
 export function createSpInitiatedLoginRequestUrl(
   spConfig: SpInitiatedSpConfig,
   idpConfig: SpInitiatedIdpConfig,
-  options: { relayState?: string } = {}
+  options: CreateSpInitiatedLoginRequestUrlOptions = {}
 ): Promise<SpInitiatedLoginResult> {
+  const signAuthnRequest = options.signAuthnRequest !== false;
   const sp = new saml2.ServiceProvider(toSpOptions(spConfig));
   const idp = new saml2.IdentityProvider(toIdpOptions(idpConfig));
+
+  if (signAuthnRequest) {
+    const signedXml = sp.create_authn_request_xml(idp, {
+      relay_state: options.relayState,
+    });
+    const requestId = extractAuthnRequestId(signedXml);
+    const deflated = zlib.deflateRawSync(Buffer.from(signedXml, "utf8"));
+    const samlRequestBase64 = deflated.toString("base64");
+    const url = new URL(idpConfig.ssoLoginUrl);
+    url.searchParams.set("SAMLRequest", samlRequestBase64);
+    if (options.relayState !== undefined) {
+      url.searchParams.set("RelayState", options.relayState);
+    }
+    return Promise.resolve({
+      loginUrl: url.toString(),
+      requestId,
+    });
+  }
+
   return new Promise((resolve, reject) => {
     sp.create_login_request_url(
       idp,
