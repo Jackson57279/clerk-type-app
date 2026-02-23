@@ -158,8 +158,10 @@ describe("handleSpInitiatedLogout", () => {
     expect(result.redirectUrl).toContain("https://sp.example.com/slo?");
     expect(result.redirectUrl).toContain("SAMLResponse=");
     expect(invalidated).toHaveLength(1);
-    expect(invalidated[0].nameId).toBe("tstudent");
-    expect(invalidated[0].sessionIndex).toBe("_2");
+    const inv = invalidated[0];
+    if (!inv) throw new Error("expected one invalidated session");
+    expect(inv.nameId).toBe("tstudent");
+    expect(inv.sessionIndex).toBe("_2");
   });
 
   it("includes RelayState in redirect URL when provided", async () => {
