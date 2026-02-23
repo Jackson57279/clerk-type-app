@@ -20,6 +20,25 @@ describe("Argon2id password hashing", () => {
     expect(hash).toMatch(/^\$argon2id/);
   });
 
+  it("uses strong Argon2id parameters", async () => {
+    const hash = await hashPassword("param-check");
+    const parts = hash.split("$");
+    const params = parts[3] ?? "";
+
+    const getParam = (key: string): number => {
+      const match = new RegExp(`${key}=(\\d+)`).exec(params);
+      return match ? Number.parseInt(match[1] ?? "", 10) : 0;
+    };
+
+    const memory = getParam("m");
+    const time = getParam("t");
+    const parallelism = getParam("p");
+
+    expect(memory).toBeGreaterThanOrEqual(65536);
+    expect(time).toBeGreaterThanOrEqual(3);
+    expect(parallelism).toBeGreaterThanOrEqual(1);
+  });
+
   it("produces different hashes for the same password (salt)", async () => {
     const a = await hashPassword("same");
     const b = await hashPassword("same");
