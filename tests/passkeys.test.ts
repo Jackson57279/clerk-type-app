@@ -17,6 +17,57 @@ const rpConfig: PasskeyRpConfig = {
 };
 
 describe("PasskeyStore (multiple passkeys)", () => {
+  it("user can register multiple passkeys and use any for auth", async () => {
+    const credentialStore = createMemoryPasskeyStore();
+    const challengeStore = createMemoryPasskeyChallengeStore();
+    const userId = "user-1";
+    const base: Omit<StoredPasskey, "credentialId" | "publicKey"> = {
+      userId,
+      counter: 0,
+      deviceType: "singleDevice",
+      backedUp: false,
+      webauthnUserID: "webauthn-id",
+    };
+    await credentialStore.save({
+      ...base,
+      credentialId: "passkey-laptop",
+      publicKey: new Uint8Array([1, 2, 3]),
+    });
+    await credentialStore.save({
+      ...base,
+      credentialId: "passkey-phone",
+      publicKey: new Uint8Array([4, 5, 6]),
+    });
+    const list = await credentialStore.listByUserId(userId);
+    expect(list).toHaveLength(2);
+    expect(list.map((p) => p.credentialId).sort()).toEqual(["passkey-laptop", "passkey-phone"]);
+
+    const regOptions = await startRegistration({
+      userId,
+      userName: "alice",
+      credentialStore,
+      challengeStore,
+      rpConfig,
+    });
+    expect(regOptions.excludeCredentials).toHaveLength(2);
+    expect(regOptions.excludeCredentials!.map((c) => c.id).sort()).toEqual([
+      "passkey-laptop",
+      "passkey-phone",
+    ]);
+
+    const authOptions = await startAuthentication({
+      userId,
+      credentialStore,
+      challengeStore,
+      rpConfig,
+    });
+    expect(authOptions.allowCredentials).toHaveLength(2);
+    expect(authOptions.allowCredentials!.map((c) => c.id).sort()).toEqual([
+      "passkey-laptop",
+      "passkey-phone",
+    ]);
+  });
+
   it("saves and lists multiple passkeys for the same user", async () => {
     const store = createMemoryPasskeyStore();
     const userId = "user-1";
