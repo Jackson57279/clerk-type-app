@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import {
   exchangeClientCredentials,
+  handleClientCredentialsFlow,
   verifyClientCredentialsToken,
   type ClientVerifier,
   type TokenResponse,
@@ -161,5 +162,110 @@ describe("client credentials token expiry", () => {
     expect(verifyClientCredentialsToken(result.access_token, SECRET)).not.toBeNull();
     vi.advanceTimersByTime(2000);
     expect(verifyClientCredentialsToken(result.access_token, SECRET)).toBeNull();
+  });
+});
+
+describe("handleClientCredentialsFlow", () => {
+  const flowOptions = {
+    secret: SECRET,
+    clientVerifier: validVerifier,
+  };
+
+  it("returns token response for valid grant_type, client_id, and client_secret", () => {
+    const result = handleClientCredentialsFlow(
+      {
+        grant_type: "client_credentials",
+        client_id: "m2m-client",
+        client_secret: "client-secret",
+      },
+      flowOptions
+    );
+    assertTokenResponse(result);
+    expect(result.access_token).toBeDefined();
+    expect(result.token_type).toBe("Bearer");
+    expect(result.expires_in).toBe(3600);
+    expect(result.scope).toBe("read write");
+  });
+
+  it("returns unsupported_grant_type when grant_type is not client_credentials", () => {
+    const r = handleClientCredentialsFlow(
+      {
+        grant_type: "refresh_token",
+        client_id: "m2m-client",
+        client_secret: "client-secret",
+      },
+      flowOptions
+    );
+    expect("error" in r).toBe(true);
+    if ("error" in r) {
+      expect(r.error).toBe("unsupported_grant_type");
+      expect(r.error_description).toContain("client_credentials");
+    }
+  });
+
+  it("returns invalid_request when client_id is missing or empty", () => {
+    const r1 = handleClientCredentialsFlow(
+      { grant_type: "client_credentials", client_secret: "client-secret" },
+      flowOptions
+    );
+    expect("error" in r1).toBe(true);
+    if ("error" in r1) {
+      expect(r1.error).toBe("invalid_request");
+      expect(r1.error_description).toContain("client_id");
+    }
+    const r2 = handleClientCredentialsFlow(
+      {
+        grant_type: "client_credentials",
+        client_id: "   ",
+        client_secret: "client-secret",
+      },
+      flowOptions
+    );
+    expect("error" in r2).toBe(true);
+    if ("error" in r2) expect(r2.error).toBe("invalid_request");
+  });
+
+  it("returns invalid_request when client_secret is missing or empty", () => {
+    const r = handleClientCredentialsFlow(
+      {
+        grant_type: "client_credentials",
+        client_id: "m2m-client",
+      },
+      flowOptions
+    );
+    expect("error" in r).toBe(true);
+    if ("error" in r) {
+      expect(r.error).toBe("invalid_request");
+      expect(r.error_description).toContain("client_secret");
+    }
+  });
+
+  it("returns invalid_client when verifier rejects credentials", () => {
+    const r = handleClientCredentialsFlow(
+      {
+        grant_type: "client_credentials",
+        client_id: "wrong",
+        client_secret: "client-secret",
+      },
+      flowOptions
+    );
+    expect("error" in r).toBe(true);
+    if ("error" in r) expect(r.error).toBe("invalid_client");
+  });
+
+  it("forwards optional scope from params", () => {
+    const result = handleClientCredentialsFlow(
+      {
+        grant_type: "client_credentials",
+        client_id: "m2m-client",
+        client_secret: "client-secret",
+        scope: "custom:scope",
+      },
+      flowOptions
+    );
+    assertTokenResponse(result);
+    expect(result.scope).toBe("custom:scope");
+    const payload = verifyClientCredentialsToken(result.access_token, SECRET);
+    expect(payload?.scope).toBe("custom:scope");
   });
 });

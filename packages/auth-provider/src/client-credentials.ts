@@ -54,6 +54,22 @@ export interface ClientCredentialsErrorResponse {
   error_description: string;
 }
 
+export interface ClientCredentialsFlowParams {
+  grant_type: string;
+  client_id?: string;
+  client_secret?: string;
+  scope?: string;
+}
+
+export type ClientCredentialsFlowErrorResponse =
+  | { error: "unsupported_grant_type"; error_description: string }
+  | { error: "invalid_request"; error_description: string }
+  | ClientCredentialsErrorResponse;
+
+export type ClientCredentialsFlowResponse =
+  | TokenResponse
+  | ClientCredentialsFlowErrorResponse;
+
 export interface ClientCredentialsTokenPayload {
   sub: string;
   client_id: string;
@@ -111,6 +127,36 @@ export function exchangeClientCredentials(
   };
   if (scope) result.scope = scope;
   return result;
+}
+
+export function handleClientCredentialsFlow(
+  params: ClientCredentialsFlowParams,
+  options: ExchangeClientCredentialsOptions
+): ClientCredentialsFlowResponse {
+  if (params.grant_type !== "client_credentials") {
+    return {
+      error: "unsupported_grant_type",
+      error_description: "grant_type must be client_credentials",
+    };
+  }
+  const clientId = params.client_id?.trim();
+  if (!clientId) {
+    return {
+      error: "invalid_request",
+      error_description: "client_id is required",
+    };
+  }
+  const clientSecret = params.client_secret ?? "";
+  if (!clientSecret) {
+    return {
+      error: "invalid_request",
+      error_description: "client_secret is required",
+    };
+  }
+  return exchangeClientCredentials(clientId, clientSecret, {
+    ...options,
+    scope: params.scope?.trim() || options.scope,
+  });
 }
 
 export function verifyClientCredentialsToken(
