@@ -37,7 +37,12 @@ export interface ProvisionResult {
   created: boolean;
 }
 
-import { deprovisionEntity, type DeprovisionOptions } from "./soft-delete.js";
+import {
+  deactivateEntity,
+  deleteEntity,
+  deprovisionEntity,
+  type DeprovisionOptions,
+} from "./soft-delete.js";
 export type { DeprovisionOptions } from "./soft-delete.js";
 
 export async function provisionUser(
@@ -84,6 +89,20 @@ export async function provisionUser(
     active: data.active ?? true,
   });
   return { user, created: true };
+}
+
+export async function deactivateUser(
+  store: UserProvisioningStore,
+  userId: string
+): Promise<void> {
+  return deactivateEntity(store, userId);
+}
+
+export async function deleteUser(
+  store: UserProvisioningStore,
+  userId: string
+): Promise<void> {
+  return deleteEntity(store, userId);
 }
 
 export async function deprovisionUser(

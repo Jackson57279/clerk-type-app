@@ -1,6 +1,8 @@
 import { describe, it, expect } from "vitest";
 import {
   provisionUser,
+  deactivateUser,
+  deleteUser,
   deprovisionUser,
   type UserProvisioningStore,
   type ProvisionedUser,
@@ -317,5 +319,54 @@ describe("deprovisionUser", () => {
     const found = await store.findById("user_1");
     expect(found).not.toBeNull();
     expect(found?.active).toBe(false);
+  });
+});
+
+describe("deactivateUser", () => {
+  it("soft-deletes (deactivates) user", async () => {
+    const store = memoryStore([
+      {
+        id: "user_1",
+        email: "deact@example.com",
+        externalId: undefined,
+        name: undefined,
+        firstName: undefined,
+        lastName: undefined,
+        active: true,
+      },
+    ]);
+    await deactivateUser(store, "user_1");
+    const found = await store.findById("user_1");
+    expect(found).not.toBeNull();
+    expect(found?.active).toBe(false);
+  });
+
+  it("is no-op when user does not exist", async () => {
+    const store = memoryStore();
+    await expect(deactivateUser(store, "nonexistent")).resolves.toBeUndefined();
+  });
+});
+
+describe("deleteUser", () => {
+  it("hard-deletes user", async () => {
+    const store = memoryStore([
+      {
+        id: "user_1",
+        email: "del@example.com",
+        externalId: undefined,
+        name: undefined,
+        firstName: undefined,
+        lastName: undefined,
+        active: true,
+      },
+    ]);
+    await deleteUser(store, "user_1");
+    const found = await store.findById("user_1");
+    expect(found).toBeNull();
+  });
+
+  it("is no-op when user does not exist", async () => {
+    const store = memoryStore();
+    await expect(deleteUser(store, "nonexistent")).resolves.toBeUndefined();
   });
 });
