@@ -5,6 +5,13 @@ const MEMORY_KB = 64 * 1024;
 const ITERATIONS = 3;
 const PARALLELISM = 4;
 
+const ARGON2_OPTIONS = {
+  type: argon2.argon2id,
+  memoryCost: MEMORY_KB,
+  timeCost: ITERATIONS,
+  parallelism: PARALLELISM,
+} as const;
+
 export interface PasswordPolicy {
   minLength: number;
   maxLength?: number;
@@ -128,12 +135,7 @@ export async function isPasswordPwned(plainPassword: string): Promise<boolean> {
 }
 
 export async function hashPassword(plainPassword: string): Promise<string> {
-  return argon2.hash(plainPassword, {
-    type: argon2.argon2id,
-    memoryCost: MEMORY_KB,
-    timeCost: ITERATIONS,
-    parallelism: PARALLELISM,
-  });
+  return argon2.hash(plainPassword, ARGON2_OPTIONS);
 }
 
 export async function verifyPassword(
