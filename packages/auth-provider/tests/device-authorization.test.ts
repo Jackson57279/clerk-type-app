@@ -115,6 +115,20 @@ describe("approveDeviceByUserCode", () => {
     approveDeviceByUserCode(created.user_code, "user-1", store);
     expect(approveDeviceByUserCode(created.user_code, "user-2", store)).toBe(false);
   });
+
+  it("returns false when device code has expired", () => {
+    const store = createMemoryDeviceCodeStore();
+    const created = createDeviceAuthorization({
+      clientId: "c",
+      verificationUri: VERIFICATION_URI,
+      store,
+      expiresInSec: 1,
+    });
+    vi.useFakeTimers();
+    vi.advanceTimersByTime(2000);
+    expect(approveDeviceByUserCode(created.user_code, "user-1", store)).toBe(false);
+    vi.useRealTimers();
+  });
 });
 
 describe("denyDeviceByUserCode", () => {
