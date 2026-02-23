@@ -196,4 +196,16 @@ describe("verifyCsrfRequest", () => {
       })
     ).toBe(true);
   });
+
+  it("returns false when cookie or header token is empty", () => {
+    const emptyCookieHeader = `${DEFAULT_CSRF_COOKIE_NAME}=`;
+    const nonEmptyHeader = (name: string) =>
+      name === DEFAULT_CSRF_HEADER_NAME ? "token" : undefined;
+    expect(verifyCsrfRequest(emptyCookieHeader, nonEmptyHeader)).toBe(false);
+
+    const nonEmptyCookieHeader = `${DEFAULT_CSRF_COOKIE_NAME}=token`;
+    const emptyHeader = (name: string) =>
+      name === DEFAULT_CSRF_HEADER_NAME ? "   " : undefined;
+    expect(verifyCsrfRequest(nonEmptyCookieHeader, emptyHeader)).toBe(false);
+  });
 });
