@@ -5,16 +5,17 @@ import {
   verifyClientCredentialsToken,
   type ClientVerifier,
   type TokenResponse,
+  type ClientCredentialsFlowResponse,
 } from "../src/client-credentials.js";
 
 function isTokenResponse(
-  r: ReturnType<typeof exchangeClientCredentials>
+  r: ReturnType<typeof exchangeClientCredentials> | ClientCredentialsFlowResponse
 ): r is TokenResponse {
   return "access_token" in r;
 }
 
 function assertTokenResponse(
-  r: ReturnType<typeof exchangeClientCredentials>
+  r: TokenResponse | ClientCredentialsFlowResponse
 ): asserts r is TokenResponse {
   expect(isTokenResponse(r)).toBe(true);
 }
