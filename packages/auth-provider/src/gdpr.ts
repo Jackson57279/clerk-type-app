@@ -119,6 +119,51 @@ export async function exportUserData(
   return result;
 }
 
+export async function exportUserDataAsJson(
+  userId: string,
+  options: GdprExportOptions
+): Promise<string | null> {
+  const result = await exportUserData(userId, options);
+  return result ? JSON.stringify(result, null, 2) : null;
+}
+
+function escapeCsvField(value: string | undefined | null): string {
+  if (value === undefined || value === null) return "";
+  const s = String(value);
+  if (/[",\n\r]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
+  return s;
+}
+
+export function formatExportAsCsv(result: GdprExportResult): string {
+  const header = "id,email,externalId,name,firstName,lastName,active,exportedAt,totpEnabled,backupCodesRemainingCount";
+  const row = [
+    result.user.id,
+    result.user.email,
+    result.user.externalId ?? "",
+    result.user.name ?? "",
+    result.user.firstName ?? "",
+    result.user.lastName ?? "",
+    result.user.active ? "true" : "false",
+    result.exportedAt,
+    result.totpEnabled ? "true" : "false",
+    String(result.backupCodesRemainingCount),
+  ].map(escapeCsvField).join(",");
+  const passkeyHeader = "credentialId,deviceType,backedUp,friendlyName,deviceInfo,lastUsedAt";
+  const passkeyRows = result.passkeys.map(
+    (p) =>
+      [
+        p.credentialId,
+        p.deviceType,
+        p.backedUp ? "true" : "false",
+        p.friendlyName ?? "",
+        p.deviceInfo ?? "",
+        p.lastUsedAt ?? "",
+      ].map(escapeCsvField).join(",")
+  );
+  const lines = [header, row, "", passkeyHeader, ...passkeyRows];
+  return lines.join("\n");
+}
+
 export interface GdprErasureUserStore {
   findById(id: string): Promise<{ id: string } | null>;
   hardDelete(id: string): Promise<void>;

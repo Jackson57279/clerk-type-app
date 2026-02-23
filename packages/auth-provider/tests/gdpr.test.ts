@@ -1,6 +1,8 @@
 import { describe, it, expect, vi } from "vitest";
 import {
   exportUserData,
+  exportUserDataAsJson,
+  formatExportAsCsv,
   eraseUserData,
   type GdprExportOptions,
   type GdprErasureOptions,
@@ -162,6 +164,85 @@ describe("exportUserData", () => {
     const result = await exportUserData("missing", { userStore, auditLogStore });
     expect(result).toBeNull();
     expect(events).toHaveLength(0);
+  });
+});
+
+describe("exportUserDataAsJson", () => {
+  it("returns null when user is not found", async () => {
+    const userStore = { findById: vi.fn().mockResolvedValue(null) };
+    const result = await exportUserDataAsJson("missing", { userStore });
+    expect(result).toBeNull();
+  });
+
+  it("returns pretty-printed JSON string of export", async () => {
+    const users = new Map([["user-1", testUser]]);
+    const userStore = {
+      findById: vi.fn((id: string) => Promise.resolve(users.get(id) ?? null)),
+    };
+    const result = await exportUserDataAsJson("user-1", { userStore });
+    expect(result).not.toBeNull();
+    const parsed = JSON.parse(result!);
+    expect(parsed.version).toBe(1);
+    expect(parsed.user.id).toBe("user-1");
+    expect(parsed.user.email).toBe("alice@example.com");
+    expect(result).toContain("\n");
+  });
+});
+
+describe("formatExportAsCsv", () => {
+  it("formats export result as CSV with user row and passkey rows", () => {
+    const result = {
+      version: 1 as const,
+      exportedAt: "2025-01-15T12:00:00.000Z",
+      user: {
+        id: "user-1",
+        email: "alice@example.com",
+        externalId: "ext-1",
+        name: "Alice",
+        firstName: "Alice",
+        lastName: "Smith",
+        active: true,
+      },
+      passkeys: [
+        {
+          credentialId: "c1",
+          deviceType: "singleDevice",
+          backedUp: false,
+          friendlyName: "Key 1",
+          deviceInfo: "Chrome",
+          lastUsedAt: "2025-01-01T00:00:00.000Z",
+        },
+      ],
+      totpEnabled: true,
+      backupCodesRemainingCount: 2,
+    };
+    const csv = formatExportAsCsv(result);
+    expect(csv).toContain("id,email,externalId,name,firstName,lastName,active,exportedAt,totpEnabled,backupCodesRemainingCount");
+    expect(csv).toContain("user-1,alice@example.com,ext-1,Alice,Alice,Smith,true,2025-01-15T12:00:00.000Z,true,2");
+    expect(csv).toContain("credentialId,deviceType,backedUp,friendlyName,deviceInfo,lastUsedAt");
+    expect(csv).toContain("c1,singleDevice,false,Key 1,Chrome,2025-01-01T00:00:00.000Z");
+  });
+
+  it("escapes CSV fields containing commas and quotes", () => {
+    const result = {
+      version: 1 as const,
+      exportedAt: "2025-01-15T12:00:00.000Z",
+      user: {
+        id: "user-1",
+        email: "alice\"@example.com",
+        externalId: undefined,
+        name: "Smith, Alice",
+        firstName: "Alice",
+        lastName: "Smith",
+        active: false,
+      },
+      passkeys: [],
+      totpEnabled: false,
+      backupCodesRemainingCount: 0,
+    };
+    const csv = formatExportAsCsv(result);
+    expect(csv).toContain('"alice""@example.com"');
+    expect(csv).toContain('"Smith, Alice"');
   });
 });
 
