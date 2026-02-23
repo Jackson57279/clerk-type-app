@@ -9,6 +9,8 @@ import {
   isIdpInitiatedAssertion,
   createSpInitiatedLogoutRequestUrl,
   validateSpInitiatedLogoutResponse,
+  getSpInitiatedLoginRedirect,
+  handleSpInitiatedAssertEndpoint,
   type SpInitiatedSpConfig,
   type SpInitiatedIdpConfig,
 } from "../src/sp-initiated-sso.js";
@@ -376,6 +378,85 @@ describe("validateSpInitiatedLogoutResponse", () => {
     await expect(
       validateSpInitiatedLogoutResponse(spConfig(), idpConfig(), { SAMLResponse: notLogout })
     ).rejects.toThrow();
+  });
+});
+
+describe("getSpInitiatedLoginRedirect", () => {
+  it("returns 302 with redirectUrl to IdP login URL", async () => {
+    const result = await getSpInitiatedLoginRedirect(
+      {},
+      { spConfig: spConfig(), idpConfig: idpConfig() }
+    );
+    expect(result.status).toBe(302);
+    if (result.status === 302) {
+      expect(result.redirectUrl).toContain("https://idp.example.com/sso/login");
+      expect(new URL(result.redirectUrl).searchParams.get("SAMLRequest")).toBeTruthy();
+    }
+  });
+
+  it("includes RelayState in redirect URL when provided", async () => {
+    const result = await getSpInitiatedLoginRedirect(
+      { relayState: "/app/callback" },
+      { spConfig: spConfig(), idpConfig: idpConfig() }
+    );
+    expect(result.status).toBe(302);
+    if (result.status === 302) {
+      expect(new URL(result.redirectUrl).searchParams.get("RelayState")).toBe("/app/callback");
+    }
+  });
+});
+
+describe("handleSpInitiatedAssertEndpoint", () => {
+  it("returns 200 with assertion when SAMLResponse is valid", async () => {
+    const idpInitiatedIdpConfig = {
+      entityId: "https://idp.example.com/metadata",
+      privateKey: TEST_SP_KEY,
+      certificate: TEST_CERT,
+    };
+    const idpInitiatedSpConfig = {
+      entityId: "https://sp.example.com/metadata.xml",
+      assertEndpoint: "https://sp.example.com/assert",
+    };
+    const idpResponse = await createIdpInitiatedResponse(
+      idpInitiatedIdpConfig,
+      idpInitiatedSpConfig,
+      { nameId: "user@example.com", sessionIndex: "sess_1" }
+    );
+    const result = await handleSpInitiatedAssertEndpoint(
+      { SAMLResponse: idpResponse.samlResponseBase64 },
+      {
+        spConfig: spConfig({ allowUnencryptedAssertion: true }),
+        idpConfig: idpConfig(),
+        requireSessionIndex: true,
+      }
+    );
+    expect(result.status).toBe(200);
+    if (result.status === 200) {
+      expect(result.assertion.nameId).toBe("user@example.com");
+      expect(result.assertion.sessionIndex).toBe("sess_1");
+    }
+  });
+
+  it("returns 400 when SAMLResponse is missing", async () => {
+    const result = await handleSpInitiatedAssertEndpoint(
+      { SAMLResponse: "" },
+      { spConfig: spConfig(), idpConfig: idpConfig() }
+    );
+    expect(result.status).toBe(400);
+    if (result.status === 400) {
+      expect(result.errorDescription).toContain("SAMLResponse");
+    }
+  });
+
+  it("returns 400 when SAMLResponse is invalid", async () => {
+    const result = await handleSpInitiatedAssertEndpoint(
+      { SAMLResponse: "not-valid-base64!!!" },
+      { spConfig: spConfig(), idpConfig: idpConfig() }
+    );
+    expect(result.status).toBe(400);
+    if (result.status === 400) {
+      expect(result.error).toBe("invalid_request");
+    }
   });
 });
 

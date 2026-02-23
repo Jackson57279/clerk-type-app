@@ -308,3 +308,106 @@ export function validateSpInitiatedLogoutResponse(
     );
   });
 }
+
+export interface SpInitiatedLoginEndpointParams {
+  relayState?: string;
+}
+
+export interface SpInitiatedLoginEndpointOptions {
+  spConfig: SpInitiatedSpConfig;
+  idpConfig: SpInitiatedIdpConfig;
+  signAuthnRequest?: boolean;
+}
+
+export interface SpInitiatedLoginEndpointSuccess {
+  status: 302;
+  redirectUrl: string;
+}
+
+export interface SpInitiatedLoginEndpointError {
+  status: 400;
+  error: string;
+  errorDescription: string;
+}
+
+export type SpInitiatedLoginEndpointResult =
+  | SpInitiatedLoginEndpointSuccess
+  | SpInitiatedLoginEndpointError;
+
+export async function getSpInitiatedLoginRedirect(
+  params: SpInitiatedLoginEndpointParams,
+  options: SpInitiatedLoginEndpointOptions
+): Promise<SpInitiatedLoginEndpointResult> {
+  try {
+    const { loginUrl } = await createSpInitiatedLoginRequestUrl(
+      options.spConfig,
+      options.idpConfig,
+      {
+        relayState: params.relayState,
+        signAuthnRequest: options.signAuthnRequest,
+      }
+    );
+    return { status: 302, redirectUrl: loginUrl };
+  } catch (err) {
+    return {
+      status: 400,
+      error: "saml_request_failed",
+      errorDescription: err instanceof Error ? err.message : "Failed to create SAML login request",
+    };
+  }
+}
+
+export interface SpInitiatedAssertEndpointParams {
+  SAMLResponse: string;
+  RelayState?: string;
+}
+
+export interface SpInitiatedAssertEndpointOptions {
+  spConfig: SpInitiatedSpConfig;
+  idpConfig: SpInitiatedIdpConfig;
+  requireSessionIndex?: boolean;
+}
+
+export interface SpInitiatedAssertEndpointSuccess {
+  status: 200;
+  assertion: SpInitiatedAssertionResult;
+}
+
+export interface SpInitiatedAssertEndpointError {
+  status: 400;
+  error: string;
+  errorDescription: string;
+}
+
+export type SpInitiatedAssertEndpointResult =
+  | SpInitiatedAssertEndpointSuccess
+  | SpInitiatedAssertEndpointError;
+
+export async function handleSpInitiatedAssertEndpoint(
+  params: SpInitiatedAssertEndpointParams,
+  options: SpInitiatedAssertEndpointOptions
+): Promise<SpInitiatedAssertEndpointResult> {
+  const samlResponse = params.SAMLResponse?.trim();
+  if (!samlResponse) {
+    return {
+      status: 400,
+      error: "invalid_request",
+      errorDescription: "SAMLResponse is required",
+    };
+  }
+  try {
+    const assertion = await validateSpInitiatedPostResponse(
+      options.spConfig,
+      options.idpConfig,
+      { SAMLResponse: samlResponse, RelayState: params.RelayState },
+      { requireSessionIndex: options.requireSessionIndex ?? true }
+    );
+    return { status: 200, assertion };
+  } catch (err) {
+    return {
+      status: 400,
+      error: "invalid_request",
+      errorDescription: err instanceof Error ? err.message : "Invalid SAML response",
+    };
+  }
+}
