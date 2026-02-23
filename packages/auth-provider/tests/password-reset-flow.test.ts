@@ -471,3 +471,57 @@ describe("resetPasswordWithToken with breach detection", () => {
     expect(updateUserPassword).not.toHaveBeenCalled();
   });
 });
+
+describe("password reset flow (request then reset)", () => {
+  it("full flow: request reset email then reset password with token", async () => {
+    const store = createMemoryUsedTokenStore();
+    const user = { userId: "usr-42", email: "flow@example.com" };
+    const findUserByEmail = vi.fn().mockResolvedValue(user);
+    let capturedToken: string | null = null;
+    const buildResetLink = vi.fn((token: string) => {
+      capturedToken = token;
+      return `https://app.example.com/reset?token=${token}`;
+    });
+    const sendEmail = vi.fn().mockResolvedValue(undefined);
+    const updateUserPassword = vi.fn().mockResolvedValue(undefined);
+
+    const requestResult = await requestPasswordReset({
+      email: user.email,
+      secret: SECRET,
+      findUserByEmail,
+      buildResetLink,
+      sendEmail,
+      usedTokenStore: store,
+      isAllowedEmail: () => true,
+    });
+    expect(requestResult).toEqual({ sent: true });
+    expect(capturedToken).not.toBeNull();
+
+    const resetResult = await resetPasswordWithToken({
+      token: capturedToken!,
+      newPassword: "NewSecure1",
+      secret: SECRET,
+      usedTokenStore: store,
+      updateUserPassword,
+    });
+    expect(resetResult).toEqual({ success: true, userId: "usr-42" });
+    expect(updateUserPassword).toHaveBeenCalledTimes(1);
+    expect(updateUserPassword).toHaveBeenCalledWith(
+      "usr-42",
+      expect.stringMatching(/^\$argon2/)
+    );
+
+    const secondReset = await resetPasswordWithToken({
+      token: capturedToken!,
+      newPassword: "Another1",
+      secret: SECRET,
+      usedTokenStore: store,
+      updateUserPassword,
+    });
+    expect(secondReset).toEqual({
+      success: false,
+      reason: "invalid_or_expired_token",
+    });
+    expect(updateUserPassword).toHaveBeenCalledTimes(1);
+  });
+});
