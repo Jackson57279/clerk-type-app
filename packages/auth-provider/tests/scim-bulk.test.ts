@@ -1,5 +1,10 @@
 import { describe, it, expect, vi } from "vitest";
-import { processBulkRequest, BULK_REQUEST_SCHEMA, BULK_RESPONSE_SCHEMA } from "../src/scim-bulk.js";
+import {
+  processBulkRequest,
+  processGroupSync,
+  BULK_REQUEST_SCHEMA,
+  BULK_RESPONSE_SCHEMA,
+} from "../src/scim-bulk.js";
 import type { UserProvisioningStore, ProvisionedUser, ProvisionUserData } from "../src/user-provisioning.js";
 import type { GroupSyncStore, SyncedGroup } from "../src/group-sync.js";
 import type { WebhookSubscriptionStore } from "../src/realtime-webhook.js";
@@ -717,6 +722,144 @@ describe("processBulkRequest", () => {
       const op = response.Operations[0]!;
       expect(op.status).toBe(400);
       expect(op.response).toMatchObject({ detail: "GroupSync requires data.groups array" });
+    });
+  });
+
+  describe("processGroupSync (standalone group synchronization)", () => {
+    it("syncs groups and returns created/updated/removed counts", async () => {
+      const userStore = memoryUserStore([
+        {
+          id: "user_1",
+          email: "a@example.com",
+          externalId: "ext-a",
+          name: undefined,
+          firstName: undefined,
+          lastName: undefined,
+          active: true,
+        },
+      ]);
+      const groupStore = memoryGroupStore();
+      const result = await processGroupSync({
+        organizationId: orgId,
+        userStore,
+        groupStore,
+        data: {
+          groups: [
+            { externalId: "grp-1", displayName: "Engineering", members: [{ value: "ext-a" }] },
+            { externalId: "grp-2", displayName: "Product", members: [] },
+          ],
+        },
+      });
+      expect(result).toEqual({ created: 2, updated: 0, removed: 0 });
+      const list = await groupStore.listGroupsByOrganization(orgId);
+      expect(list).toHaveLength(2);
+      const grp1 = await groupStore.findGroupByExternalId(orgId, "grp-1");
+      expect(grp1?.displayName).toBe("Engineering");
+      expect(await groupStore.listGroupMemberIds(grp1!.id)).toEqual(["user_1"]);
+    });
+
+    it("resolves members by internal user id", async () => {
+      const userStore = memoryUserStore([
+        {
+          id: "user_1",
+          email: "a@example.com",
+          externalId: "ext-a",
+          name: undefined,
+          firstName: undefined,
+          lastName: undefined,
+          active: true,
+        },
+      ]);
+      const groupStore = memoryGroupStore();
+      await processGroupSync({
+        organizationId: orgId,
+        userStore,
+        groupStore,
+        data: {
+          groups: [{ externalId: "grp-1", displayName: "Team", members: [{ value: "user_1" }] }],
+        },
+      });
+      const grp1 = await groupStore.findGroupByExternalId(orgId, "grp-1");
+      expect(await groupStore.listGroupMemberIds(grp1!.id)).toEqual(["user_1"]);
+    });
+
+    it("throws when data.groups is missing", async () => {
+      const userStore = memoryUserStore();
+      const groupStore = memoryGroupStore();
+      await expect(
+        processGroupSync({
+          organizationId: orgId,
+          userStore,
+          groupStore,
+          data: { groups: undefined as unknown as [] },
+        })
+      ).rejects.toThrow("GroupSync requires data.groups array");
+    });
+
+    it("throws when data has no groups array", async () => {
+      const userStore = memoryUserStore();
+      const groupStore = memoryGroupStore();
+      await expect(
+        processGroupSync({
+          organizationId: orgId,
+          userStore,
+          groupStore,
+          data: { groups: null } as unknown as { groups: Array<{ externalId: string; displayName: string }> },
+        })
+      ).rejects.toThrow("GroupSync requires data.groups array");
+    });
+
+    it("removeGroupsNotInSource soft-deletes groups not in payload", async () => {
+      const userStore = memoryUserStore();
+      const groupStore = memoryGroupStore();
+      await groupStore.createGroup(orgId, { externalId: "grp-old", displayName: "Old" });
+      const result = await processGroupSync({
+        organizationId: orgId,
+        userStore,
+        groupStore,
+        data: {
+          groups: [{ externalId: "grp-new", displayName: "New", members: [] }],
+          removeGroupsNotInSource: true,
+        },
+      });
+      expect(result).toEqual({ created: 1, updated: 0, removed: 1 });
+      const list = await groupStore.listGroupsByOrganization(orgId);
+      expect(list).toHaveLength(1);
+      expect(list[0]!.externalId).toBe("grp-new");
+    });
+
+    it("delivers webhooks when webhookStore provided", async () => {
+      const userStore = memoryUserStore();
+      const groupStore = memoryGroupStore();
+      const delivered: { type: string; data: Record<string, unknown> }[] = [];
+      const webhookStore: WebhookSubscriptionStore = {
+        listSubscriptions: vi.fn(async () => [{ url: "https://hooks.example.com/wh", secret: "sec" }]),
+      };
+      const mockFetch = vi.fn(async (_url: unknown, init?: RequestInit) => {
+        const body = init?.body as string;
+        if (body) {
+          const parsed = JSON.parse(body) as { type: string; data: Record<string, unknown> };
+          delivered.push({ type: parsed.type, data: parsed.data });
+        }
+        return new Response(null, { status: 200 });
+      });
+      await processGroupSync({
+        organizationId: orgId,
+        userStore,
+        groupStore,
+        data: {
+          groups: [
+            { externalId: "grp-1", displayName: "Eng", members: [] },
+            { externalId: "grp-2", displayName: "Product", members: [] },
+          ],
+        },
+        webhookStore,
+        webhookDeliveryOptions: { fetchFn: mockFetch },
+      });
+      expect(delivered).toHaveLength(2);
+      expect(delivered.map((d) => d.type)).toEqual(["group.created", "group.created"]);
+      expect(delivered[0]!.data.externalId).toBe("grp-1");
+      expect(delivered[1]!.data.externalId).toBe("grp-2");
     });
   });
 

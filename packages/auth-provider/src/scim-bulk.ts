@@ -80,6 +80,94 @@ export interface ProcessBulkParams {
   webhookDeliveryOptions?: DeliverWebhookOptions;
 }
 
+export interface ProcessGroupSyncParams {
+  organizationId: string;
+  userStore: UserProvisioningStore;
+  groupStore: GroupSyncStore;
+  data: ScimGroupSyncData;
+  webhookStore?: WebhookSubscriptionStore;
+  webhookDeliveryOptions?: DeliverWebhookOptions;
+  bulkIdMap?: Map<string, string>;
+}
+
+export interface ProcessGroupSyncResult {
+  created: number;
+  updated: number;
+  removed: number;
+}
+
+export async function processGroupSync(params: ProcessGroupSyncParams): Promise<ProcessGroupSyncResult> {
+  const {
+    organizationId,
+    userStore,
+    groupStore,
+    data,
+    webhookStore,
+    webhookDeliveryOptions,
+    bulkIdMap = new Map(),
+  } = params;
+  if (!data || !Array.isArray(data.groups)) {
+    throw new Error("GroupSync requires data.groups array");
+  }
+  const syncData: SyncGroupData[] = [];
+  for (const g of data.groups) {
+    const memberIds: string[] = [];
+    if (g.members?.length) {
+      for (const m of g.members) {
+        const ref = m.value.startsWith("bulkId:") ? bulkIdMap.get(`Users:${m.value}`) : null;
+        if (ref) {
+          memberIds.push(ref);
+        } else {
+          const u =
+            (await userStore.findByExternalId(m.value)) ?? (await userStore.findById(m.value));
+          if (u?.active) memberIds.push(u.id);
+        }
+      }
+    }
+    syncData.push({
+      externalId: g.externalId,
+      displayName: g.displayName,
+      memberIds,
+    });
+  }
+  const syncResult = await syncGroups(groupStore, syncData, {
+    organizationId,
+    removeGroupsNotInSource: data.removeGroupsNotInSource ?? false,
+    hardDeleteRemoved: data.hardDeleteRemoved ?? false,
+  });
+  if (webhookStore) {
+    for (const group of syncResult.createdGroups) {
+      const payload = createRealtimeSyncPayload("group.created", {
+        id: group.id,
+        externalId: group.externalId,
+        displayName: group.displayName,
+      });
+      await deliverRealtimeWebhook(webhookStore, organizationId, payload, webhookDeliveryOptions);
+    }
+    for (const group of syncResult.updatedGroups) {
+      const payload = createRealtimeSyncPayload("group.updated", {
+        id: group.id,
+        externalId: group.externalId,
+        displayName: group.displayName,
+      });
+      await deliverRealtimeWebhook(webhookStore, organizationId, payload, webhookDeliveryOptions);
+    }
+    for (const group of syncResult.removedGroups) {
+      const payload = createRealtimeSyncPayload("group.deleted", {
+        id: group.id,
+        externalId: group.externalId,
+        displayName: group.displayName,
+      });
+      await deliverRealtimeWebhook(webhookStore, organizationId, payload, webhookDeliveryOptions);
+    }
+  }
+  return {
+    created: syncResult.created,
+    updated: syncResult.updated,
+    removed: syncResult.removed,
+  };
+}
+
 function normPath(path: string): string {
   return path.replace(/^\/+/, "").replace(/^v2\//, "");
 }
@@ -401,68 +489,38 @@ export async function processBulkRequest(params: ProcessBulkParams): Promise<Sci
             errorCount++;
             continue;
           }
-          const syncData: SyncGroupData[] = [];
-          for (const g of data.groups) {
-            const memberIds: string[] = [];
-            if (g.members?.length) {
-              for (const m of g.members) {
-                const ref = m.value.startsWith("bulkId:") ? bulkIdMap.get(`Users:${m.value}`) : null;
-                if (ref) {
-                  memberIds.push(ref);
-                } else {
-                  const u = await userStore.findByExternalId(m.value) ?? await userStore.findById(m.value);
-                  if (u?.active) memberIds.push(u.id);
-                }
-              }
-            }
-            syncData.push({
-              externalId: g.externalId,
-              displayName: g.displayName,
-              memberIds,
+          try {
+            const syncResult = await processGroupSync({
+              organizationId,
+              userStore,
+              groupStore,
+              data,
+              webhookStore,
+              webhookDeliveryOptions,
+              bulkIdMap,
             });
+            results.push({
+              bulkId: op.bulkId,
+              method: op.method,
+              path: op.path,
+              status: 200,
+              response: {
+                created: syncResult.created,
+                updated: syncResult.updated,
+                removed: syncResult.removed,
+              },
+            });
+          } catch (err) {
+            const message = err instanceof Error ? err.message : String(err);
+            results.push({
+              bulkId: op.bulkId,
+              method: op.method,
+              path: op.path,
+              status: 500,
+              response: { detail: message },
+            });
+            errorCount++;
           }
-          const syncResult = await syncGroups(groupStore, syncData, {
-            organizationId,
-            removeGroupsNotInSource: data.removeGroupsNotInSource ?? false,
-            hardDeleteRemoved: data.hardDeleteRemoved ?? false,
-          });
-          if (webhookStore) {
-            for (const group of syncResult.createdGroups) {
-              const payload = createRealtimeSyncPayload("group.created", {
-                id: group.id,
-                externalId: group.externalId,
-                displayName: group.displayName,
-              });
-              await deliverRealtimeWebhook(webhookStore, organizationId, payload, webhookDeliveryOptions);
-            }
-            for (const group of syncResult.updatedGroups) {
-              const payload = createRealtimeSyncPayload("group.updated", {
-                id: group.id,
-                externalId: group.externalId,
-                displayName: group.displayName,
-              });
-              await deliverRealtimeWebhook(webhookStore, organizationId, payload, webhookDeliveryOptions);
-            }
-            for (const group of syncResult.removedGroups) {
-              const payload = createRealtimeSyncPayload("group.deleted", {
-                id: group.id,
-                externalId: group.externalId,
-                displayName: group.displayName,
-              });
-              await deliverRealtimeWebhook(webhookStore, organizationId, payload, webhookDeliveryOptions);
-            }
-          }
-          results.push({
-            bulkId: op.bulkId,
-            method: op.method,
-            path: op.path,
-            status: 200,
-            response: {
-              created: syncResult.created,
-              updated: syncResult.updated,
-              removed: syncResult.removed,
-            },
-          });
           continue;
         }
       }
