@@ -1,5 +1,12 @@
-import { describe, it, expect } from "vitest";
-import { hashPassword, verifyPassword } from "../src/password.js";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import {
+  hashPassword,
+  verifyPassword,
+  validatePassword,
+  isPasswordPwned,
+  defaultPasswordPolicy,
+  type PasswordPolicy,
+} from "../src/password.js";
 
 describe("Argon2id password hashing", () => {
   it("hashes a password and returns a string", async () => {
@@ -38,5 +45,101 @@ describe("Argon2id password hashing", () => {
     const hash = await hashPassword(pwd);
     expect(await verifyPassword(hash, pwd)).toBe(true);
     expect(await verifyPassword(hash, "other")).toBe(false);
+  });
+});
+
+describe("Password policy", () => {
+  it("accepts password meeting default policy (min 8, lowercase, digit)", () => {
+    const r = validatePassword("secret12");
+    expect(r.valid).toBe(true);
+    expect(r.errors).toHaveLength(0);
+  });
+
+  it("rejects password shorter than min length", () => {
+    const r = validatePassword("short1");
+    expect(r.valid).toBe(false);
+    expect(r.errors.some((e) => e.includes("at least 8"))).toBe(true);
+  });
+
+  it("rejects password without digit when required", () => {
+    const r = validatePassword("nouppercase");
+    expect(r.valid).toBe(false);
+    expect(r.errors.some((e) => e.includes("digit"))).toBe(true);
+  });
+
+  it("rejects password without lowercase when required", () => {
+    const r = validatePassword("ALLUPPER12");
+    expect(r.valid).toBe(false);
+    expect(r.errors.some((e) => e.includes("lowercase"))).toBe(true);
+  });
+
+  it("enforces uppercase when required by custom policy", () => {
+    const policy: PasswordPolicy = { ...defaultPasswordPolicy, requireUppercase: true };
+    expect(validatePassword("lowercase1", policy).valid).toBe(false);
+    expect(validatePassword("Lowercase1", policy).valid).toBe(true);
+  });
+
+  it("enforces special character when required by custom policy", () => {
+    const policy: PasswordPolicy = { ...defaultPasswordPolicy, requireSpecial: true };
+    expect(validatePassword("nouppercase1", policy).valid).toBe(false);
+    expect(validatePassword("nouppercase1!", policy).valid).toBe(true);
+  });
+
+  it("enforces custom min length", () => {
+    const policy: PasswordPolicy = { ...defaultPasswordPolicy, minLength: 12 };
+    expect(validatePassword("short1a", policy).valid).toBe(false);
+    expect(validatePassword("longenough1a", policy).valid).toBe(true);
+  });
+});
+
+describe("HaveIBeenPwned breach detection", () => {
+  const originalFetch = globalThis.fetch;
+  beforeEach(() => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((url: string) => {
+        if (url.includes("5BAA6")) {
+          return Promise.resolve({
+            ok: true,
+            text: () =>
+              Promise.resolve(
+                "1E4C9B93F3F0682250B6CF8331B7EE68FD8:3730471\r\nOTHERSUFFIX:1"
+              ),
+          } as Response);
+        }
+        return Promise.resolve({ ok: false } as Response);
+      })
+    );
+  });
+  afterEach(() => {
+    vi.stubGlobal("fetch", originalFetch);
+  });
+
+  it("returns true when password is in breach list", async () => {
+    const pwned = await isPasswordPwned("password");
+    expect(pwned).toBe(true);
+  });
+
+  it("returns false when password is not in breach list", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() =>
+        Promise.resolve({
+          ok: true,
+          text: () => Promise.resolve("OTHERSUFFIX:1\r\nANOTHER:2"),
+        } as Response)
+      )
+    );
+    const pwned = await isPasswordPwned("uniqueUnbreachedPwd99!");
+    expect(pwned).toBe(false);
+  });
+
+  it("returns false when API request fails", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() => Promise.resolve({ ok: false } as Response))
+    );
+    const pwned = await isPasswordPwned("anything");
+    expect(pwned).toBe(false);
   });
 });
