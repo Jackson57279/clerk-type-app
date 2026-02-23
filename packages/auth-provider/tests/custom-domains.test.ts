@@ -112,6 +112,16 @@ describe("AUTH_SUBDOMAIN", () => {
   });
 });
 
+describe("auth.customer.com flow", () => {
+  it("validates host, resolves org, and builds base URL", () => {
+    const host = "auth.customer.com";
+    expect(isValidCustomDomain(host)).toBe(true);
+    const lookup = (d: string) => (d === "auth.customer.com" ? "org_123" : null);
+    expect(resolveOrganizationByHost(host, lookup)).toBe("org_123");
+    expect(getAuthBaseUrl(host)).toBe("https://auth.customer.com");
+  });
+});
+
 describe("getAuthBaseUrl", () => {
   it("returns https URL by default", () => {
     expect(getAuthBaseUrl("auth.customer.com")).toBe(
