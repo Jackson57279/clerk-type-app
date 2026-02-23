@@ -6,6 +6,7 @@ import {
   createAuthorizationCode,
   verifyAndConsumeAuthorizationCode,
   createMemoryUsedAuthorizationCodeStore,
+  createNoOpUsedAuthorizationCodeStore,
 } from "../src/authorization-code-pkce.js";
 
 const SECRET = "oauth-server-secret";
@@ -258,7 +259,7 @@ describe("single-use authorization code", () => {
     expect(second).toBeNull();
   });
 
-  it("without store, code can be verified multiple times", () => {
+  it("token invalidated after use by default (second verify returns null)", () => {
     const verifier = generateCodeVerifier();
     const challenge = computeCodeChallenge(verifier, "S256");
     const { code } = createAuthorizationCode(
@@ -272,7 +273,29 @@ describe("single-use authorization code", () => {
       SECRET
     );
     expect(verifyAndConsumeAuthorizationCode(code, verifier, SECRET)).not.toBeNull();
-    expect(verifyAndConsumeAuthorizationCode(code, verifier, SECRET)).not.toBeNull();
+    expect(verifyAndConsumeAuthorizationCode(code, verifier, SECRET)).toBeNull();
+  });
+
+  it("with no-op store, code can be verified multiple times", () => {
+    const noop = createNoOpUsedAuthorizationCodeStore();
+    const verifier = generateCodeVerifier();
+    const challenge = computeCodeChallenge(verifier, "S256");
+    const { code } = createAuthorizationCode(
+      {
+        clientId: "c",
+        redirectUri: "https://r",
+        sub: "u",
+        codeChallenge: challenge,
+        codeChallengeMethod: "S256",
+      },
+      SECRET
+    );
+    expect(
+      verifyAndConsumeAuthorizationCode(code, verifier, SECRET, { usedCodeStore: noop })
+    ).not.toBeNull();
+    expect(
+      verifyAndConsumeAuthorizationCode(code, verifier, SECRET, { usedCodeStore: noop })
+    ).not.toBeNull();
   });
 });
 

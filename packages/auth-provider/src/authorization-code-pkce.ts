@@ -173,9 +173,9 @@ export function verifyAndConsumeAuthorizationCode(
   if (!verifyCodeVerifier(codeVerifier, data.codeChallenge, data.codeChallengeMethod)) {
     return null;
   }
-  const store = options.usedCodeStore;
-  if (store?.isUsed(data.jti)) return null;
-  if (store) store.markUsed(data.jti, data.exp * 1000);
+  const store = options.usedCodeStore ?? defaultUsedCodeStore;
+  if (store.isUsed(data.jti)) return null;
+  store.markUsed(data.jti, data.exp * 1000);
   return {
     jti: data.jti,
     clientId: data.clientId,
@@ -203,5 +203,14 @@ export function createMemoryUsedAuthorizationCodeStore(): UsedAuthorizationCodeS
     markUsed(jti: string, expiresAtMs: number): void {
       used.set(jti, expiresAtMs);
     },
+  };
+}
+
+const defaultUsedCodeStore = createMemoryUsedAuthorizationCodeStore();
+
+export function createNoOpUsedAuthorizationCodeStore(): UsedAuthorizationCodeStore {
+  return {
+    isUsed: () => false,
+    markUsed: () => {},
   };
 }
