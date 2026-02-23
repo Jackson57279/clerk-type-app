@@ -11,6 +11,13 @@ import {
   verifyTotpChallenge,
   type TotpStore,
 } from "./totp-authenticator.js";
+import {
+  hasSmsMfa,
+  verifyLoginSmsOtp,
+  maskPhone,
+  type UserMfaPhoneStore,
+  type SmsMfaChallengeStore,
+} from "./sms-mfa.js";
 
 export interface CredentialUser {
   userId: string;
@@ -120,10 +127,17 @@ export interface LoginInput {
   email: string;
   password: string;
   totpCode?: string;
+  smsOtpCode?: string;
+}
+
+export interface SmsMfaLoginOptions {
+  phoneStore: UserMfaPhoneStore;
+  challengeStore: SmsMfaChallengeStore;
 }
 
 export interface LoginOptions {
   totpStore?: TotpStore;
+  smsMfa?: SmsMfaLoginOptions;
 }
 
 export interface LoginSuccess {
@@ -137,6 +151,13 @@ export interface LoginRequiresTotp {
   userId: string;
 }
 
+export interface LoginRequiresSmsOtp {
+  success: false;
+  requiresSmsOtp: true;
+  userId: string;
+  phoneMasked?: string;
+}
+
 export interface LoginFailure {
   success: false;
   reason: "invalid_credentials";
@@ -145,7 +166,8 @@ export interface LoginFailure {
 export type LoginResult =
   | LoginSuccess
   | LoginFailure
-  | LoginRequiresTotp;
+  | LoginRequiresTotp
+  | LoginRequiresSmsOtp;
 
 export async function login(
   store: RegistrationLoginStore,
@@ -167,7 +189,7 @@ export async function login(
     return { success: false, reason: "invalid_credentials" };
   }
 
-  const { totpStore } = options;
+  const { totpStore, smsMfa } = options;
   if (totpStore) {
     const totpEnabled = await hasTotp(user.userId, totpStore);
     if (totpEnabled) {
@@ -180,6 +202,29 @@ export async function login(
         totpStore
       );
       if (!totpValid) {
+        return { success: false, reason: "invalid_credentials" };
+      }
+    }
+  }
+
+  if (smsMfa) {
+    const smsEnabled = await hasSmsMfa(user.userId, smsMfa.phoneStore);
+    if (smsEnabled) {
+      if (!input.smsOtpCode) {
+        const phone = await smsMfa.phoneStore.get(user.userId);
+        return {
+          success: false,
+          requiresSmsOtp: true,
+          userId: user.userId,
+          phoneMasked: phone ? maskPhone(phone) : undefined,
+        };
+      }
+      const smsValid = await verifyLoginSmsOtp(
+        user.userId,
+        input.smsOtpCode,
+        { challengeStore: smsMfa.challengeStore }
+      );
+      if (!smsValid) {
         return { success: false, reason: "invalid_credentials" };
       }
     }

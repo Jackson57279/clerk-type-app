@@ -5,6 +5,7 @@ import { getRemainingBackupCodeCount } from "./backup-codes.js";
 export interface MfaBackupEnforcementOptions {
   hasTotp(userId: string): Promise<boolean>;
   backupCodeStore: BackupCodeStore;
+  hasSmsMfa?(userId: string): Promise<boolean>;
 }
 
 export type MfaBackupEnforcementResult =
@@ -23,14 +24,15 @@ export async function enforceMfaOrBackupCodes(
 export function createMfaBackupProvider(
   options: MfaBackupEnforcementOptions
 ): MfaBackupProvider {
-  const { hasTotp, backupCodeStore } = options;
+  const { hasTotp, backupCodeStore, hasSmsMfa } = options;
   return {
     async hasMfaOrBackupCodes(userId: string): Promise<boolean> {
-      const [totpEnabled, backupCount] = await Promise.all([
+      const [totpEnabled, backupCount, smsEnabled] = await Promise.all([
         hasTotp(userId),
         getRemainingBackupCodeCount(userId, backupCodeStore),
+        hasSmsMfa ? hasSmsMfa(userId) : Promise.resolve(false),
       ]);
-      return totpEnabled || backupCount > 0;
+      return totpEnabled || backupCount > 0 || smsEnabled;
     },
   };
 }

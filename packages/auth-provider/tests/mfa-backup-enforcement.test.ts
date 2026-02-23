@@ -68,6 +68,23 @@ describe("createMfaBackupProvider", () => {
     expect(await provider.hasMfaOrBackupCodes("user-consumed")).toBe(true);
     expect(await getRemainingBackupCodeCount("user-consumed", backupStore)).toBe(1);
   });
+
+  it("returns true when user has SMS MFA enabled", async () => {
+    const provider = createMfaBackupProvider({
+      hasTotp: async () => false,
+      backupCodeStore: createMemoryBackupCodeStore(),
+      hasSmsMfa: async (userId) => userId === "user-with-sms",
+    });
+    expect(await provider.hasMfaOrBackupCodes("user-with-sms")).toBe(true);
+  });
+
+  it("returns false when hasSmsMfa not provided and user has no TOTP or backup", async () => {
+    const provider = createMfaBackupProvider({
+      hasTotp: async () => false,
+      backupCodeStore: createMemoryBackupCodeStore(),
+    });
+    expect(await provider.hasMfaOrBackupCodes("user-sms-only")).toBe(false);
+  });
 });
 
 describe("enforceMfaOrBackupCodes", () => {

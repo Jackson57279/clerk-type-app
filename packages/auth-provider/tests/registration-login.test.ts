@@ -13,6 +13,12 @@ import {
   confirmTotpSetup,
 } from "../src/totp-authenticator.js";
 import { generateTOTP } from "../src/totp.js";
+import {
+  createMemoryUserMfaPhoneStore,
+  createMemorySmsMfaChallengeStore,
+  sendLoginSmsOtp,
+} from "../src/sms-mfa.js";
+import type { SmsSender } from "../src/sms-otp.js";
 
 function secretToBuffer(secretBase32: string): Buffer {
   return Buffer.from(base32Decode.asBytes(secretBase32));
@@ -414,6 +420,171 @@ describe("login with TOTP MFA", () => {
     expect(result.success).toBe(true);
     if (!result.success) return;
     expect(result.userId).toBe(reg.userId);
+  });
+});
+
+function capturingSmsSender(): SmsSender & {
+  lastBody: string;
+  lastPhone: string;
+} {
+  let lastBody = "";
+  let lastPhone = "";
+  return {
+    async send(phone: string, body: string) {
+      lastPhone = phone;
+      lastBody = body;
+    },
+    get lastBody() {
+      return lastBody;
+    },
+    get lastPhone() {
+      return lastPhone;
+    },
+  };
+}
+
+describe("login with SMS MFA", () => {
+  it("returns requiresSmsOtp and userId when SMS MFA enabled and no smsOtpCode", async () => {
+    const store = memoryStore();
+    const reg = await register(store, {
+      email: "smsmfa@example.com",
+      password: "MyPassword1",
+    });
+    expect(reg.success).toBe(true);
+    if (!reg.success) return;
+
+    const phoneStore = createMemoryUserMfaPhoneStore();
+    const challengeStore = createMemorySmsMfaChallengeStore();
+    await phoneStore.set(reg.userId, "+15551234567");
+
+    const result = await login(
+      store,
+      { email: "smsmfa@example.com", password: "MyPassword1" },
+      { smsMfa: { phoneStore, challengeStore } }
+    );
+
+    expect(result.success).toBe(false);
+    if (result.success) return;
+    expect("requiresSmsOtp" in result && result.requiresSmsOtp).toBe(true);
+    expect("userId" in result && result.userId).toBe(reg.userId);
+  });
+
+  it("returns success when SMS MFA enabled and valid smsOtpCode", async () => {
+    const store = memoryStore();
+    const reg = await register(store, {
+      email: "smsmfa2@example.com",
+      password: "MyPassword1",
+    });
+    expect(reg.success).toBe(true);
+    if (!reg.success) return;
+
+    const phoneStore = createMemoryUserMfaPhoneStore();
+    const challengeStore = createMemorySmsMfaChallengeStore();
+    await phoneStore.set(reg.userId, "+15559999999");
+    const sender = capturingSmsSender();
+    await sendLoginSmsOtp(reg.userId, {
+      phoneStore,
+      challengeStore,
+      sender,
+      template: "Code: {{code}}",
+    });
+    const code = /Code: (\d{6})/.exec(sender.lastBody)?.[1];
+    expect(code).toBeDefined();
+
+    const result = await login(
+      store,
+      {
+        email: "smsmfa2@example.com",
+        password: "MyPassword1",
+        smsOtpCode: code,
+      },
+      { smsMfa: { phoneStore, challengeStore } }
+    );
+
+    expect(result.success).toBe(true);
+    if (!result.success) return;
+    expect(result.userId).toBe(reg.userId);
+  });
+
+  it("returns invalid_credentials when SMS MFA enabled and wrong smsOtpCode", async () => {
+    const store = memoryStore();
+    const reg = await register(store, {
+      email: "smsmfa3@example.com",
+      password: "MyPassword1",
+    });
+    expect(reg.success).toBe(true);
+    if (!reg.success) return;
+
+    const phoneStore = createMemoryUserMfaPhoneStore();
+    const challengeStore = createMemorySmsMfaChallengeStore();
+    await phoneStore.set(reg.userId, "+15558888888");
+
+    const result = await login(
+      store,
+      {
+        email: "smsmfa3@example.com",
+        password: "MyPassword1",
+        smsOtpCode: "000000",
+      },
+      { smsMfa: { phoneStore, challengeStore } }
+    );
+
+    expect(result.success).toBe(false);
+    if (result.success) return;
+    expect("reason" in result && result.reason).toBe("invalid_credentials");
+  });
+
+  it("returns success when no smsMfa options (SMS not checked)", async () => {
+    const store = memoryStore();
+    const reg = await register(store, {
+      email: "nosmsmfa@example.com",
+      password: "MyPassword1",
+    });
+    expect(reg.success).toBe(true);
+    if (!reg.success) return;
+
+    const result = await login(store, {
+      email: "nosmsmfa@example.com",
+      password: "MyPassword1",
+    });
+
+    expect(result.success).toBe(true);
+    if (!result.success) return;
+    expect(result.userId).toBe(reg.userId);
+  });
+
+  it("TOTP takes precedence over SMS MFA when both configured", async () => {
+    const store = memoryStore();
+    const reg = await register(store, {
+      email: "both@example.com",
+      password: "MyPassword1",
+    });
+    expect(reg.success).toBe(true);
+    if (!reg.success) return;
+
+    const totpStore = createMemoryTotpStore();
+    const { secret } = await startTotpSetup(
+      reg.userId,
+      "TestApp",
+      "both@example.com",
+      totpStore
+    );
+    const code = generateTOTP(secretToBuffer(secret), { period: 30, digits: 6 });
+    await confirmTotpSetup(reg.userId, code, totpStore);
+
+    const phoneStore = createMemoryUserMfaPhoneStore();
+    const challengeStore = createMemorySmsMfaChallengeStore();
+    await phoneStore.set(reg.userId, "+15557777777");
+
+    const result = await login(
+      store,
+      { email: "both@example.com", password: "MyPassword1" },
+      { totpStore, smsMfa: { phoneStore, challengeStore } }
+    );
+
+    expect(result.success).toBe(false);
+    if (result.success) return;
+    expect("requiresTotp" in result && result.requiresTotp).toBe(true);
   });
 });
 
