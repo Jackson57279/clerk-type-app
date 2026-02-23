@@ -80,6 +80,7 @@ export interface ProcessBulkParams {
   webhookStore?: WebhookSubscriptionStore;
   webhookDeliveryOptions?: DeliverWebhookOptions;
   scimUserAttributeMapping?: ScimUserAttributeMappingConfig;
+  isAllowedEmail?: (email: string) => boolean;
 }
 
 export interface ProcessGroupSyncParams {
@@ -216,7 +217,7 @@ function resolveBulkId(
 }
 
 export async function processBulkRequest(params: ProcessBulkParams): Promise<ScimBulkResponse> {
-  const { request, userStore, groupStore, organizationId, baseUrl = "", maxOperations, webhookStore, webhookDeliveryOptions, scimUserAttributeMapping } = params;
+  const { request, userStore, groupStore, organizationId, baseUrl = "", maxOperations, webhookStore, webhookDeliveryOptions, scimUserAttributeMapping, isAllowedEmail } = params;
   if (maxOperations != null && request.Operations.length > maxOperations) {
     return {
       schemas: [BULK_RESPONSE_SCHEMA],
@@ -279,7 +280,7 @@ export async function processBulkRequest(params: ProcessBulkParams): Promise<Sci
             errorCount++;
             continue;
           }
-          const result = await provisionUser(userStore, provisionData, { organizationId, reactivateIfDeactivated: true });
+          const result = await provisionUser(userStore, provisionData, { organizationId, reactivateIfDeactivated: true, isAllowedEmail });
           if (op.bulkId) bulkIdMap.set(`Users:bulkId:${op.bulkId}`, result.user.id);
           const location = baseUrl ? `${baseUrl.replace(/\/$/, "")}/Users/${result.user.id}` : undefined;
           results.push({

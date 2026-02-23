@@ -30,6 +30,7 @@ export interface UserProvisioningStore {
 export interface ProvisionOptions {
   organizationId?: string;
   reactivateIfDeactivated?: boolean;
+  isAllowedEmail?: (email: string) => boolean;
 }
 
 export interface ProvisionResult {
@@ -37,6 +38,7 @@ export interface ProvisionResult {
   created: boolean;
 }
 
+import { createDefaultEmailDomainChecker } from "./email-domain-restriction.js";
 import {
   deactivateEntity,
   deleteEntity,
@@ -50,7 +52,7 @@ export async function provisionUser(
   data: ProvisionUserData,
   options: ProvisionOptions = {}
 ): Promise<ProvisionResult> {
-  const { reactivateIfDeactivated = true } = options;
+  const { reactivateIfDeactivated = true, isAllowedEmail: isAllowedEmailOpt } = options;
 
   if (data.externalId) {
     const byExternal = await store.findByExternalId(data.externalId);
@@ -82,6 +84,11 @@ export async function provisionUser(
       const updated = await store.update(byEmail.id, data);
       return { user: updated, created: false };
     }
+  }
+
+  const isAllowed = isAllowedEmailOpt ?? createDefaultEmailDomainChecker();
+  if (!isAllowed(data.email)) {
+    throw new Error("Email domain not allowed");
   }
 
   const user = await store.create({

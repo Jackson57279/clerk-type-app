@@ -85,11 +85,15 @@ function memoryStore(initial: ProvisionedUser[] = []): UserProvisioningStore {
 describe("provisionUser", () => {
   it("creates a new user when none exists", async () => {
     const store = memoryStore();
-    const result = await provisionUser(store, {
-      email: "new@example.com",
-      firstName: "New",
-      lastName: "User",
-    });
+    const result = await provisionUser(
+      store,
+      {
+        email: "new@example.com",
+        firstName: "New",
+        lastName: "User",
+      },
+      { isAllowedEmail: () => true }
+    );
     expect(result.created).toBe(true);
     expect(result.user.email).toBe("new@example.com");
     expect(result.user.firstName).toBe("New");
@@ -176,7 +180,7 @@ describe("provisionUser", () => {
     const result = await provisionUser(
       store,
       { email: "other@example.com", firstName: "New" },
-      { reactivateIfDeactivated: false }
+      { reactivateIfDeactivated: false, isAllowedEmail: () => true }
     );
     expect(result.created).toBe(true);
     expect(result.user.email).toBe("other@example.com");
@@ -184,10 +188,11 @@ describe("provisionUser", () => {
 
   it("creates user with active false when data.active is false", async () => {
     const store = memoryStore();
-    const result = await provisionUser(store, {
-      email: "inactive@example.com",
-      active: false,
-    });
+    const result = await provisionUser(
+      store,
+      { email: "inactive@example.com", active: false },
+      { isAllowedEmail: () => true }
+    );
     expect(result.created).toBe(true);
     expect(result.user.active).toBe(false);
   });
@@ -241,6 +246,28 @@ describe("provisionUser", () => {
     expect(result.created).toBe(false);
     expect(result.user.id).toBe("user_1");
     expect(result.user.name).toBe("Matched by externalId");
+  });
+
+  it("throws when creating user with email domain not allowed (default @company.com)", async () => {
+    const store = memoryStore();
+    await expect(
+      provisionUser(store, {
+        email: "user@gmail.com",
+        firstName: "Test",
+        lastName: "User",
+      })
+    ).rejects.toThrow("Email domain not allowed");
+  });
+
+  it("creates user when email is @company.com (default allowed domain)", async () => {
+    const store = memoryStore();
+    const result = await provisionUser(store, {
+      email: "user@company.com",
+      firstName: "Company",
+      lastName: "User",
+    });
+    expect(result.created).toBe(true);
+    expect(result.user.email).toBe("user@company.com");
   });
 });
 

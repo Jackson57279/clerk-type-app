@@ -167,6 +167,7 @@ describe("processBulkRequest", () => {
       userStore,
       groupStore,
       organizationId: orgId,
+      isAllowedEmail: () => true,
     });
     expect(response.schemas).toContain(BULK_RESPONSE_SCHEMA);
     expect(response.Operations).toEqual([]);
@@ -205,6 +206,7 @@ describe("processBulkRequest", () => {
       userStore,
       groupStore,
       organizationId: orgId,
+      isAllowedEmail: () => true,
     });
     expect(response.Operations).toHaveLength(2);
     const op0 = response.Operations[0]!;
@@ -241,6 +243,7 @@ describe("processBulkRequest", () => {
       userStore,
       groupStore,
       organizationId: orgId,
+      isAllowedEmail: () => true,
       scimUserAttributeMapping: { emailPath: "userName" },
     });
     expect(response.Operations[0]!.status).toBe(201);
@@ -275,6 +278,7 @@ describe("processBulkRequest", () => {
       userStore,
       groupStore,
       organizationId: orgId,
+      isAllowedEmail: () => true,
     });
     const createOp = response.Operations[0]!;
     expect(createOp.status).toBe(201);
@@ -303,6 +307,7 @@ describe("processBulkRequest", () => {
       userStore,
       groupStore,
       organizationId: orgId,
+      isAllowedEmail: () => true,
     });
     const patchOp = response.Operations[0]!;
     expect(patchOp.status).toBe(200);
@@ -334,6 +339,7 @@ describe("processBulkRequest", () => {
       userStore,
       groupStore,
       organizationId: orgId,
+      isAllowedEmail: () => true,
     });
     const putOp = response.Operations[0]!;
     expect(putOp.status).toBe(200);
@@ -357,6 +363,7 @@ describe("processBulkRequest", () => {
       userStore,
       groupStore,
       organizationId: orgId,
+      isAllowedEmail: () => true,
     });
     const delUserOp = response.Operations[0]!;
     expect(delUserOp.status).toBe(204);
@@ -378,6 +385,7 @@ describe("processBulkRequest", () => {
       userStore,
       groupStore,
       organizationId: orgId,
+      isAllowedEmail: () => true,
     });
     const delGrpOp = response.Operations[0]!;
     expect(delGrpOp.status).toBe(204);
@@ -395,6 +403,7 @@ describe("processBulkRequest", () => {
       userStore,
       groupStore,
       organizationId: orgId,
+      isAllowedEmail: () => true,
     });
     const badCreateOp = response.Operations[0]!;
     expect(badCreateOp.status).toBe(400);
@@ -418,6 +427,7 @@ describe("processBulkRequest", () => {
       userStore,
       groupStore,
       organizationId: orgId,
+      isAllowedEmail: () => true,
     });
     const notFoundOp = response.Operations[0]!;
     expect(notFoundOp.status).toBe(404);
@@ -438,6 +448,7 @@ describe("processBulkRequest", () => {
       userStore,
       groupStore,
       organizationId: orgId,
+      isAllowedEmail: () => true,
     });
     const failOp0 = response.Operations[0]!;
     const failOp1 = response.Operations[1]!;
@@ -459,6 +470,7 @@ describe("processBulkRequest", () => {
       userStore,
       groupStore,
       organizationId: orgId,
+      isAllowedEmail: () => true,
       baseUrl: "https://api.example.com/scim/v2",
     });
     const locOp = response.Operations[0]!;
@@ -479,6 +491,7 @@ describe("processBulkRequest", () => {
       userStore,
       groupStore,
       organizationId: orgId,
+      isAllowedEmail: () => true,
     });
     expect(response.Operations[0]!.status).toBe(201);
     expect(response.Operations[1]!.status).toBe(200);
@@ -510,6 +523,7 @@ describe("processBulkRequest", () => {
       userStore,
       groupStore,
       organizationId: orgId,
+      isAllowedEmail: () => true,
     });
     expect(response.Operations[0]!.status).toBe(201);
     expect(response.Operations[1]!.status).toBe(201);
@@ -537,6 +551,7 @@ describe("processBulkRequest", () => {
       userStore,
       groupStore,
       organizationId: orgId,
+      isAllowedEmail: () => true,
     });
     const op = response.Operations[0]!;
     expect(op.status).toBe(400);
@@ -557,6 +572,7 @@ describe("processBulkRequest", () => {
       userStore,
       groupStore,
       organizationId: orgId,
+      isAllowedEmail: () => true,
       maxOperations: 1,
     });
     expect(response.Operations).toHaveLength(1);
@@ -581,6 +597,7 @@ describe("processBulkRequest", () => {
       userStore,
       groupStore,
       organizationId: orgId,
+      isAllowedEmail: () => true,
       maxOperations: 1,
     });
     expect(response.Operations).toHaveLength(1);
@@ -613,6 +630,7 @@ describe("processBulkRequest", () => {
       userStore,
       groupStore,
       organizationId: orgId,
+      isAllowedEmail: () => true,
     });
     const putOp = response.Operations[0]!;
     expect(putOp.status).toBe(200);
@@ -644,6 +662,7 @@ describe("processBulkRequest", () => {
       userStore,
       groupStore,
       organizationId: orgId,
+      isAllowedEmail: () => true,
     });
     expect(response.Operations[0]!.status).toBe(201);
     expect(response.Operations[1]!.status).toBe(200);
@@ -673,6 +692,7 @@ describe("processBulkRequest", () => {
       userStore,
       groupStore,
       organizationId: orgId,
+      isAllowedEmail: () => true,
     });
     expect(response.Operations[0]!.status).toBe(201);
     expect(response.Operations[1]!.status).toBe(204);
@@ -705,6 +725,7 @@ describe("processBulkRequest", () => {
         userStore,
         groupStore,
         organizationId: orgId,
+        isAllowedEmail: () => true,
       });
       const op = response.Operations[0]!;
       expect(op.status).toBe(200);
@@ -736,6 +757,7 @@ describe("processBulkRequest", () => {
         userStore,
         groupStore,
         organizationId: orgId,
+        isAllowedEmail: () => true,
       });
       const op = response.Operations[0]!;
       expect(op.status).toBe(200);
@@ -765,6 +787,7 @@ describe("processBulkRequest", () => {
         userStore,
         groupStore,
         organizationId: orgId,
+        isAllowedEmail: () => true,
       });
       const op = response.Operations[0]!;
       expect(op.status).toBe(200);
@@ -799,6 +822,7 @@ describe("processBulkRequest", () => {
         userStore,
         groupStore,
         organizationId: orgId,
+        isAllowedEmail: () => true,
       });
       const op = response.Operations[0]!;
       expect(op.status).toBe(200);
@@ -992,6 +1016,7 @@ describe("processBulkRequest", () => {
         userStore,
         groupStore,
         organizationId: orgId,
+        isAllowedEmail: () => true,
         webhookStore,
         webhookDeliveryOptions: { fetchFn: mockFetch },
       });
@@ -1031,6 +1056,7 @@ describe("processBulkRequest", () => {
         userStore,
         groupStore,
         organizationId: orgId,
+        isAllowedEmail: () => true,
         webhookStore,
         webhookDeliveryOptions: { fetchFn: mockFetch },
       });
@@ -1051,6 +1077,7 @@ describe("processBulkRequest", () => {
         userStore,
         groupStore,
         organizationId: orgId,
+        isAllowedEmail: () => true,
       });
       expect(response.Operations[0]!.status).toBe(201);
       expect(await userStore.findByEmail("nowh@example.com")).not.toBeNull();
@@ -1090,6 +1117,7 @@ describe("processBulkRequest", () => {
         userStore,
         groupStore,
         organizationId: orgId,
+        isAllowedEmail: () => true,
         webhookStore,
         webhookDeliveryOptions: { fetchFn: mockFetch },
       });
@@ -1131,6 +1159,7 @@ describe("processBulkRequest", () => {
         userStore,
         groupStore,
         organizationId: orgId,
+        isAllowedEmail: () => true,
         webhookStore,
         webhookDeliveryOptions: { fetchFn: mockFetch },
       });
@@ -1173,6 +1202,7 @@ describe("processBulkRequest", () => {
         userStore,
         groupStore,
         organizationId: orgId,
+        isAllowedEmail: () => true,
         webhookStore,
         webhookDeliveryOptions: { fetchFn: mockFetch },
       });

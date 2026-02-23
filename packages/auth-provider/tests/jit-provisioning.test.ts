@@ -225,7 +225,7 @@ describe("getOrProvisionUser", () => {
       assertion({ nameId: "user@example.com" }),
       mapping(),
       store,
-      { organizationId: "org1" }
+      { organizationId: "org1", isAllowedEmail: () => true }
     );
     expect(result.user.id).toBe("user_1");
     expect(result.created).toBe(false);
@@ -244,7 +244,7 @@ describe("getOrProvisionUser", () => {
       }),
       mapping(),
       store,
-      { organizationId: "org1" }
+      { organizationId: "org1", isAllowedEmail: () => true }
     );
     expect(result.user.id).toBe("user_1");
     expect(result.created).toBe(false);
@@ -266,7 +266,7 @@ describe("getOrProvisionUser", () => {
       }),
       mapping(),
       store,
-      { organizationId: "org1" }
+      { organizationId: "org1", isAllowedEmail: () => true }
     );
     expect(result.created).toBe(true);
     expect(result.user.email).toBe("newuser@example.com");
@@ -287,7 +287,7 @@ describe("getOrProvisionUser", () => {
       }),
       mapping(),
       store,
-      { organizationId: "org1" }
+      { organizationId: "org1", isAllowedEmail: () => true }
     );
     expect(result.created).toBe(true);
     expect(result.user.email).toBe("fallback@example.com");
@@ -300,7 +300,7 @@ describe("getOrProvisionUser", () => {
         assertion({ nameId: "unknown@example.com", attributes: {} }),
         mapping(),
         store,
-        { organizationId: "org1", jitEnabled: false }
+        { organizationId: "org1", jitEnabled: false, isAllowedEmail: () => true }
       )
     ).rejects.toThrow("JIT provisioning is disabled");
   });
@@ -312,7 +312,7 @@ describe("getOrProvisionUser", () => {
         assertion({ nameId: "not-an-email", attributes: {} }),
         mapping(),
         store,
-        { organizationId: "org1" }
+        { organizationId: "org1", isAllowedEmail: () => true }
       )
     ).rejects.toThrow("Cannot JIT provision");
   });
@@ -326,7 +326,7 @@ describe("getOrProvisionUser", () => {
       }),
       mapping(),
       store,
-      { organizationId: "org1" }
+      { organizationId: "org1", isAllowedEmail: () => true }
     );
     expect(first.created).toBe(true);
     const second = await getOrProvisionUser(
@@ -336,11 +336,41 @@ describe("getOrProvisionUser", () => {
       }),
       mapping(),
       store,
-      { organizationId: "org2" }
+      { organizationId: "org2", isAllowedEmail: () => true }
     );
     expect(second.created).toBe(true);
     expect(second.user.id).not.toBe(first.user.id);
     expect(second.user.email).toBe(first.user.email);
+  });
+
+  it("throws when JIT provisioning with email domain not allowed (default @company.com)", async () => {
+    const store = memoryStore();
+    await expect(
+      getOrProvisionUser(
+        assertion({
+          nameId: "user@gmail.com",
+          attributes: { [EMAIL_ATTR]: ["user@gmail.com"] },
+        }),
+        mapping(),
+        store,
+        { organizationId: "org1" }
+      )
+    ).rejects.toThrow("Email domain not allowed");
+  });
+
+  it("provisions new user when email is @company.com (default allowed domain)", async () => {
+    const store = memoryStore();
+    const result = await getOrProvisionUser(
+      assertion({
+        nameId: "user@company.com",
+        attributes: { [EMAIL_ATTR]: ["user@company.com"], [NAME_ATTR]: ["Company User"] },
+      }),
+      mapping(),
+      store,
+      { organizationId: "org1" }
+    );
+    expect(result.created).toBe(true);
+    expect(result.user.email).toBe("user@company.com");
   });
 });
 
@@ -379,6 +409,7 @@ describe("handleSpInitiatedAssertWithJit", () => {
         mapping: mapping(),
         store,
         organizationId: "org1",
+        isAllowedEmail: () => true,
       }
     );
     expect(result.status).toBe(200);
@@ -412,6 +443,7 @@ describe("handleSpInitiatedAssertWithJit", () => {
         mapping: mapping(),
         store,
         organizationId: "org1",
+        isAllowedEmail: () => true,
       }
     );
     expect(result.status).toBe(200);
@@ -432,6 +464,7 @@ describe("handleSpInitiatedAssertWithJit", () => {
         mapping: mapping(),
         store,
         organizationId: "org1",
+        isAllowedEmail: () => true,
       }
     );
     expect(result.status).toBe(400);
@@ -450,6 +483,7 @@ describe("handleSpInitiatedAssertWithJit", () => {
         mapping: mapping(),
         store,
         organizationId: "org1",
+        isAllowedEmail: () => true,
       }
     );
     expect(result.status).toBe(400);
@@ -475,6 +509,7 @@ describe("handleSpInitiatedAssertWithJit", () => {
         store,
         organizationId: "org1",
         jitEnabled: false,
+        isAllowedEmail: () => true,
       }
     );
     expect(result.status).toBe(400);

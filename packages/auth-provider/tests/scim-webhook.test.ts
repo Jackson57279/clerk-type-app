@@ -202,6 +202,7 @@ describe("processScimWebhook", () => {
         userStore,
         groupStore,
         organizationId: orgId,
+        isAllowedEmail: () => true,
       });
       expect(result.ok).toBe(true);
       expect(result.created).toBe(true);
@@ -235,6 +236,7 @@ describe("processScimWebhook", () => {
         userStore,
         groupStore,
         organizationId: orgId,
+        isAllowedEmail: () => true,
       });
       expect(result.ok).toBe(true);
       expect(result.created).toBe(false);
@@ -266,6 +268,7 @@ describe("processScimWebhook", () => {
         userStore,
         groupStore,
         organizationId: orgId,
+        isAllowedEmail: () => true,
       });
       expect(result.ok).toBe(true);
       const user = await userStore.findById("user_1");
@@ -286,6 +289,7 @@ describe("processScimWebhook", () => {
         userStore,
         groupStore,
         organizationId: orgId,
+        isAllowedEmail: () => true,
       });
       expect(result.ok).toBe(true);
     });
@@ -304,6 +308,7 @@ describe("processScimWebhook", () => {
         userStore,
         groupStore,
         organizationId: orgId,
+        isAllowedEmail: () => true,
       });
       expect(result.ok).toBe(false);
       expect(result.error).toContain("externalId");
@@ -351,6 +356,7 @@ describe("processScimWebhook", () => {
         userStore,
         groupStore,
         organizationId: orgId,
+        isAllowedEmail: () => true,
       });
       expect(result.ok).toBe(true);
       expect(result.created).toBe(true);
@@ -389,6 +395,7 @@ describe("processScimWebhook", () => {
         userStore,
         groupStore,
         organizationId: orgId,
+        isAllowedEmail: () => true,
       });
       expect(result.ok).toBe(true);
       expect(result.created).toBe(false);
@@ -416,6 +423,7 @@ describe("processScimWebhook", () => {
         userStore,
         groupStore,
         organizationId: orgId,
+        isAllowedEmail: () => true,
       });
       expect(result.ok).toBe(true);
       const list = await groupStore.listGroupsByOrganization(orgId);
@@ -456,6 +464,7 @@ describe("processScimWebhook", () => {
         userStore,
         groupStore,
         organizationId: orgId,
+        isAllowedEmail: () => true,
       });
       expect(result.ok).toBe(true);
       const group = await groupStore.findGroupByExternalId(orgId, "grp-1");
@@ -491,6 +500,7 @@ describe("processScimWebhook", () => {
         userStore,
         groupStore,
         organizationId: orgId,
+        isAllowedEmail: () => true,
         webhookStore,
         webhookDeliveryOptions: { fetchFn: mockFetch },
       });

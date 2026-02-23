@@ -23,6 +23,7 @@ describe("requestPasswordReset", () => {
       findUserByEmail,
       buildResetLink: (t) => `https://app.example.com/reset?token=${t}`,
       sendEmail,
+      isAllowedEmail: () => true,
     });
 
     expect(result).toEqual({ sent: true });
@@ -44,6 +45,7 @@ describe("requestPasswordReset", () => {
       findUserByEmail,
       buildResetLink,
       sendEmail,
+      isAllowedEmail: () => true,
     });
 
     expect(result).toEqual({ sent: true });
@@ -81,6 +83,7 @@ describe("requestPasswordReset", () => {
       buildResetLink,
       sendEmail,
       fallbackSendEmail,
+      isAllowedEmail: () => true,
     });
 
     expect(result).toEqual({ sent: true });
@@ -112,6 +115,7 @@ describe("requestPasswordReset", () => {
         buildResetLink,
         sendEmail,
         fallbackSendEmail,
+        isAllowedEmail: () => true,
       })
     ).rejects.toThrow("Failed to send password reset email");
     expect(sendEmail).toHaveBeenCalledTimes(1);
@@ -133,6 +137,7 @@ describe("requestPasswordReset", () => {
         findUserByEmail,
         buildResetLink,
         sendEmail,
+        isAllowedEmail: () => true,
       })
     ).rejects.toThrow("Failed to send password reset email");
     expect(sendEmail).toHaveBeenCalledTimes(1);
@@ -152,6 +157,7 @@ describe("requestPasswordReset", () => {
       findUserByEmail,
       buildResetLink,
       sendEmail,
+      isAllowedEmail: () => true,
       branding: {
         logoUrl: "https://cdn.example.com/logo.png",
         primaryColor: "#dc2626",
@@ -180,6 +186,7 @@ describe("requestPasswordReset", () => {
       findUserByEmail,
       buildResetLink,
       sendEmail,
+      isAllowedEmail: () => true,
       htmlTemplate: "<p>Custom: {{resetLink}} ({{expiresInMinutes}} min)</p>",
       textTemplate: "Custom: {{resetLink}} ({{expiresInMinutes}} min)",
     });
@@ -191,6 +198,46 @@ describe("requestPasswordReset", () => {
     expect(payload?.html).not.toContain("{{resetLink}}");
     expect(payload?.text).toContain("Custom:");
     expect(payload?.text).not.toContain("{{resetLink}}");
+  });
+
+  it("returns sent: true without calling findUserByEmail or sendEmail when email domain not allowed (default @company.com)", async () => {
+    const findUserByEmail = vi.fn().mockResolvedValue({
+      userId: "user-1",
+      email: "user@gmail.com",
+    });
+    const sendEmail = vi.fn();
+
+    const result = await requestPasswordReset({
+      email: "user@gmail.com",
+      secret: SECRET,
+      findUserByEmail,
+      buildResetLink: (t) => `https://app.example.com/reset?t=${t}`,
+      sendEmail,
+    });
+
+    expect(result).toEqual({ sent: true });
+    expect(findUserByEmail).not.toHaveBeenCalled();
+    expect(sendEmail).not.toHaveBeenCalled();
+  });
+
+  it("sends reset email when email is @company.com (default allowed domain)", async () => {
+    const findUserByEmail = vi.fn().mockResolvedValue({
+      userId: "user-1",
+      email: "user@company.com",
+    });
+    const sendEmail = vi.fn().mockResolvedValue(undefined);
+
+    const result = await requestPasswordReset({
+      email: "user@company.com",
+      secret: SECRET,
+      findUserByEmail,
+      buildResetLink: (t) => `https://app.example.com/reset?t=${t}`,
+      sendEmail,
+    });
+
+    expect(result).toEqual({ sent: true });
+    expect(findUserByEmail).toHaveBeenCalledWith("user@company.com");
+    expect(sendEmail).toHaveBeenCalledTimes(1);
   });
 });
 

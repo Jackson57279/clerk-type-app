@@ -3,6 +3,7 @@ import {
   type AttributeMappingConfig,
   type MappedClaims,
 } from "./attribute-mapping.js";
+import { createDefaultEmailDomainChecker } from "./email-domain-restriction.js";
 import {
   validateSpInitiatedPostResponse,
   type SpInitiatedAssertionResult,
@@ -50,6 +51,7 @@ export interface JitUserStore {
 export interface JitProvisioningOptions {
   organizationId: string;
   jitEnabled?: boolean;
+  isAllowedEmail?: (email: string) => boolean;
 }
 
 export interface JitProvisioningResult {
@@ -63,7 +65,7 @@ export async function getOrProvisionUser(
   store: JitUserStore,
   options: JitProvisioningOptions
 ): Promise<JitProvisioningResult> {
-  const { organizationId, jitEnabled = true } = options;
+  const { organizationId, jitEnabled = true, isAllowedEmail: isAllowedEmailOpt } = options;
   const claims = extractMappedClaims(assertion, mapping);
   const email =
     claims.email ??
@@ -83,6 +85,11 @@ export async function getOrProvisionUser(
 
   if (!email) {
     throw new Error("Cannot JIT provision: no email in assertion and nameId not suitable as email");
+  }
+
+  const isAllowed = isAllowedEmailOpt ?? createDefaultEmailDomainChecker();
+  if (!isAllowed(email)) {
+    throw new Error("Email domain not allowed");
   }
 
   user = await store.createUser(organizationId, {
@@ -111,6 +118,7 @@ export interface HandleSpInitiatedAssertWithJitOptions {
   store: JitUserStore;
   organizationId: string;
   jitEnabled?: boolean;
+  isAllowedEmail?: (email: string) => boolean;
 }
 
 export interface HandleSpInitiatedAssertWithJitSuccess {
@@ -164,7 +172,11 @@ export async function handleSpInitiatedAssertWithJit(
       assertion,
       options.mapping,
       options.store,
-      { organizationId: options.organizationId, jitEnabled: options.jitEnabled }
+      {
+        organizationId: options.organizationId,
+        jitEnabled: options.jitEnabled,
+        isAllowedEmail: options.isAllowedEmail,
+      }
     );
     return { status: 200, user: result.user, created: result.created };
   } catch (err) {

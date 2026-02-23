@@ -134,6 +134,7 @@ describe("Custom Branding: logo, colors, email templates", () => {
         buildResetLink: (t) => `https://app.example.com/reset?token=${t}`,
         sendEmail,
         branding,
+        isAllowedEmail: () => true,
       });
       expect(sendEmail).toHaveBeenCalledTimes(1);
       const payload = sendEmail.mock.calls[0]?.[0];

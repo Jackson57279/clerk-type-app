@@ -1,4 +1,5 @@
 import type { BrandingConfig } from "./branding.js";
+import { createDefaultEmailDomainChecker } from "./email-domain-restriction.js";
 import { renderPasswordResetEmail } from "./email-templates.js";
 import {
   defaultPasswordPolicy,
@@ -37,6 +38,7 @@ export interface RequestPasswordResetOptions {
   htmlTemplate?: string;
   textTemplate?: string;
   ttlMs?: number;
+  isAllowedEmail?: (email: string) => boolean;
 }
 
 export interface RequestPasswordResetResult {
@@ -57,7 +59,11 @@ export async function requestPasswordReset(
     htmlTemplate,
     textTemplate,
     ttlMs = DEFAULT_PASSWORD_RESET_TTL_MS,
+    isAllowedEmail: isAllowedEmailOpt,
   } = options;
+
+  const isAllowed = isAllowedEmailOpt ?? createDefaultEmailDomainChecker();
+  if (!isAllowed(email)) return { sent: true };
 
   const user = await findUserByEmail(email);
   if (!user) return { sent: true };

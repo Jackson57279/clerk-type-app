@@ -90,6 +90,7 @@ export interface ProcessScimWebhookParams {
   organizationId: string;
   webhookStore?: WebhookSubscriptionStore;
   webhookDeliveryOptions?: DeliverWebhookOptions;
+  isAllowedEmail?: (email: string) => boolean;
 }
 
 function toRealtimePayload(payload: ScimWebhookPayload): RealtimeWebhookPayload {
@@ -104,7 +105,7 @@ function toRealtimePayload(payload: ScimWebhookPayload): RealtimeWebhookPayload 
 export async function processScimWebhook(
   params: ProcessScimWebhookParams
 ): Promise<ProcessWebhookResult> {
-  const { payload, userStore, groupStore, organizationId, webhookStore, webhookDeliveryOptions } = params;
+  const { payload, userStore, groupStore, organizationId, webhookStore, webhookDeliveryOptions, isAllowedEmail } = params;
   const eventId = payload.id;
 
   if (payload.type === "user.deleted") {
@@ -137,7 +138,7 @@ export async function processScimWebhook(
         lastName: data.lastName,
         active: data.active ?? true,
       },
-      { organizationId, reactivateIfDeactivated: true }
+      { organizationId, reactivateIfDeactivated: true, isAllowedEmail }
     );
     if (webhookStore) {
       await deliverRealtimeWebhook(webhookStore, organizationId, toRealtimePayload(payload), webhookDeliveryOptions);
