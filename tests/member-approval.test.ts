@@ -165,3 +165,52 @@ describe("isPendingMember", () => {
     ).toBe(false);
   });
 });
+
+describe("approval workflow: new member approval required", () => {
+  it("new member gets pending when org requires approval, then admin can approve", () => {
+    const orgSettings = { memberApprovalRequired: true };
+    const status = getNewMemberStatus(orgSettings);
+    expect(status).toBe("pending");
+
+    const newMembership: OrganizationMembership = {
+      userId: "new-user",
+      organizationId: "org-1",
+      role: "member",
+      status,
+    };
+    expect(isPendingMember(newMembership)).toBe(true);
+    expect(isActiveMember(newMembership)).toBe(false);
+    expect(canApproveOrRejectMembers("admin")).toBe(true);
+
+    const approved = approveMembership(newMembership);
+    expect(approved.status).toBe("active");
+    expect(isActiveMember(approved)).toBe(true);
+    expect(isPendingMember(approved)).toBe(false);
+  });
+
+  it("new member gets active when org does not require approval", () => {
+    const status = getNewMemberStatus({ memberApprovalRequired: false });
+    expect(status).toBe("active");
+    expect(
+      isActiveMember({
+        userId: "u",
+        organizationId: "o",
+        role: "member",
+        status,
+      })
+    ).toBe(true);
+  });
+
+  it("admin can reject pending member", () => {
+    const pending: OrganizationMembership = {
+      userId: "u",
+      organizationId: "o",
+      role: "member",
+      status: "pending",
+    };
+    const rejected = rejectMembership(pending);
+    expect(rejected.status).toBe("rejected");
+    expect(isActiveMember(rejected)).toBe(false);
+    expect(isPendingMember(rejected)).toBe(false);
+  });
+});
