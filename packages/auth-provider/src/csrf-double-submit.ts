@@ -31,6 +31,25 @@ export function buildCsrfCookie(
   return parts.join("; ");
 }
 
+export function getCsrfTokenFromCookieHeader(
+  cookieHeader: string | undefined,
+  cookieName: string
+): string | undefined {
+  if (cookieHeader === undefined || cookieHeader.length === 0) {
+    return undefined;
+  }
+  const pairs = cookieHeader.split(";");
+  for (const pair of pairs) {
+    const eq = pair.indexOf("=");
+    if (eq === -1) continue;
+    const name = pair.slice(0, eq).trim();
+    if (name === cookieName) {
+      return pair.slice(eq + 1).trim();
+    }
+  }
+  return undefined;
+}
+
 export function verifyCsrfDoubleSubmit(
   cookieToken: string | undefined,
   submittedToken: string | undefined

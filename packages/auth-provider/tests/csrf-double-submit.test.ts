@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   generateCsrfToken,
   buildCsrfCookie,
+  getCsrfTokenFromCookieHeader,
   verifyCsrfDoubleSubmit,
 } from "../src/csrf-double-submit.js";
 
@@ -80,5 +81,45 @@ describe("verifyCsrfDoubleSubmit", () => {
 
   it("returns false when lengths differ (same prefix)", () => {
     expect(verifyCsrfDoubleSubmit("a", "ab")).toBe(false);
+  });
+});
+
+describe("getCsrfTokenFromCookieHeader", () => {
+  it("returns token when cookie is present", () => {
+    const header = "session=xyz; csrf=abc123; other=val";
+    expect(getCsrfTokenFromCookieHeader(header, "csrf")).toBe("abc123");
+  });
+
+  it("returns undefined when cookie header is undefined", () => {
+    expect(getCsrfTokenFromCookieHeader(undefined, "csrf")).toBeUndefined();
+  });
+
+  it("returns undefined when cookie name is missing", () => {
+    expect(getCsrfTokenFromCookieHeader("session=xyz", "csrf")).toBeUndefined();
+  });
+
+  it("returns first matching value when multiple cookies", () => {
+    const header = "csrf=first; csrf=second";
+    expect(getCsrfTokenFromCookieHeader(header, "csrf")).toBe("first");
+  });
+
+  it("trims spaces around name and value", () => {
+    expect(getCsrfTokenFromCookieHeader("  csrf  =  tok  ", "csrf")).toBe("tok");
+  });
+
+  it("handles value containing equals", () => {
+    expect(getCsrfTokenFromCookieHeader("csrf=a=b=c", "csrf")).toBe("a=b=c");
+  });
+});
+
+describe("double-submit cookie round-trip", () => {
+  it("generated token in cookie and header passes verification", () => {
+    const token = generateCsrfToken();
+    const cookieHeader = buildCsrfCookie("csrf", token);
+    const cookieValue = getCsrfTokenFromCookieHeader(
+      cookieHeader.split("; ")[0],
+      "csrf"
+    );
+    expect(verifyCsrfDoubleSubmit(cookieValue, token)).toBe(true);
   });
 });
