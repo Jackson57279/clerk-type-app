@@ -6,6 +6,8 @@ import {
   createLogoutRequest,
   handleSpInitiatedLogout,
   handleIdpInitiatedLogoutToSp,
+  handleSpInitiatedSloEndpoint,
+  handleIdpInitiatedSloEndpoint,
   type IdpLogoutConfig,
 } from "../src/single-logout.js";
 
@@ -245,5 +247,138 @@ describe("handleIdpInitiatedLogoutToSp", () => {
         invalidateSession: () => {},
       })
     ).rejects.toThrow("Unknown or unsupported IdP issuer for SLO");
+  });
+});
+
+describe("handleSpInitiatedSloEndpoint", () => {
+  const deflatedSamlRequest = zlib.deflateRawSync(Buffer.from(LOGOUT_REQUEST_XML, "utf8")).toString("base64");
+
+  it("returns 302 with redirectUrl when SAMLRequest is valid", async () => {
+    const invalidated: { nameId: string; sessionIndex?: string }[] = [];
+    const result = await handleSpInitiatedSloEndpoint(
+      { samlRequest: deflatedSamlRequest },
+      {
+        idpConfig: idpConfig(),
+        getSpLogoutUrl: (issuer) => (issuer === "https://sp.example.com/metadata" ? "https://sp.example.com/slo" : null),
+        invalidateSession: (params) => invalidated.push(params),
+      }
+    );
+    expect(result.status).toBe(302);
+    if (result.status !== 302) throw new Error("expected redirect");
+    expect(result.redirectUrl).toContain("https://sp.example.com/slo?");
+    expect(result.redirectUrl).toContain("SAMLResponse=");
+    expect(invalidated).toHaveLength(1);
+    expect(invalidated[0]?.nameId).toBe("tstudent");
+  });
+
+  it("includes RelayState in redirect when provided", async () => {
+    const result = await handleSpInitiatedSloEndpoint(
+      { samlRequest: deflatedSamlRequest, relayState: "rs456" },
+      {
+        idpConfig: idpConfig(),
+        getSpLogoutUrl: () => "https://sp.example.com/slo",
+        invalidateSession: () => {},
+      }
+    );
+    expect(result.status).toBe(302);
+    if (result.status !== 302) throw new Error("expected redirect");
+    expect(result.redirectUrl).toContain("RelayState=rs456");
+  });
+
+  it("returns 400 when SAMLRequest is missing", async () => {
+    const result = await handleSpInitiatedSloEndpoint(
+      {},
+      {
+        idpConfig: idpConfig(),
+        getSpLogoutUrl: () => "https://sp.example.com/slo",
+        invalidateSession: () => {},
+      }
+    );
+    expect(result.status).toBe(400);
+    if (result.status !== 400) throw new Error("expected error");
+    expect(result.error).toBe("invalid_request");
+    expect(result.errorDescription).toContain("SAMLRequest");
+  });
+
+  it("returns 400 when SAMLRequest is empty string", async () => {
+    const result = await handleSpInitiatedSloEndpoint(
+      { samlRequest: "   " },
+      {
+        idpConfig: idpConfig(),
+        getSpLogoutUrl: () => "https://sp.example.com/slo",
+        invalidateSession: () => {},
+      }
+    );
+    expect(result.status).toBe(400);
+  });
+
+  it("returns 400 when SP issuer has no logout URL", async () => {
+    const result = await handleSpInitiatedSloEndpoint(
+      { samlRequest: deflatedSamlRequest },
+      {
+        idpConfig: idpConfig(),
+        getSpLogoutUrl: () => null,
+        invalidateSession: () => {},
+      }
+    );
+    expect(result.status).toBe(400);
+    if (result.status !== 400) throw new Error("expected error");
+    expect(result.errorDescription).toContain("Unknown or unsupported SP issuer");
+  });
+});
+
+describe("handleIdpInitiatedSloEndpoint", () => {
+  const idpInitiatedRequestXml = `<?xml version="1.0"?>
+<samlp:LogoutRequest xmlns:samlp="urn:oasis:names:tc:SAML:2.0:protocol" xmlns:saml="urn:oasis:names:tc:SAML:2.0:assertion" ID="_idp1" IssueInstant="2015-01-21T22:30:38.150Z" Version="2.0" Destination="https://sp.example.com/slo">
+  <saml:Issuer>https://idp.example.com/metadata</saml:Issuer>
+  <saml:NameID>user@example.com</saml:NameID>
+  <samlp:SessionIndex>sess_abc</samlp:SessionIndex>
+</samlp:LogoutRequest>`;
+  const deflatedIdpRequest = zlib.deflateRawSync(Buffer.from(idpInitiatedRequestXml, "utf8")).toString("base64");
+
+  it("returns 302 with redirectUrl when SAMLRequest is valid", async () => {
+    const invalidated: { nameId: string; sessionIndex?: string }[] = [];
+    const result = await handleIdpInitiatedSloEndpoint(
+      { samlRequest: deflatedIdpRequest },
+      {
+        spConfig: idpConfig(),
+        getIdpLogoutUrl: (issuer) => (issuer === "https://idp.example.com/metadata" ? "https://idp.example.com/slo" : null),
+        invalidateSession: (params) => invalidated.push(params),
+      }
+    );
+    expect(result.status).toBe(302);
+    if (result.status !== 302) throw new Error("expected redirect");
+    expect(result.redirectUrl).toContain("https://idp.example.com/slo?");
+    expect(result.redirectUrl).toContain("SAMLResponse=");
+    expect(invalidated).toHaveLength(1);
+    expect(invalidated[0]?.nameId).toBe("user@example.com");
+  });
+
+  it("returns 400 when SAMLRequest is missing", async () => {
+    const result = await handleIdpInitiatedSloEndpoint(
+      {},
+      {
+        spConfig: idpConfig(),
+        getIdpLogoutUrl: () => "https://idp.example.com/slo",
+        invalidateSession: () => {},
+      }
+    );
+    expect(result.status).toBe(400);
+    if (result.status !== 400) throw new Error("expected error");
+    expect(result.error).toBe("invalid_request");
+  });
+
+  it("returns 400 when IdP issuer has no logout URL", async () => {
+    const result = await handleIdpInitiatedSloEndpoint(
+      { samlRequest: deflatedIdpRequest },
+      {
+        spConfig: idpConfig(),
+        getIdpLogoutUrl: () => null,
+        invalidateSession: () => {},
+      }
+    );
+    expect(result.status).toBe(400);
+    if (result.status !== 400) throw new Error("expected error");
+    expect(result.errorDescription).toContain("Unknown or unsupported IdP issuer");
   });
 });

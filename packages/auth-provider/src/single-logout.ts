@@ -227,3 +227,115 @@ export async function handleIdpInitiatedLogoutToSp(
   const redirectUrl = `${destination}?SAMLResponse=${encodeURIComponent(samlResponseBase64)}${options.relayState != null && options.relayState !== "" ? "&RelayState=" + encodeURIComponent(options.relayState) : ""}`;
   return { redirectUrl };
 }
+
+export interface SpInitiatedSloEndpointParams {
+  samlRequest?: string;
+  relayState?: string;
+}
+
+export interface SpInitiatedSloEndpointOptions {
+  idpConfig: IdpLogoutConfig;
+  getSpLogoutUrl: (issuer: string) => string | null;
+  invalidateSession: (params: { nameId: string; sessionIndex?: string }) => void | Promise<void>;
+}
+
+export interface SpInitiatedSloEndpointSuccess {
+  status: 302;
+  redirectUrl: string;
+}
+
+export interface SpInitiatedSloEndpointError {
+  status: 400;
+  error: string;
+  errorDescription: string;
+}
+
+export type SpInitiatedSloEndpointResult =
+  | SpInitiatedSloEndpointSuccess
+  | SpInitiatedSloEndpointError;
+
+export async function handleSpInitiatedSloEndpoint(
+  params: SpInitiatedSloEndpointParams,
+  options: SpInitiatedSloEndpointOptions
+): Promise<SpInitiatedSloEndpointResult> {
+  const samlRequest = params.samlRequest?.trim();
+  if (!samlRequest) {
+    return {
+      status: 400,
+      error: "invalid_request",
+      errorDescription: "SAMLRequest is required",
+    };
+  }
+  try {
+    const { redirectUrl } = await handleSpInitiatedLogout({
+      samlRequestBase64: samlRequest,
+      relayState: params.relayState,
+      idpConfig: options.idpConfig,
+      getSpLogoutUrl: options.getSpLogoutUrl,
+      invalidateSession: options.invalidateSession,
+    });
+    return { status: 302, redirectUrl };
+  } catch (err) {
+    return {
+      status: 400,
+      error: "invalid_request",
+      errorDescription: err instanceof Error ? err.message : "SLO failed",
+    };
+  }
+}
+
+export interface IdpInitiatedSloEndpointParams {
+  samlRequest?: string;
+  relayState?: string;
+}
+
+export interface IdpInitiatedSloEndpointOptions {
+  spConfig: IdpLogoutConfig;
+  getIdpLogoutUrl: (issuer: string) => string | null;
+  invalidateSession: (params: { nameId: string; sessionIndex?: string }) => void | Promise<void>;
+}
+
+export interface IdpInitiatedSloEndpointSuccess {
+  status: 302;
+  redirectUrl: string;
+}
+
+export interface IdpInitiatedSloEndpointError {
+  status: 400;
+  error: string;
+  errorDescription: string;
+}
+
+export type IdpInitiatedSloEndpointResult =
+  | IdpInitiatedSloEndpointSuccess
+  | IdpInitiatedSloEndpointError;
+
+export async function handleIdpInitiatedSloEndpoint(
+  params: IdpInitiatedSloEndpointParams,
+  options: IdpInitiatedSloEndpointOptions
+): Promise<IdpInitiatedSloEndpointResult> {
+  const samlRequest = params.samlRequest?.trim();
+  if (!samlRequest) {
+    return {
+      status: 400,
+      error: "invalid_request",
+      errorDescription: "SAMLRequest is required",
+    };
+  }
+  try {
+    const { redirectUrl } = await handleIdpInitiatedLogoutToSp({
+      samlRequestBase64: samlRequest,
+      relayState: params.relayState,
+      spConfig: options.spConfig,
+      getIdpLogoutUrl: options.getIdpLogoutUrl,
+      invalidateSession: options.invalidateSession,
+    });
+    return { status: 302, redirectUrl };
+  } catch (err) {
+    return {
+      status: 400,
+      error: "invalid_request",
+      errorDescription: err instanceof Error ? err.message : "SLO failed",
+    };
+  }
+}
