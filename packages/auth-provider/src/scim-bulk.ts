@@ -423,6 +423,32 @@ export async function processBulkRequest(params: ProcessBulkParams): Promise<Sci
             removeGroupsNotInSource: data.removeGroupsNotInSource ?? false,
             hardDeleteRemoved: data.hardDeleteRemoved ?? false,
           });
+          if (webhookStore) {
+            for (const group of syncResult.createdGroups) {
+              const payload = createRealtimeSyncPayload("group.created", {
+                id: group.id,
+                externalId: group.externalId,
+                displayName: group.displayName,
+              });
+              await deliverRealtimeWebhook(webhookStore, organizationId, payload, webhookDeliveryOptions);
+            }
+            for (const group of syncResult.updatedGroups) {
+              const payload = createRealtimeSyncPayload("group.updated", {
+                id: group.id,
+                externalId: group.externalId,
+                displayName: group.displayName,
+              });
+              await deliverRealtimeWebhook(webhookStore, organizationId, payload, webhookDeliveryOptions);
+            }
+            for (const group of syncResult.removedGroups) {
+              const payload = createRealtimeSyncPayload("group.deleted", {
+                id: group.id,
+                externalId: group.externalId,
+                displayName: group.displayName,
+              });
+              await deliverRealtimeWebhook(webhookStore, organizationId, payload, webhookDeliveryOptions);
+            }
+          }
           results.push({
             bulkId: op.bulkId,
             method: op.method,

@@ -63,6 +63,9 @@ export interface SyncGroupsResult {
   created: number;
   updated: number;
   removed: number;
+  createdGroups: SyncedGroup[];
+  updatedGroups: SyncedGroup[];
+  removedGroups: SyncedGroup[];
 }
 
 export async function syncGroups(
@@ -72,27 +75,34 @@ export async function syncGroups(
 ): Promise<SyncGroupsResult> {
   const { organizationId, removeGroupsNotInSource = false } = options;
   const externalIds = new Set(groups.map((g) => g.externalId));
-  let created = 0;
-  let updated = 0;
+  const createdGroups: SyncedGroup[] = [];
+  const updatedGroups: SyncedGroup[] = [];
 
   for (const data of groups) {
     const result = await syncGroup(store, data, { organizationId });
-    if (result.created) created++;
-    else updated++;
+    if (result.created) createdGroups.push(result.group);
+    else updatedGroups.push(result.group);
   }
 
-  let removed = 0;
+  const removedGroups: SyncedGroup[] = [];
   if (removeGroupsNotInSource) {
     const existing = await store.listGroupsByOrganization(organizationId);
     const hardDeleteRemoved = options.hardDeleteRemoved ?? false;
     for (const g of existing) {
       if (!externalIds.has(g.externalId)) {
+        removedGroups.push(g);
         if (hardDeleteRemoved) await store.hardDeleteGroup(g.id);
         else await store.softDeleteGroup(g.id);
-        removed++;
       }
     }
   }
 
-  return { created, updated, removed };
+  return {
+    created: createdGroups.length,
+    updated: updatedGroups.length,
+    removed: removedGroups.length,
+    createdGroups,
+    updatedGroups,
+    removedGroups,
+  };
 }

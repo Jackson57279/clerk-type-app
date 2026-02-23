@@ -812,5 +812,131 @@ describe("processBulkRequest", () => {
       expect(response.Operations[0]!.status).toBe(201);
       expect(await userStore.findByEmail("nowh@example.com")).not.toBeNull();
     });
+
+    it("GroupSync delivers group.created webhooks for each created group", async () => {
+      const userStore = memoryUserStore();
+      const groupStore = memoryGroupStore();
+      const delivered: { type: string; data: Record<string, unknown> }[] = [];
+      const webhookStore: WebhookSubscriptionStore = {
+        listSubscriptions: vi.fn(async () => [{ url: "https://hooks.example.com/wh", secret: "sec" }]),
+      };
+      const mockFetch = vi.fn(async (_url: unknown, init?: RequestInit) => {
+        const body = init?.body as string;
+        if (body) {
+          const parsed = JSON.parse(body) as { type: string; data: Record<string, unknown> };
+          delivered.push({ type: parsed.type, data: parsed.data });
+        }
+        return new Response(null, { status: 200 });
+      });
+      await processBulkRequest({
+        request: {
+          schemas: [BULK_REQUEST_SCHEMA],
+          Operations: [
+            {
+              method: "POST",
+              path: "GroupSync",
+              data: {
+                groups: [
+                  { externalId: "sync-grp-1", displayName: "Sync One", members: [] },
+                  { externalId: "sync-grp-2", displayName: "Sync Two", members: [] },
+                ],
+              },
+            },
+          ],
+        },
+        userStore,
+        groupStore,
+        organizationId: orgId,
+        webhookStore,
+        webhookDeliveryOptions: { fetchFn: mockFetch },
+      });
+      expect(delivered).toHaveLength(2);
+      expect(delivered.map((d) => d.type)).toEqual(["group.created", "group.created"]);
+      expect(delivered.map((d) => d.data.displayName).sort()).toEqual(["Sync One", "Sync Two"]);
+      expect(delivered.map((d) => d.data.externalId).sort()).toEqual(["sync-grp-1", "sync-grp-2"]);
+    });
+
+    it("GroupSync delivers group.updated webhook for updated groups", async () => {
+      const userStore = memoryUserStore();
+      const groupStore = memoryGroupStore();
+      await groupStore.createGroup(orgId, { externalId: "grp-upd", displayName: "Before" });
+      const delivered: { type: string; data: Record<string, unknown> }[] = [];
+      const webhookStore: WebhookSubscriptionStore = {
+        listSubscriptions: vi.fn(async () => [{ url: "https://hooks.example.com/wh", secret: "sec" }]),
+      };
+      const mockFetch = vi.fn(async (_url: unknown, init?: RequestInit) => {
+        const body = init?.body as string;
+        if (body) {
+          const parsed = JSON.parse(body) as { type: string; data: Record<string, unknown> };
+          delivered.push({ type: parsed.type, data: parsed.data });
+        }
+        return new Response(null, { status: 200 });
+      });
+      await processBulkRequest({
+        request: {
+          schemas: [BULK_REQUEST_SCHEMA],
+          Operations: [
+            {
+              method: "POST",
+              path: "GroupSync",
+              data: {
+                groups: [{ externalId: "grp-upd", displayName: "After", members: [] }],
+              },
+            },
+          ],
+        },
+        userStore,
+        groupStore,
+        organizationId: orgId,
+        webhookStore,
+        webhookDeliveryOptions: { fetchFn: mockFetch },
+      });
+      expect(delivered).toHaveLength(1);
+      expect(delivered[0]!.type).toBe("group.updated");
+      expect(delivered[0]!.data.displayName).toBe("After");
+      expect(delivered[0]!.data.externalId).toBe("grp-upd");
+    });
+
+    it("GroupSync delivers group.deleted webhook for removed groups when removeGroupsNotInSource", async () => {
+      const userStore = memoryUserStore();
+      const groupStore = memoryGroupStore();
+      const created = await groupStore.createGroup(orgId, { externalId: "grp-removed", displayName: "Gone" });
+      const delivered: { type: string; data: Record<string, unknown> }[] = [];
+      const webhookStore: WebhookSubscriptionStore = {
+        listSubscriptions: vi.fn(async () => [{ url: "https://hooks.example.com/wh", secret: "sec" }]),
+      };
+      const mockFetch = vi.fn(async (_url: unknown, init?: RequestInit) => {
+        const body = init?.body as string;
+        if (body) {
+          const parsed = JSON.parse(body) as { type: string; data: Record<string, unknown> };
+          delivered.push({ type: parsed.type, data: parsed.data });
+        }
+        return new Response(null, { status: 200 });
+      });
+      await processBulkRequest({
+        request: {
+          schemas: [BULK_REQUEST_SCHEMA],
+          Operations: [
+            {
+              method: "POST",
+              path: "GroupSync",
+              data: {
+                groups: [{ externalId: "grp-kept", displayName: "Kept", members: [] }],
+                removeGroupsNotInSource: true,
+              },
+            },
+          ],
+        },
+        userStore,
+        groupStore,
+        organizationId: orgId,
+        webhookStore,
+        webhookDeliveryOptions: { fetchFn: mockFetch },
+      });
+      expect(delivered).toHaveLength(2);
+      expect(delivered.find((d) => d.type === "group.created")?.data.externalId).toBe("grp-kept");
+      expect(delivered.find((d) => d.type === "group.deleted")?.data.externalId).toBe("grp-removed");
+      expect(delivered.find((d) => d.type === "group.deleted")?.data.id).toBe(created.id);
+    });
   });
 });
