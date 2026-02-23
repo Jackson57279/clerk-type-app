@@ -1,3 +1,4 @@
+import { createRequire } from "module";
 import { describe, it, expect } from "vitest";
 import zlib from "zlib";
 import {
@@ -12,6 +13,15 @@ import {
 import { createLogoutResponse } from "../src/single-logout.js";
 import { createIdpInitiatedResponse } from "../src/idp-initiated-sso.js";
 import { DOMParser } from "@xmldom/xmldom";
+
+const require = createRequire(import.meta.url);
+const { SignedXml } = require("xml-crypto") as {
+  SignedXml: new (opts?: { publicCert?: string }) => {
+    findSignatures: (doc: Document) => Node[];
+    loadSignature: (node: Node) => void;
+    checkSignature: (xml: string) => boolean;
+  };
+};
 
 const TEST_SP_KEY = `-----BEGIN PRIVATE KEY-----
 MIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQDBX9ZAnn+hUzzM
@@ -119,6 +129,19 @@ describe("createSpInitiatedLoginRequestUrl", () => {
     expect(signatureMethod?.getAttribute("Algorithm")).toBe(
       "http://www.w3.org/2001/04/xmldsig-more#rsa-sha256"
     );
+  });
+
+  it("signed AuthnRequest signature validates with SP certificate", async () => {
+    const result = await createSpInitiatedLoginRequestUrl(spConfig(), idpConfig());
+    const samlRequestB64 = new URL(result.loginUrl).searchParams.get("SAMLRequest");
+    const deflated = Buffer.from(samlRequestB64!, "base64");
+    const xml = zlib.inflateRawSync(deflated).toString("utf8");
+    const dom = new DOMParser().parseFromString(xml, "text/xml");
+    const sig = new SignedXml({ publicCert: TEST_CERT });
+    const signatures = sig.findSignatures(dom as unknown as Document);
+    expect(signatures.length).toBeGreaterThanOrEqual(1);
+    sig.loadSignature(signatures[0]);
+    expect(sig.checkSignature(xml)).toBe(true);
   });
 
   it("when signAuthnRequest is false, produces unsigned AuthnRequest", async () => {
