@@ -7,6 +7,8 @@ import {
   type CredentialUser,
 } from "../src/registration-login.js";
 import { defaultPasswordPolicy } from "../src/password.js";
+import { createBruteForceProtection } from "../src/brute-force.js";
+import { createAccountLockout } from "../src/account-lockout.js";
 import {
   createMemoryTotpStore,
   startTotpSetup,
@@ -730,6 +732,137 @@ describe("login with backup code", () => {
     expect(result.success).toBe(false);
     if (result.success) return;
     expect("requiresTotp" in result && result.requiresTotp).toBe(true);
+  });
+});
+
+describe("login with brute force protection", () => {
+  it("returns rate_limited when brute force protection blocks key", async () => {
+    const store = memoryStore();
+    await register(store, { email: "u@example.com", password: "PassWord1" });
+    const bf = createBruteForceProtection({ baseDelayMs: 1000 });
+    bf.recordFailedAttempt("192.168.1.1");
+
+    const result = await login(
+      store,
+      { email: "u@example.com", password: "PassWord1" },
+      {
+        getBruteForceKey: () => "192.168.1.1",
+        bruteForceProtection: bf,
+      }
+    );
+
+    expect(result.success).toBe(false);
+    if (result.success) return;
+    expect("reason" in result && result.reason).toBe("rate_limited");
+    expect("retryAfterSeconds" in result && result.retryAfterSeconds).toBe(1);
+  });
+
+  it("allows login after delay has passed", async () => {
+    const store = memoryStore();
+    await register(store, { email: "u2@example.com", password: "PassWord1" });
+    const bf = createBruteForceProtection({ baseDelayMs: 50 });
+    bf.recordFailedAttempt("192.168.1.2");
+    await new Promise((r) => setTimeout(r, 60));
+
+    const result = await login(
+      store,
+      { email: "u2@example.com", password: "PassWord1" },
+      {
+        getBruteForceKey: () => "192.168.1.2",
+        bruteForceProtection: bf,
+      }
+    );
+
+    expect(result.success).toBe(true);
+  });
+
+  it("records failed attempt on invalid credentials when brute force protection enabled", async () => {
+    const store = memoryStore();
+    await register(store, { email: "u3@example.com", password: "PassWord1" });
+    const bf = createBruteForceProtection({ baseDelayMs: 1000 });
+
+    await login(store, { email: "u3@example.com", password: "Wrong" }, {
+      getBruteForceKey: () => "10.0.0.1",
+      bruteForceProtection: bf,
+    });
+
+    const result = await login(
+      store,
+      { email: "u3@example.com", password: "PassWord1" },
+      {
+        getBruteForceKey: () => "10.0.0.1",
+        bruteForceProtection: bf,
+      }
+    );
+    expect(result.success).toBe(false);
+    if (result.success) return;
+    expect("reason" in result && result.reason).toBe("rate_limited");
+  });
+
+  it("returns account_locked when account lockout blocks email", async () => {
+    const store = memoryStore();
+    await register(store, { email: "locked@example.com", password: "PassWord1" });
+    const lockout = createAccountLockout({ maxAttempts: 3, lockoutDurationMs: 60_000 });
+    lockout.recordFailedAttempt("locked@example.com");
+    lockout.recordFailedAttempt("locked@example.com");
+    lockout.recordFailedAttempt("locked@example.com");
+
+    const result = await login(
+      store,
+      { email: "locked@example.com", password: "PassWord1" },
+      { accountLockout: lockout }
+    );
+
+    expect(result.success).toBe(false);
+    if (result.success) return;
+    expect("reason" in result && result.reason).toBe("account_locked");
+    expect("retryAfterSeconds" in result && result.retryAfterSeconds).toBe(60);
+  });
+
+  it("records failed attempt on invalid credentials when account lockout enabled", async () => {
+    const store = memoryStore();
+    await register(store, { email: "u4@example.com", password: "PassWord1" });
+    const lockout = createAccountLockout({ maxAttempts: 2, lockoutDurationMs: 60_000 });
+
+    await login(store, { email: "u4@example.com", password: "Wrong" }, {
+      accountLockout: lockout,
+    });
+    await login(store, { email: "u4@example.com", password: "Wrong" }, {
+      accountLockout: lockout,
+    });
+    const result = await login(store, { email: "u4@example.com", password: "PassWord1" }, {
+      accountLockout: lockout,
+    });
+    expect(result.success).toBe(false);
+    if (result.success) return;
+    expect("reason" in result && result.reason).toBe("account_locked");
+  });
+
+  it("clears account lockout on successful login", async () => {
+    const store = memoryStore();
+    await register(store, { email: "u5@example.com", password: "PassWord1" });
+    const lockout = createAccountLockout({ maxAttempts: 3, lockoutDurationMs: 60_000 });
+    lockout.recordFailedAttempt("u5@example.com");
+    lockout.recordFailedAttempt("u5@example.com");
+
+    const result = await login(
+      store,
+      { email: "u5@example.com", password: "PassWord1" },
+      { accountLockout: lockout }
+    );
+    expect(result.success).toBe(true);
+    lockout.recordFailedAttempt("u5@example.com");
+    expect(lockout.check("u5@example.com").locked).toBe(false);
+  });
+
+  it("login without brute force or lockout options is unchanged", async () => {
+    const store = memoryStore();
+    await register(store, { email: "u6@example.com", password: "PassWord1" });
+    const result = await login(store, {
+      email: "u6@example.com",
+      password: "PassWord1",
+    });
+    expect(result.success).toBe(true);
   });
 });
 

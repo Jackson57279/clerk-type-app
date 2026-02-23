@@ -22,6 +22,8 @@ import {
   verifyAndConsumeBackupCode,
   type BackupCodeStore,
 } from "./backup-codes.js";
+import type { BruteForceResult } from "./brute-force.js";
+import type { AccountLockoutResult } from "./account-lockout.js";
 
 export interface CredentialUser {
   userId: string;
@@ -140,10 +142,25 @@ export interface SmsMfaLoginOptions {
   challengeStore: SmsMfaChallengeStore;
 }
 
+export interface BruteForceProtection {
+  check(key: string): BruteForceResult;
+  recordFailedAttempt(key: string): void;
+  clearFailedAttempts(key: string): void;
+}
+
+export interface AccountLockoutProtection {
+  check(key: string): AccountLockoutResult;
+  recordFailedAttempt(key: string): void;
+  clearFailedAttempts(key: string): void;
+}
+
 export interface LoginOptions {
   totpStore?: TotpStore;
   smsMfa?: SmsMfaLoginOptions;
   backupCodeStore?: BackupCodeStore;
+  getBruteForceKey?: (input: LoginInput) => string;
+  bruteForceProtection?: BruteForceProtection;
+  accountLockout?: AccountLockoutProtection;
 }
 
 export interface LoginSuccess {
@@ -169,11 +186,38 @@ export interface LoginFailure {
   reason: "invalid_credentials";
 }
 
+export interface LoginRateLimited {
+  success: false;
+  reason: "rate_limited";
+  retryAfterSeconds: number;
+}
+
+export interface LoginAccountLocked {
+  success: false;
+  reason: "account_locked";
+  retryAfterSeconds: number;
+}
+
 export type LoginResult =
   | LoginSuccess
   | LoginFailure
+  | LoginRateLimited
+  | LoginAccountLocked
   | LoginRequiresTotp
   | LoginRequiresSmsOtp;
+
+function recordLoginFailure(
+  email: string,
+  options: LoginOptions,
+  bruteForceKey: string | undefined
+): void {
+  if (options.bruteForceProtection && bruteForceKey) {
+    options.bruteForceProtection.recordFailedAttempt(bruteForceKey);
+  }
+  if (options.accountLockout) {
+    options.accountLockout.recordFailedAttempt(email);
+  }
+}
 
 export async function login(
   store: RegistrationLoginStore,
@@ -185,13 +229,38 @@ export async function login(
     return { success: false, reason: "invalid_credentials" };
   }
 
+  const bruteForceKey =
+    options.getBruteForceKey?.(input) ?? undefined;
+  if (options.bruteForceProtection && bruteForceKey) {
+    const bf = options.bruteForceProtection.check(bruteForceKey);
+    if (!bf.allowed) {
+      return {
+        success: false,
+        reason: "rate_limited",
+        retryAfterSeconds: bf.retryAfterSeconds ?? 1,
+      };
+    }
+  }
+  if (options.accountLockout) {
+    const lock = options.accountLockout.check(email);
+    if (lock.locked) {
+      return {
+        success: false,
+        reason: "account_locked",
+        retryAfterSeconds: lock.retryAfterSeconds ?? 1,
+      };
+    }
+  }
+
   const user = await store.findUserByEmail(email);
   if (!user?.passwordHash) {
+    recordLoginFailure(email, options, bruteForceKey);
     return { success: false, reason: "invalid_credentials" };
   }
 
   const valid = await verifyPassword(user.passwordHash, input.password);
   if (!valid) {
+    recordLoginFailure(email, options, bruteForceKey);
     return { success: false, reason: "invalid_credentials" };
   }
 
@@ -206,6 +275,7 @@ export async function login(
           totpStore
         );
         if (!totpValid) {
+          recordLoginFailure(email, options, bruteForceKey);
           return { success: false, reason: "invalid_credentials" };
         }
       } else if (input.backupCode && backupCodeStore) {
@@ -215,6 +285,7 @@ export async function login(
           backupCodeStore
         );
         if (!backupValid) {
+          recordLoginFailure(email, options, bruteForceKey);
           return { success: false, reason: "invalid_credentials" };
         }
       } else {
@@ -233,6 +304,7 @@ export async function login(
           { challengeStore: smsMfa.challengeStore }
         );
         if (!smsValid) {
+          recordLoginFailure(email, options, bruteForceKey);
           return { success: false, reason: "invalid_credentials" };
         }
       } else if (input.backupCode && backupCodeStore) {
@@ -242,6 +314,7 @@ export async function login(
           backupCodeStore
         );
         if (!backupValid) {
+          recordLoginFailure(email, options, bruteForceKey);
           return { success: false, reason: "invalid_credentials" };
         }
       } else {
@@ -256,5 +329,8 @@ export async function login(
     }
   }
 
+  if (options.accountLockout) {
+    options.accountLockout.clearFailedAttempts(email);
+  }
   return { success: true, userId: user.userId };
 }
