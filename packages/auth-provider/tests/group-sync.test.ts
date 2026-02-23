@@ -2,6 +2,9 @@ import { describe, it, expect } from "vitest";
 import {
   syncGroup,
   syncGroups,
+  deactivateGroup,
+  deleteGroup,
+  deprovisionGroup,
   type GroupSyncStore,
   type SyncedGroup,
 } from "../src/group-sync.js";
@@ -255,5 +258,69 @@ describe("syncGroups", () => {
     expect(org2Groups).toHaveLength(1);
     expect(org2Groups[0]!.externalId).toBe("ext-other-org");
     expect(org2Groups[0]!.displayName).toBe("Other Org2");
+  });
+});
+
+describe("deactivateGroup / deleteGroup / deprovisionGroup (soft delete vs delete)", () => {
+  it("deactivateGroup marks group inactive (soft delete)", async () => {
+    const store = memoryStore();
+    const created = await store.createGroup("org_1", { externalId: "ext-1", displayName: "Team" });
+    await deactivateGroup(store, created.id);
+    const found = await store.findGroupById(created.id);
+    expect(found).not.toBeNull();
+    expect(found!.active).toBe(false);
+  });
+
+  it("deleteGroup removes group (hard delete)", async () => {
+    const store = memoryStore();
+    const created = await store.createGroup("org_1", { externalId: "ext-1", displayName: "Team" });
+    await deleteGroup(store, created.id);
+    const found = await store.findGroupById(created.id);
+    expect(found).toBeNull();
+  });
+
+  it("deprovisionGroup soft-deletes by default", async () => {
+    const store = memoryStore();
+    const created = await store.createGroup("org_1", { externalId: "ext-1", displayName: "Team" });
+    await deprovisionGroup(store, created.id);
+    const found = await store.findGroupById(created.id);
+    expect(found).not.toBeNull();
+    expect(found!.active).toBe(false);
+  });
+
+  it("deprovisionGroup hard-deletes when options.hard is true", async () => {
+    const store = memoryStore();
+    const created = await store.createGroup("org_1", { externalId: "ext-1", displayName: "Team" });
+    await deprovisionGroup(store, created.id, { hard: true });
+    const found = await store.findGroupById(created.id);
+    expect(found).toBeNull();
+  });
+
+  it("deactivate vs delete: deactivate marks inactive, delete removes", async () => {
+    const store = memoryStore();
+    const g1 = await store.createGroup("org_1", { externalId: "ext-1", displayName: "One" });
+    const g2 = await store.createGroup("org_1", { externalId: "ext-2", displayName: "Two" });
+    await deactivateGroup(store, g1.id);
+    await deleteGroup(store, g2.id);
+    const afterDeactivate = await store.findGroupById(g1.id);
+    const afterDelete = await store.findGroupById(g2.id);
+    expect(afterDeactivate).not.toBeNull();
+    expect(afterDeactivate!.active).toBe(false);
+    expect(afterDelete).toBeNull();
+  });
+
+  it("deactivateGroup is no-op when group does not exist", async () => {
+    const store = memoryStore();
+    await expect(deactivateGroup(store, "nonexistent")).resolves.toBeUndefined();
+  });
+
+  it("deleteGroup is no-op when group does not exist", async () => {
+    const store = memoryStore();
+    await expect(deleteGroup(store, "nonexistent")).resolves.toBeUndefined();
+  });
+
+  it("deprovisionGroup is no-op when group does not exist", async () => {
+    const store = memoryStore();
+    await expect(deprovisionGroup(store, "nonexistent")).resolves.toBeUndefined();
   });
 });

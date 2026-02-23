@@ -106,3 +106,39 @@ export async function syncGroups(
     removedGroups,
   };
 }
+
+export interface GroupDeprovisionOptions {
+  hard?: boolean;
+}
+
+export async function deactivateGroup(
+  store: GroupSyncStore,
+  groupId: string
+): Promise<void> {
+  const group = await store.findGroupById(groupId);
+  if (!group) return;
+  await store.softDeleteGroup(groupId);
+}
+
+export async function deleteGroup(
+  store: GroupSyncStore,
+  groupId: string
+): Promise<void> {
+  const group = await store.findGroupById(groupId);
+  if (!group) return;
+  await store.hardDeleteGroup(groupId);
+}
+
+export async function deprovisionGroup(
+  store: GroupSyncStore,
+  groupId: string,
+  options: GroupDeprovisionOptions = {}
+): Promise<void> {
+  const group = await store.findGroupById(groupId);
+  if (!group) return;
+  if (options.hard) {
+    await store.hardDeleteGroup(groupId);
+  } else {
+    await store.softDeleteGroup(groupId);
+  }
+}
