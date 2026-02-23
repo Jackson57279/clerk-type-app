@@ -190,6 +190,26 @@ describe("provisionUser", () => {
     expect(result.user.active).toBe(false);
   });
 
+  it("updates existing user and can set active to false", async () => {
+    const store = memoryStore([
+      {
+        id: "user_1",
+        email: "active@example.com",
+        externalId: undefined,
+        name: undefined,
+        firstName: undefined,
+        lastName: undefined,
+        active: true,
+      },
+    ]);
+    const result = await provisionUser(store, {
+      email: "active@example.com",
+      active: false,
+    });
+    expect(result.created).toBe(false);
+    expect(result.user.active).toBe(false);
+  });
+
   it("prefers externalId match over email when both exist", async () => {
     const store = memoryStore([
       {
@@ -278,5 +298,24 @@ describe("deprovisionUser", () => {
     await deprovisionUser(store, "user_1");
     const byEmail = await store.findByEmail("gone@example.com");
     expect(byEmail).toBeNull();
+  });
+
+  it("calling deprovision twice is idempotent (soft delete)", async () => {
+    const store = memoryStore([
+      {
+        id: "user_1",
+        email: "twice@example.com",
+        externalId: undefined,
+        name: undefined,
+        firstName: undefined,
+        lastName: undefined,
+        active: true,
+      },
+    ]);
+    await deprovisionUser(store, "user_1");
+    await expect(deprovisionUser(store, "user_1")).resolves.toBeUndefined();
+    const found = await store.findById("user_1");
+    expect(found).not.toBeNull();
+    expect(found?.active).toBe(false);
   });
 });
