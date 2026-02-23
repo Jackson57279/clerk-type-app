@@ -7,6 +7,8 @@ export type {
   DashboardOverviewMetrics,
   DashboardUserSummary,
   DashboardUserManagementProps,
+  DashboardOrganizationSummary,
+  DashboardOrganizationManagementProps,
 } from "./dashboard.js";
 export { useUser, useSession, useAuth } from "./hooks.js";
 export { usePasskeys } from "./use-passkeys.js";

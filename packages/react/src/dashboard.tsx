@@ -87,11 +87,30 @@ export interface DashboardUserManagementProps {
   onUserDelete?: (userId: string) => void;
 }
 
+export interface DashboardOrganizationSummary {
+  id: string;
+  name: string;
+  slug: string;
+  memberCount?: number;
+  ssoEnabled?: boolean;
+}
+
+export interface DashboardOrganizationManagementProps {
+  organizations: DashboardOrganizationSummary[];
+  loading?: boolean;
+  search?: string;
+  onSearchChange?: (value: string) => void;
+  onViewMembers?: (organizationId: string) => void;
+  onManageSettings?: (organizationId: string) => void;
+  onTransferOwnership?: (organizationId: string) => void;
+}
+
 export interface DashboardProps {
   overviewMetrics?: DashboardOverviewMetrics;
   activeSection?: DashboardSection;
   onSectionChange?: (section: DashboardSection) => void;
   userManagement?: DashboardUserManagementProps;
+  organizationManagement?: DashboardOrganizationManagementProps;
 }
 
 const DEFAULT_METRICS: DashboardOverviewMetrics = {
@@ -107,6 +126,7 @@ export function Dashboard(props: DashboardProps) {
     activeSection: controlledSection,
     onSectionChange,
     userManagement,
+    organizationManagement,
   } = props;
   const [internalSection, setInternalSection] = useState<DashboardSection>("overview");
   const activeSection = controlledSection ?? internalSection;
@@ -279,9 +299,126 @@ export function Dashboard(props: DashboardProps) {
         {activeSection === "organizations" && (
           <section data-testid="dashboard-organizations">
             <h1 data-testid="dashboard-organizations-title" style={{ marginTop: 0, fontSize: "1.25rem" }}>
-              Organizations
+              Organization Management
             </h1>
-            <p data-testid="dashboard-organizations-placeholder">View and manage organizations.</p>
+            {organizationManagement ? (
+              <>
+                {organizationManagement.onSearchChange && (
+                  <input
+                    type="search"
+                    data-testid="dashboard-organizations-search"
+                    placeholder="Search by name or slug"
+                    value={organizationManagement.search ?? ""}
+                    onChange={(e) => organizationManagement.onSearchChange?.(e.target.value)}
+                    style={{
+                      marginBottom: "1rem",
+                      padding: "0.5rem 0.75rem",
+                      width: "100%",
+                      maxWidth: "320px",
+                      border: "1px solid #e5e7eb",
+                      borderRadius: "6px",
+                    }}
+                  />
+                )}
+                {organizationManagement.loading ? (
+                  <p data-testid="dashboard-organizations-loading">Loading organizations…</p>
+                ) : organizationManagement.organizations.length === 0 ? (
+                  <p data-testid="dashboard-organizations-empty">No organizations found.</p>
+                ) : (
+                  <div data-testid="dashboard-organizations-list" style={{ overflowX: "auto" }}>
+                    <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                      <thead>
+                        <tr>
+                          <th style={TABLE_HEAD_STYLE}>Name</th>
+                          <th style={TABLE_HEAD_STYLE}>Slug</th>
+                          <th style={TABLE_HEAD_STYLE}>Members</th>
+                          <th style={TABLE_HEAD_STYLE}>SSO</th>
+                          {(organizationManagement.onViewMembers ||
+                            organizationManagement.onManageSettings ||
+                            organizationManagement.onTransferOwnership) ? (
+                            <th style={TABLE_HEAD_STYLE} aria-label="Actions" />
+                          ) : null}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {organizationManagement.organizations.map((org) => (
+                          <tr key={org.id} data-testid={`dashboard-organization-row-${org.id}`}>
+                            <td style={TABLE_CELL_STYLE}>{org.name}</td>
+                            <td style={TABLE_CELL_STYLE}>{org.slug}</td>
+                            <td style={TABLE_CELL_STYLE}>
+                              {org.memberCount !== undefined ? String(org.memberCount) : "—"}
+                            </td>
+                            <td style={TABLE_CELL_STYLE}>{org.ssoEnabled ? "Yes" : "No"}</td>
+                            {(organizationManagement.onViewMembers ||
+                              organizationManagement.onManageSettings ||
+                              organizationManagement.onTransferOwnership) ? (
+                              <td style={TABLE_CELL_STYLE}>
+                                {organizationManagement.onViewMembers && (
+                                  <button
+                                    type="button"
+                                    data-testid={`dashboard-organization-members-${org.id}`}
+                                    onClick={() => organizationManagement.onViewMembers?.(org.id)}
+                                    style={{
+                                      marginRight: "0.5rem",
+                                      padding: "0.25rem 0.5rem",
+                                      fontSize: "0.8125rem",
+                                      border: "1px solid #e5e7eb",
+                                      borderRadius: "4px",
+                                      background: "#fff",
+                                      cursor: "pointer",
+                                    }}
+                                  >
+                                    Members
+                                  </button>
+                                )}
+                                {organizationManagement.onManageSettings && (
+                                  <button
+                                    type="button"
+                                    data-testid={`dashboard-organization-settings-${org.id}`}
+                                    onClick={() => organizationManagement.onManageSettings?.(org.id)}
+                                    style={{
+                                      marginRight: "0.5rem",
+                                      padding: "0.25rem 0.5rem",
+                                      fontSize: "0.8125rem",
+                                      border: "1px solid #e5e7eb",
+                                      borderRadius: "4px",
+                                      background: "#fff",
+                                      cursor: "pointer",
+                                    }}
+                                  >
+                                    Settings
+                                  </button>
+                                )}
+                                {organizationManagement.onTransferOwnership && (
+                                  <button
+                                    type="button"
+                                    data-testid={`dashboard-organization-transfer-${org.id}`}
+                                    onClick={() => organizationManagement.onTransferOwnership?.(org.id)}
+                                    style={{
+                                      padding: "0.25rem 0.5rem",
+                                      fontSize: "0.8125rem",
+                                      color: "#b91c1c",
+                                      border: "1px solid #fecaca",
+                                      borderRadius: "4px",
+                                      background: "#fef2f2",
+                                      cursor: "pointer",
+                                    }}
+                                  >
+                                    Transfer
+                                  </button>
+                                )}
+                              </td>
+                            ) : null}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </>
+            ) : (
+              <p data-testid="dashboard-organizations-placeholder">View and manage organizations.</p>
+            )}
           </section>
         )}
         {activeSection === "settings" && (

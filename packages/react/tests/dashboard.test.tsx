@@ -52,7 +52,7 @@ describe("Dashboard", () => {
     render(<Dashboard />);
     fireEvent.click(screen.getByTestId("dashboard-nav-organizations"));
     expect(screen.getByTestId("dashboard-organizations")).toBeTruthy();
-    expect(screen.getByTestId("dashboard-organizations-title").textContent).toBe("Organizations");
+    expect(screen.getByTestId("dashboard-organizations-title").textContent).toBe("Organization Management");
   });
 
   it("switches to Settings section when Settings nav is clicked", () => {
@@ -145,5 +145,110 @@ describe("Dashboard", () => {
     );
     fireEvent.click(screen.getByTestId("dashboard-user-delete-u1"));
     expect(onUserDelete).toHaveBeenCalledWith("u1");
+  });
+
+  it("shows organization list when organizationManagement is provided", () => {
+    render(
+      <Dashboard
+        activeSection="organizations"
+        organizationManagement={{
+          organizations: [
+            { id: "org1", name: "Acme Inc", slug: "acme", memberCount: 5, ssoEnabled: true },
+            { id: "org2", name: "Beta Co", slug: "beta", memberCount: 2, ssoEnabled: false },
+          ],
+        }}
+      />
+    );
+    expect(screen.getByTestId("dashboard-organizations-list")).toBeTruthy();
+    expect(screen.getByTestId("dashboard-organization-row-org1")).toBeTruthy();
+    expect(screen.getByTestId("dashboard-organization-row-org2")).toBeTruthy();
+    expect(screen.getByText("Acme Inc")).toBeTruthy();
+    expect(screen.getByText("acme")).toBeTruthy();
+    expect(screen.getByText("5")).toBeTruthy();
+    expect(screen.getByText("Yes")).toBeTruthy();
+    expect(screen.getByText("Beta Co")).toBeTruthy();
+    expect(screen.getByText("beta")).toBeTruthy();
+    expect(screen.getByText("No")).toBeTruthy();
+  });
+
+  it("shows organizations search when onSearchChange is provided", () => {
+    render(
+      <Dashboard
+        activeSection="organizations"
+        organizationManagement={{
+          organizations: [],
+          search: "",
+          onSearchChange: () => {},
+        }}
+      />
+    );
+    const search = screen.getByTestId("dashboard-organizations-search");
+    expect(search).toBeTruthy();
+    expect((search as HTMLInputElement).placeholder).toBe("Search by name or slug");
+  });
+
+  it("shows loading state when organizationManagement.loading is true", () => {
+    render(
+      <Dashboard
+        activeSection="organizations"
+        organizationManagement={{ organizations: [], loading: true }}
+      />
+    );
+    expect(screen.getByTestId("dashboard-organizations-loading").textContent).toContain("Loading");
+  });
+
+  it("shows empty state when organizations array is empty and not loading", () => {
+    render(
+      <Dashboard
+        activeSection="organizations"
+        organizationManagement={{ organizations: [] }}
+      />
+    );
+    expect(screen.getByTestId("dashboard-organizations-empty").textContent).toBe("No organizations found.");
+  });
+
+  it("calls onViewMembers when Members is clicked", () => {
+    const onViewMembers = vi.fn();
+    render(
+      <Dashboard
+        activeSection="organizations"
+        organizationManagement={{
+          organizations: [{ id: "org1", name: "Acme", slug: "acme" }],
+          onViewMembers,
+        }}
+      />
+    );
+    fireEvent.click(screen.getByTestId("dashboard-organization-members-org1"));
+    expect(onViewMembers).toHaveBeenCalledWith("org1");
+  });
+
+  it("calls onManageSettings when Settings is clicked", () => {
+    const onManageSettings = vi.fn();
+    render(
+      <Dashboard
+        activeSection="organizations"
+        organizationManagement={{
+          organizations: [{ id: "org1", name: "Acme", slug: "acme" }],
+          onManageSettings,
+        }}
+      />
+    );
+    fireEvent.click(screen.getByTestId("dashboard-organization-settings-org1"));
+    expect(onManageSettings).toHaveBeenCalledWith("org1");
+  });
+
+  it("calls onTransferOwnership when Transfer is clicked", () => {
+    const onTransferOwnership = vi.fn();
+    render(
+      <Dashboard
+        activeSection="organizations"
+        organizationManagement={{
+          organizations: [{ id: "org1", name: "Acme", slug: "acme" }],
+          onTransferOwnership,
+        }}
+      />
+    );
+    fireEvent.click(screen.getByTestId("dashboard-organization-transfer-org1"));
+    expect(onTransferOwnership).toHaveBeenCalledWith("org1");
   });
 });
