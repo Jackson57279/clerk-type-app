@@ -6,6 +6,7 @@ import {
   finishRegistration,
   startAuthentication,
   finishAuthentication,
+  revokePasskey,
   type StoredPasskey,
   type PasskeyRpConfig,
 } from "../src/passkeys.js";
@@ -258,6 +259,98 @@ describe("Passkey metadata (name, device info, last used)", () => {
     const b = list.find((p) => p.credentialId === "cred-b");
     expect(a!.lastUsedAt).toBeDefined();
     expect(b!.lastUsedAt).toBe("2025-01-01T00:00:00.000Z");
+  });
+});
+
+describe("Passkey revocation", () => {
+  it("revokes an existing passkey and returns revoked true", async () => {
+    const credentialStore = createMemoryPasskeyStore();
+    const userId = "user-1";
+    await credentialStore.save({
+      userId,
+      credentialId: "lost-device",
+      publicKey: new Uint8Array(1),
+      counter: 0,
+      deviceType: "singleDevice",
+      backedUp: false,
+      webauthnUserID: "w",
+    });
+    const result = await revokePasskey({
+      userId,
+      credentialId: "lost-device",
+      credentialStore,
+    });
+    expect(result.revoked).toBe(true);
+    const list = await credentialStore.listByUserId(userId);
+    expect(list).toHaveLength(0);
+  });
+
+  it("revoking non-existent credential returns revoked false and does not affect other passkeys", async () => {
+    const credentialStore = createMemoryPasskeyStore();
+    const userId = "user-1";
+    await credentialStore.save({
+      userId,
+      credentialId: "kept",
+      publicKey: new Uint8Array(1),
+      counter: 0,
+      deviceType: "singleDevice",
+      backedUp: false,
+      webauthnUserID: "w",
+    });
+    const result = await revokePasskey({
+      userId,
+      credentialId: "unknown-credential",
+      credentialStore,
+    });
+    expect(result.revoked).toBe(false);
+    const list = await credentialStore.listByUserId(userId);
+    expect(list).toHaveLength(1);
+    expect(list[0]!.credentialId).toBe("kept");
+  });
+
+  it("revoking one of multiple passkeys leaves the others", async () => {
+    const credentialStore = createMemoryPasskeyStore();
+    const userId = "user-1";
+    const base: Omit<StoredPasskey, "credentialId" | "publicKey"> = {
+      userId,
+      counter: 0,
+      deviceType: "singleDevice",
+      backedUp: false,
+      webauthnUserID: "w",
+    };
+    await credentialStore.save({ ...base, credentialId: "a", publicKey: new Uint8Array(1) });
+    await credentialStore.save({ ...base, credentialId: "b", publicKey: new Uint8Array(1) });
+    await credentialStore.save({ ...base, credentialId: "c", publicKey: new Uint8Array(1) });
+    const result = await revokePasskey({
+      userId,
+      credentialId: "b",
+      credentialStore,
+    });
+    expect(result.revoked).toBe(true);
+    const list = await credentialStore.listByUserId(userId);
+    expect(list.map((p) => p.credentialId).sort()).toEqual(["a", "c"]);
+  });
+
+  it("revoking credential for another user does not revoke it", async () => {
+    const credentialStore = createMemoryPasskeyStore();
+    await credentialStore.save({
+      userId: "user-A",
+      credentialId: "cred-a",
+      publicKey: new Uint8Array(1),
+      counter: 0,
+      deviceType: "singleDevice",
+      backedUp: false,
+      webauthnUserID: "w",
+    });
+    const result = await revokePasskey({
+      userId: "user-B",
+      credentialId: "cred-a",
+      credentialStore,
+    });
+    expect(result.revoked).toBe(false);
+    const list = await credentialStore.listByUserId("user-A");
+    expect(list).toHaveLength(1);
+    expect(list[0]!.credentialId).toBe("cred-a");
   });
 });
 

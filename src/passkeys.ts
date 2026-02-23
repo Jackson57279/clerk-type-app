@@ -219,6 +219,28 @@ export async function finishAuthentication(
   return { verified: true, credentialId: response.id };
 }
 
+export interface RevokePasskeyOptions {
+  userId: string;
+  credentialId: string;
+  credentialStore: PasskeyStore;
+}
+
+export interface RevokePasskeyResult {
+  revoked: boolean;
+}
+
+export async function revokePasskey(
+  options: RevokePasskeyOptions
+): Promise<RevokePasskeyResult> {
+  const { userId, credentialId, credentialStore } = options;
+  const passkey = await credentialStore.findByCredentialId(userId, credentialId);
+  if (!passkey) {
+    return { revoked: false };
+  }
+  await credentialStore.delete(userId, credentialId);
+  return { revoked: true };
+}
+
 function deriveDeviceInfo(
   deviceType: CredentialDeviceType,
   transports?: AuthenticatorTransportFuture[]
