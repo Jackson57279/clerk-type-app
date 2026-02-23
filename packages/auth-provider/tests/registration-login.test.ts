@@ -1,0 +1,282 @@
+import { describe, it, expect, vi } from "vitest";
+import {
+  register,
+  login,
+  type RegistrationLoginStore,
+  type CredentialUser,
+} from "../src/registration-login.js";
+import { defaultPasswordPolicy } from "../src/password.js";
+
+function memoryStore(initial: CredentialUser[] = []): RegistrationLoginStore {
+  const users = new Map<string, CredentialUser>();
+  const byEmail = new Map<string, string>();
+
+  for (const u of initial) {
+    users.set(u.userId, { ...u });
+    byEmail.set(u.email.toLowerCase(), u.userId);
+  }
+
+  return {
+    async findUserByEmail(email: string) {
+      const id = byEmail.get(email.toLowerCase());
+      return id ? users.get(id) ?? null : null;
+    },
+    async createUser(data) {
+      const userId = `user_${users.size + 1}`;
+      const user: CredentialUser = {
+        userId,
+        email: data.email.toLowerCase(),
+        passwordHash: data.passwordHash,
+      };
+      users.set(userId, user);
+      byEmail.set(user.email, userId);
+      return user;
+    },
+    async setPassword(userId: string, passwordHash: string) {
+      const u = users.get(userId);
+      if (!u) throw new Error("User not found");
+      users.set(userId, { ...u, passwordHash });
+    },
+  };
+}
+
+describe("register", () => {
+  it("creates user with hashed password when email is new", async () => {
+    const store = memoryStore();
+    const result = await register(store, {
+      email: "new@example.com",
+      password: "SecurePass1",
+    });
+
+    expect(result.success).toBe(true);
+    if (!result.success) return;
+    expect(result.userId).toBeDefined();
+    expect(result.created).toBe(true);
+
+    const found = await store.findUserByEmail("new@example.com");
+    expect(found).not.toBeNull();
+    expect(found?.passwordHash).toBeDefined();
+    expect(found?.passwordHash).not.toBe("SecurePass1");
+    expect(found?.passwordHash).toMatch(/^\$argon2/);
+  });
+
+  it("normalizes email to lowercase", async () => {
+    const store = memoryStore();
+    await register(store, { email: "User@Example.COM", password: "SecurePass1" });
+    const found = await store.findUserByEmail("user@example.com");
+    expect(found).not.toBeNull();
+  });
+
+  it("returns email_taken when user already has password", async () => {
+    const store = memoryStore([
+      {
+        userId: "u1",
+        email: "taken@example.com",
+        passwordHash: "existing-hash",
+      },
+    ]);
+
+    const result = await register(store, {
+      email: "taken@example.com",
+      password: "OtherPass1",
+    });
+
+    expect(result.success).toBe(false);
+    if (result.success) return;
+    expect(result.reason).toBe("email_taken");
+  });
+
+  it("sets password for existing user without password and returns created: false", async () => {
+    const store = memoryStore([
+      { userId: "u1", email: "no-password@example.com", passwordHash: null },
+    ]);
+
+    const result = await register(store, {
+      email: "no-password@example.com",
+      password: "NewSecure1",
+    });
+
+    expect(result.success).toBe(true);
+    if (!result.success) return;
+    expect(result.userId).toBe("u1");
+    expect(result.created).toBe(false);
+
+    const found = await store.findUserByEmail("no-password@example.com");
+    expect(found?.passwordHash).toBeDefined();
+    expect(found?.passwordHash).not.toBe("NewSecure1");
+  });
+
+  it("returns invalid_password when password fails policy", async () => {
+    const store = memoryStore();
+    const result = await register(store, {
+      email: "u@example.com",
+      password: "short",
+    });
+
+    expect(result.success).toBe(false);
+    if (result.success) return;
+    expect(result.reason).toBe("invalid_password");
+    expect((result.errors ?? []).length).toBeGreaterThan(0);
+  });
+
+  it("returns email_not_allowed when isAllowedEmail returns false", async () => {
+    const store = memoryStore();
+    const result = await register(
+      store,
+      { email: "user@forbidden.com", password: "SecurePass1" },
+      { isAllowedEmail: (e) => e.endsWith("@example.com") }
+    );
+
+    expect(result.success).toBe(false);
+    if (result.success) return;
+    expect(result.reason).toBe("email_not_allowed");
+  });
+
+  it("passes optional name/firstName/lastName to createUser", async () => {
+    const createUser = vi.fn().mockImplementation(async (data) => {
+      return {
+        userId: "u1",
+        email: data.email,
+        passwordHash: data.passwordHash,
+      };
+    });
+    const store: RegistrationLoginStore = {
+      findUserByEmail: async () => null,
+      createUser,
+      setPassword: async () => {},
+    };
+
+    await register(store, {
+      email: "named@example.com",
+      password: "SecurePass1",
+      name: "Full Name",
+      firstName: "Full",
+      lastName: "Name",
+    });
+
+    expect(createUser).toHaveBeenCalledWith(
+      expect.objectContaining({
+        email: "named@example.com",
+        name: "Full Name",
+        firstName: "Full",
+        lastName: "Name",
+      })
+    );
+  });
+});
+
+describe("login", () => {
+  it("returns userId when email and password match", async () => {
+    const store = memoryStore();
+    const reg = await register(store, {
+      email: "login@example.com",
+      password: "MyPassword1",
+    });
+    expect(reg.success).toBe(true);
+    if (!reg.success) return;
+
+    const result = await login(store, {
+      email: "login@example.com",
+      password: "MyPassword1",
+    });
+
+    expect(result.success).toBe(true);
+    if (!result.success) return;
+    expect(result.userId).toBe(reg.userId);
+  });
+
+  it("returns invalid_credentials for wrong password", async () => {
+    const store = memoryStore();
+    await register(store, { email: "u@example.com", password: "Correct1" });
+
+    const result = await login(store, {
+      email: "u@example.com",
+      password: "WrongPass1",
+    });
+
+    expect(result.success).toBe(false);
+    if (result.success) return;
+    expect(result.reason).toBe("invalid_credentials");
+  });
+
+  it("returns invalid_credentials when user not found", async () => {
+    const store = memoryStore();
+    const result = await login(store, {
+      email: "nobody@example.com",
+      password: "AnyPass1",
+    });
+    expect(result.success).toBe(false);
+    if (result.success) return;
+    expect(result.reason).toBe("invalid_credentials");
+  });
+
+  it("returns invalid_credentials when user has no password", async () => {
+    const store = memoryStore([
+      { userId: "u1", email: "nopass@example.com", passwordHash: null },
+    ]);
+
+    const result = await login(store, {
+      email: "nopass@example.com",
+      password: "Anything1",
+    });
+
+    expect(result.success).toBe(false);
+    if (result.success) return;
+    expect(result.reason).toBe("invalid_credentials");
+  });
+
+  it("normalizes email for login", async () => {
+    const store = memoryStore();
+    await register(store, { email: "case@example.com", password: "PassWord1" });
+
+    const result = await login(store, {
+      email: "  CASE@EXAMPLE.COM  ",
+      password: "PassWord1",
+    });
+
+    expect(result.success).toBe(true);
+  });
+
+  it("returns invalid_credentials for empty password", async () => {
+    const store = memoryStore();
+    await register(store, { email: "u@example.com", password: "PassWord1" });
+
+    const result = await login(store, {
+      email: "u@example.com",
+      password: "",
+    });
+
+    expect(result.success).toBe(false);
+    if (result.success) return;
+    expect(result.reason).toBe("invalid_credentials");
+  });
+});
+
+describe("custom password policy", () => {
+  it("uses provided policy for validation", async () => {
+    const store = memoryStore();
+    const strictPolicy = {
+      ...defaultPasswordPolicy,
+      minLength: 12,
+      requireUppercase: true,
+      requireSpecial: true,
+    };
+
+    const result = await register(
+      store,
+      { email: "u@example.com", password: "short" },
+      { passwordPolicy: strictPolicy }
+    );
+
+    expect(result.success).toBe(false);
+    if (result.success) return;
+    expect(result.reason).toBe("invalid_password");
+
+    const ok = await register(
+      store,
+      { email: "u2@example.com", password: "LongSecure!Pass1" },
+      { passwordPolicy: strictPolicy }
+    );
+    expect(ok.success).toBe(true);
+  });
+});
