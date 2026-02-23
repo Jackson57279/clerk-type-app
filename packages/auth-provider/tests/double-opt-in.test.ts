@@ -237,6 +237,19 @@ describe("requireConfirmationForSensitiveOperation", () => {
     operation: "change_email" as SensitiveOperationType,
   };
 
+  it("requires double-opt-in for all sensitive operations (no bypass without token)", () => {
+    for (const operation of SENSITIVE_OPERATIONS) {
+      const result = requireConfirmationForSensitiveOperation(
+        operation,
+        undefined,
+        { ...context, operation },
+        SECRET
+      );
+      expect(result.allowed).toBe(false);
+      if (!result.allowed) expect(result.reason).toBe("missing_token");
+    }
+  });
+
   it("returns allowed: true when valid token matches context", () => {
     const { token } = createConfirmationToken(
       {
