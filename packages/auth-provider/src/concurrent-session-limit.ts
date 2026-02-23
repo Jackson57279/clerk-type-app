@@ -313,6 +313,20 @@ export function createConcurrentSessionLimit(
       for (const id of ids) store.delete(id);
       return ids;
     },
+    enforceAndRegister(
+      newSessionId: string,
+      userId: string,
+      orgId: string | null,
+      limits?: { user?: number; org?: number },
+      options?: EnforceAndRegisterOptions
+    ): CheckResult {
+      const result = this.check(userId, orgId, limits);
+      if (!result.allowed) return result;
+      for (const id of result.evictSessionIds) this.remove(id);
+      options?.onEvict?.(result.evictSessionIds);
+      this.register(newSessionId, userId, orgId);
+      return result;
+    },
     regenerateAndEnforce(
       oldSessionId: string,
       userId: string,

@@ -324,6 +324,28 @@ describe("createConcurrentSessionLimit (custom defaults)", () => {
     expect(newId).toMatch(/^[a-f0-9]{64}$/);
     expect(limiter.getActiveCountByUser("u1")).toBe(2);
   });
+
+  it("enforceAndRegister uses resolved limits and evicts then registers", () => {
+    const limiter = createConcurrentSessionLimit({ defaultUserLimit: 2 });
+    limiter.register("s0", "u1", null);
+    vi.advanceTimersByTime(100);
+    limiter.register("s1", "u1", null);
+    const evicted: string[] = [];
+    const r = limiter.enforceAndRegister("s2", "u1", null, undefined, {
+      onEvict: (ids) => evicted.push(...ids),
+    });
+    expect(r.allowed).toBe(true);
+    expect(r.evictSessionIds).toContain("s0");
+    expect(evicted).toEqual(["s0"]);
+    expect(limiter.getActiveCountByUser("u1")).toBe(2);
+  });
+
+  it("enforceAndRegister returns allowed false when limit is 0", () => {
+    const limiter = createConcurrentSessionLimit({ defaultUserLimit: 5 });
+    const r = limiter.enforceAndRegister("s1", "u1", null, { user: 0 });
+    expect(r.allowed).toBe(false);
+    expect(limiter.getActiveCountByUser("u1")).toBe(0);
+  });
 });
 
 describe("createConcurrentSessionLimit (getLimits per user/org)", () => {
@@ -399,6 +421,48 @@ describe("createConcurrentSessionLimit (getLimits per user/org)", () => {
     const r = limiter.check("blocked", null);
     expect(r.allowed).toBe(false);
     expect(r.evictSessionIds).toEqual([]);
+  });
+
+  it("enforceAndRegister uses getLimits for per-user limit", () => {
+    const limiter = createConcurrentSessionLimit({
+      defaultUserLimit: 5,
+      getLimits: (userId) => (userId === "premium" ? { user: 3 } : { user: 1 }),
+    });
+    limiter.register("s0", "free", null);
+    const r = limiter.enforceAndRegister("s1", "free", null);
+    expect(r.allowed).toBe(true);
+    expect(r.evictSessionIds).toEqual(["s0"]);
+    expect(limiter.getActiveCountByUser("free")).toBe(1);
+
+    limiter.register("p0", "premium", null);
+    limiter.register("p1", "premium", null);
+    const r2 = limiter.enforceAndRegister("p2", "premium", null);
+    expect(r2.allowed).toBe(true);
+    expect(r2.evictSessionIds).toEqual([]);
+    expect(limiter.getActiveCountByUser("premium")).toBe(3);
+  });
+
+  it("enforceAndRegister uses getLimits for per-org limit", () => {
+    const limiter = createConcurrentSessionLimit({
+      defaultUserLimit: 10,
+      defaultOrgLimit: 2,
+      getLimits: (_u, orgId) =>
+        orgId === "enterprise" ? { user: 10, org: 5 } : { user: 10, org: 2 },
+    });
+    limiter.register("s0", "u1", "small");
+    limiter.register("s1", "u2", "small");
+    const r = limiter.enforceAndRegister("s2", "u3", "small");
+    expect(r.allowed).toBe(true);
+    expect(r.evictSessionIds).toHaveLength(1);
+    expect(limiter.getActiveCountByOrg("small")).toBe(2);
+
+    limiter.register("e0", "u1", "enterprise");
+    limiter.register("e1", "u2", "enterprise");
+    limiter.register("e2", "u3", "enterprise");
+    const r2 = limiter.enforceAndRegister("e3", "u4", "enterprise");
+    expect(r2.allowed).toBe(true);
+    expect(r2.evictSessionIds).toEqual([]);
+    expect(limiter.getActiveCountByOrg("enterprise")).toBe(4);
   });
 });
 
