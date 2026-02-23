@@ -4,6 +4,7 @@ import {
   sendSmsOtp,
   verifySmsOtp,
   createMemorySmsOtpStore,
+  createTwilioSender,
   type SmsOtpStore,
   type SmsSender,
 } from "../src/sms-otp.js";
@@ -52,6 +53,49 @@ describe("generateSmsOtpCode", () => {
   });
 });
 
+describe("createTwilioSender", () => {
+  const orig = {
+    TWILIO_ACCOUNT_SID: process.env.TWILIO_ACCOUNT_SID,
+    TWILIO_AUTH_TOKEN: process.env.TWILIO_AUTH_TOKEN,
+    TWILIO_PHONE_NUMBER: process.env.TWILIO_PHONE_NUMBER,
+  };
+  afterEach(() => {
+    process.env.TWILIO_ACCOUNT_SID = orig.TWILIO_ACCOUNT_SID;
+    process.env.TWILIO_AUTH_TOKEN = orig.TWILIO_AUTH_TOKEN;
+    process.env.TWILIO_PHONE_NUMBER = orig.TWILIO_PHONE_NUMBER;
+  });
+
+  it("throws when TWILIO_ACCOUNT_SID is missing", async () => {
+    delete process.env.TWILIO_ACCOUNT_SID;
+    process.env.TWILIO_AUTH_TOKEN = "token";
+    process.env.TWILIO_PHONE_NUMBER = "+15551234567";
+    const sender = createTwilioSender();
+    await expect(sender.send("+15551234567", "test")).rejects.toThrow(
+      "TWILIO_ACCOUNT_SID"
+    );
+  });
+
+  it("throws when TWILIO_AUTH_TOKEN is missing", async () => {
+    process.env.TWILIO_ACCOUNT_SID = "sid";
+    delete process.env.TWILIO_AUTH_TOKEN;
+    process.env.TWILIO_PHONE_NUMBER = "+15551234567";
+    const sender = createTwilioSender();
+    await expect(sender.send("+15551234567", "test")).rejects.toThrow(
+      "TWILIO_AUTH_TOKEN"
+    );
+  });
+
+  it("throws when TWILIO_PHONE_NUMBER is missing", async () => {
+    process.env.TWILIO_ACCOUNT_SID = "sid";
+    process.env.TWILIO_AUTH_TOKEN = "token";
+    delete process.env.TWILIO_PHONE_NUMBER;
+    const sender = createTwilioSender();
+    await expect(sender.send("+15551234567", "test")).rejects.toThrow(
+      "TWILIO_PHONE_NUMBER"
+    );
+  });
+});
+
 describe("createMemorySmsOtpStore", () => {
   it("returns a store that persists OTP for verification", async () => {
     const store = createMemorySmsOtpStore();
@@ -91,6 +135,15 @@ describe("sendSmsOtp", () => {
       template: "Your code is {{code}}. Thanks!",
     });
     expect(sender.lastBody).toMatch(/^Your code is \d{6}\. Thanks!$/);
+  });
+
+  it("uses default template when template not provided", async () => {
+    const store = memoryStore();
+    const sender = capturingSender();
+    await sendSmsOtp("+15559999998", { store, sender });
+    expect(sender.lastBody).toMatch(
+      /^Your verification code is \d{6}\. Valid for 10 minutes\.$/
+    );
   });
 
   it("rate limits to 3 per hour per phone", async () => {
