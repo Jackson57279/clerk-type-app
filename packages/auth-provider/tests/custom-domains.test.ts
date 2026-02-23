@@ -6,6 +6,7 @@ import {
   getSuggestedAuthHost,
   resolveOrganizationByHost,
   getAuthBaseUrl,
+  createDomainLookup,
 } from "../src/custom-domains.js";
 
 describe("normalizeHost", () => {
@@ -139,5 +140,79 @@ describe("getAuthBaseUrl", () => {
     expect(
       getAuthBaseUrl("auth.customer.com", { protocol: "http" })
     ).toBe("http://auth.customer.com");
+  });
+});
+
+describe("createDomainLookup", () => {
+  it("returns org id for auth.customer.com when org has that custom domain", () => {
+    const orgs = [
+      { id: "org_123", customDomains: ["auth.customer.com"] },
+    ];
+    const lookup = createDomainLookup(orgs);
+    expect(resolveOrganizationByHost("auth.customer.com", lookup)).toBe(
+      "org_123"
+    );
+  });
+
+  it("normalizes domains when building lookup", () => {
+    const orgs = [
+      { id: "org_abc", customDomains: ["AUTH.Customer.COM"] },
+    ];
+    const lookup = createDomainLookup(orgs);
+    expect(resolveOrganizationByHost("auth.customer.com", lookup)).toBe(
+      "org_abc"
+    );
+  });
+
+  it("returns null for host not in any org custom domains", () => {
+    const orgs = [
+      { id: "org_123", customDomains: ["auth.customer.com"] },
+    ];
+    const lookup = createDomainLookup(orgs);
+    expect(resolveOrganizationByHost("auth.other.com", lookup)).toBe(null);
+  });
+
+  it("skips invalid custom domains", () => {
+    const orgs = [
+      {
+        id: "org_1",
+        customDomains: ["auth.customer.com", "localhost", "singlelabel"],
+      },
+    ];
+    const lookup = createDomainLookup(orgs);
+    expect(resolveOrganizationByHost("auth.customer.com", lookup)).toBe(
+      "org_1"
+    );
+    expect(lookup("localhost")).toBe(null);
+    expect(lookup("singlelabel")).toBe(null);
+  });
+
+  it("first org wins when multiple orgs claim same domain", () => {
+    const orgs = [
+      { id: "org_first", customDomains: ["auth.customer.com"] },
+      { id: "org_second", customDomains: ["auth.customer.com"] },
+    ];
+    const lookup = createDomainLookup(orgs);
+    expect(resolveOrganizationByHost("auth.customer.com", lookup)).toBe(
+      "org_first"
+    );
+  });
+
+  it("returns empty lookup when organizations array is empty", () => {
+    const lookup = createDomainLookup([]);
+    expect(resolveOrganizationByHost("auth.customer.com", lookup)).toBe(null);
+  });
+
+  it("supports multiple orgs with different domains", () => {
+    const orgs = [
+      { id: "org_a", customDomains: ["auth.acme.com"] },
+      { id: "org_b", customDomains: ["auth.customer.com", "auth.other.com"] },
+    ];
+    const lookup = createDomainLookup(orgs);
+    expect(resolveOrganizationByHost("auth.acme.com", lookup)).toBe("org_a");
+    expect(resolveOrganizationByHost("auth.customer.com", lookup)).toBe(
+      "org_b"
+    );
+    expect(resolveOrganizationByHost("auth.other.com", lookup)).toBe("org_b");
   });
 });

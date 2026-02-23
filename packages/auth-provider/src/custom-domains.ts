@@ -29,6 +29,26 @@ export function isValidCustomDomain(domain: string): boolean {
 
 export type DomainLookup = (normalizedDomain: string) => string | null;
 
+export interface OrganizationWithCustomDomains {
+  id: string;
+  customDomains: string[];
+}
+
+export function createDomainLookup(
+  organizations: OrganizationWithCustomDomains[]
+): DomainLookup {
+  const map = new Map<string, string>();
+  for (const org of organizations) {
+    for (const domain of org.customDomains) {
+      const normalized = normalizeHost(domain);
+      if (isValidCustomDomain(normalized) && !map.has(normalized)) {
+        map.set(normalized, org.id);
+      }
+    }
+  }
+  return (normalizedDomain: string) => map.get(normalizedDomain) ?? null;
+}
+
 export function resolveOrganizationByHost(
   host: string,
   lookup: DomainLookup
