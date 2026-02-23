@@ -1,0 +1,140 @@
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import {
+  createMagicLinkToken,
+  verifyMagicLinkToken,
+  createMemoryUsedTokenStore,
+  DEFAULT_MAGIC_LINK_TTL_MS,
+} from "../src/magic-link.js";
+
+const SECRET = "test-secret-key";
+
+describe("createMagicLinkToken", () => {
+  it("returns token, expiresAt, and jti", () => {
+    const result = createMagicLinkToken({ email: "u@example.com" }, SECRET);
+    expect(result.token).toBeDefined();
+    expect(typeof result.token).toBe("string");
+    expect(result.token).toContain(".");
+    expect(result.expiresAt).toBeGreaterThan(Date.now());
+    expect(result.jti).toBeDefined();
+    expect(result.jti).toMatch(/^[a-f0-9]{32}$/);
+  });
+
+  it("uses default TTL of 15 minutes", () => {
+    const before = Date.now();
+    const result = createMagicLinkToken({ email: "u@example.com" }, SECRET);
+    const after = Date.now();
+    const fifteenMin = 15 * 60 * 1000;
+    expect(result.expiresAt).toBeGreaterThanOrEqual(before + fifteenMin - 1000);
+    expect(result.expiresAt).toBeLessThanOrEqual(after + fifteenMin + 1000);
+  });
+
+  it("accepts custom ttlMs", () => {
+    const result = createMagicLinkToken(
+      { email: "u@example.com" },
+      SECRET,
+      { ttlMs: 5 * 60 * 1000 }
+    );
+    const fiveMinFromNow = Date.now() + 5 * 60 * 1000;
+    expect(result.expiresAt).toBeGreaterThanOrEqual(fiveMinFromNow - 2000);
+    expect(result.expiresAt).toBeLessThanOrEqual(fiveMinFromNow + 2000);
+  });
+
+  it("produces different jti per call", () => {
+    const a = createMagicLinkToken({ email: "a@x.com" }, SECRET);
+    const b = createMagicLinkToken({ email: "a@x.com" }, SECRET);
+    expect(a.jti).not.toBe(b.jti);
+    expect(a.token).not.toBe(b.token);
+  });
+
+  it("includes userId in payload when provided", () => {
+    const { token } = createMagicLinkToken(
+      { email: "u@x.com", userId: "user-1" },
+      SECRET
+    );
+    const payload = verifyMagicLinkToken(token, SECRET);
+    expect(payload?.email).toBe("u@x.com");
+    expect(payload?.userId).toBe("user-1");
+  });
+});
+
+describe("verifyMagicLinkToken", () => {
+  it("returns payload when token is valid", () => {
+    const { token } = createMagicLinkToken(
+      { email: "test@example.com" },
+      SECRET
+    );
+    const payload = verifyMagicLinkToken(token, SECRET);
+    expect(payload).not.toBeNull();
+    expect(payload?.email).toBe("test@example.com");
+    expect(payload?.jti).toBeDefined();
+  });
+
+  it("returns null for wrong secret", () => {
+    const { token } = createMagicLinkToken({ email: "e@x.com" }, SECRET);
+    expect(verifyMagicLinkToken(token, "wrong-secret")).toBeNull();
+  });
+
+  it("returns null for malformed token", () => {
+    expect(verifyMagicLinkToken("not-a-valid-token", SECRET)).toBeNull();
+    expect(verifyMagicLinkToken("no-dot", SECRET)).toBeNull();
+  });
+
+  it("single-use: second verify returns null when usedTokenStore provided", () => {
+    const store = createMemoryUsedTokenStore();
+    const { token } = createMagicLinkToken(
+      { email: "once@example.com" },
+      SECRET
+    );
+    const first = verifyMagicLinkToken(token, SECRET, { usedTokenStore: store });
+    expect(first).not.toBeNull();
+    expect(first?.email).toBe("once@example.com");
+    const second = verifyMagicLinkToken(token, SECRET, { usedTokenStore: store });
+    expect(second).toBeNull();
+  });
+
+  it("without usedTokenStore allows multiple verifies", () => {
+    const { token } = createMagicLinkToken({ email: "multi@x.com" }, SECRET);
+    const a = verifyMagicLinkToken(token, SECRET);
+    const b = verifyMagicLinkToken(token, SECRET);
+    expect(a?.email).toBe("multi@x.com");
+    expect(b?.email).toBe("multi@x.com");
+  });
+});
+
+describe("magic link token expiry", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("returns null after TTL has passed", () => {
+    const { token } = createMagicLinkToken(
+      { email: "exp@x.com" },
+      SECRET,
+      { ttlMs: 1000 }
+    );
+    expect(verifyMagicLinkToken(token, SECRET)).not.toBeNull();
+    vi.advanceTimersByTime(2000);
+    expect(verifyMagicLinkToken(token, SECRET)).toBeNull();
+  });
+
+  it("returns payload when still within TTL", () => {
+    const { token } = createMagicLinkToken(
+      { email: "valid@x.com" },
+      SECRET,
+      { ttlMs: 10 * 1000 }
+    );
+    vi.advanceTimersByTime(5000);
+    const result = verifyMagicLinkToken(token, SECRET);
+    expect(result).not.toBeNull();
+    expect(result?.email).toBe("valid@x.com");
+  });
+});
+
+describe("DEFAULT_MAGIC_LINK_TTL_MS", () => {
+  it("is 15 minutes in milliseconds", () => {
+    expect(DEFAULT_MAGIC_LINK_TTL_MS).toBe(15 * 60 * 1000);
+  });
+});
