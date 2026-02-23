@@ -11,6 +11,12 @@ export interface InvalidateAllSessionsResult {
   invalidatedCount: number;
 }
 
+export interface RemoteLogoutRequest {
+  userId: string;
+}
+
+export type RemoteLogoutResponse = InvalidateAllSessionsResult;
+
 export function invalidateAllSessions(
   userId: string,
   store: RemoteLogoutStore
@@ -28,4 +34,11 @@ export function createDefaultRemoteLogoutStore(): RemoteLogoutStore {
       return invalidateInMemory(userId);
     },
   };
+}
+
+export function remoteLogout(
+  request: RemoteLogoutRequest,
+  store: RemoteLogoutStore
+): RemoteLogoutResponse {
+  return invalidateAllSessions(request.userId, store);
 }

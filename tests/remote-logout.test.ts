@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import {
   invalidateAllSessions,
   createDefaultRemoteLogoutStore,
+  remoteLogout,
   type RemoteLogoutStore,
 } from "../src/remote-logout.js";
 import {
@@ -31,6 +32,22 @@ describe("invalidateAllSessions", () => {
     const result = invalidateAllSessions("u1", store);
     expect(result.invalidatedSessionIds).toEqual([]);
     expect(result.invalidatedCount).toBe(0);
+  });
+});
+
+describe("remoteLogout", () => {
+  it("invalidates all sessions for the requested user", () => {
+    const calls: string[] = [];
+    const store: RemoteLogoutStore = {
+      invalidateAllSessionsForUser(userId: string) {
+        calls.push(userId);
+        return ["s1", "s2"];
+      },
+    };
+    const result = remoteLogout({ userId: "u1" }, store);
+    expect(calls).toEqual(["u1"]);
+    expect(result.invalidatedSessionIds).toEqual(["s1", "s2"]);
+    expect(result.invalidatedCount).toBe(2);
   });
 });
 
