@@ -62,6 +62,7 @@ export interface ProcessBulkParams {
   groupStore: GroupSyncStore;
   organizationId: string;
   baseUrl?: string;
+  maxOperations?: number;
 }
 
 function normPath(path: string): string {
@@ -105,7 +106,20 @@ function resolveBulkId(
 }
 
 export async function processBulkRequest(params: ProcessBulkParams): Promise<ScimBulkResponse> {
-  const { request, userStore, groupStore, organizationId, baseUrl = "" } = params;
+  const { request, userStore, groupStore, organizationId, baseUrl = "", maxOperations } = params;
+  if (maxOperations != null && request.Operations.length > maxOperations) {
+    return {
+      schemas: [BULK_RESPONSE_SCHEMA],
+      Operations: [
+        {
+          method: "POST",
+          path: "Bulk",
+          status: 400,
+          response: { detail: "Bulk request exceeds the maximum number of operations." },
+        },
+      ],
+    };
+  }
   const failOnErrors = request.failOnErrors ?? 0;
   const results: ScimBulkOperationResponse[] = [];
   const bulkIdMap = new Map<string, string>();

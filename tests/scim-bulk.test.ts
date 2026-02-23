@@ -469,4 +469,49 @@ describe("processBulkRequest", () => {
     expect(op.status).toBe(400);
     expect(op.response).toMatchObject({ detail: "bulkId reference not found; create the resource in an earlier operation." });
   });
+
+  it("returns 400 when Operations exceed maxOperations", async () => {
+    const userStore = memoryUserStore();
+    const groupStore = memoryGroupStore();
+    const response = await processBulkRequest({
+      request: {
+        schemas: [BULK_REQUEST_SCHEMA],
+        Operations: [
+          { method: "POST", path: "Users", bulkId: "u1", data: { userName: "a@example.com" } },
+          { method: "POST", path: "Users", bulkId: "u2", data: { userName: "b@example.com" } },
+        ],
+      },
+      userStore,
+      groupStore,
+      organizationId: orgId,
+      maxOperations: 1,
+    });
+    expect(response.Operations).toHaveLength(1);
+    expect(response.Operations[0]!.status).toBe(400);
+    expect(response.Operations[0]!.response).toMatchObject({
+      detail: "Bulk request exceeds the maximum number of operations.",
+    });
+    const userA = await userStore.findByEmail("a@example.com");
+    expect(userA).toBeNull();
+  });
+
+  it("processes request when Operations count equals maxOperations", async () => {
+    const userStore = memoryUserStore();
+    const groupStore = memoryGroupStore();
+    const response = await processBulkRequest({
+      request: {
+        schemas: [BULK_REQUEST_SCHEMA],
+        Operations: [
+          { method: "POST", path: "Users", bulkId: "u1", data: { userName: "one@example.com" } },
+        ],
+      },
+      userStore,
+      groupStore,
+      organizationId: orgId,
+      maxOperations: 1,
+    });
+    expect(response.Operations).toHaveLength(1);
+    expect(response.Operations[0]!.status).toBe(201);
+    expect(await userStore.findByEmail("one@example.com")).not.toBeNull();
+  });
 });
