@@ -233,6 +233,8 @@ export function exchangeRefreshToken(
   };
   if (payload.scope) result.scope = payload.scope;
 
+  if (store) store.markUsed(payload.jti, payload.exp * 1000);
+
   if (options.rotateRefreshToken && store) {
     const newRefresh = createRefreshToken(
       { sub: payload.sub, clientId: payload.client_id, scope: payload.scope },
@@ -240,7 +242,6 @@ export function exchangeRefreshToken(
       { iss: options.iss, aud: options.aud }
     );
     result.refresh_token = newRefresh.refresh_token;
-    store.markUsed(payload.jti, payload.exp * 1000);
   }
   return result;
 }

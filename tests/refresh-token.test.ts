@@ -240,4 +240,28 @@ describe("exchangeRefreshToken", () => {
       expect(r1.access_token).not.toBe(r2.access_token);
     }
   });
+
+  it("single-use: with usedTokenStore and no rotation, token invalidated after first use", () => {
+    const store = createMemoryUsedRefreshTokenStore();
+    const { refresh_token } = createRefreshToken(
+      { sub: "u", clientId: "c" },
+      SECRET
+    );
+    const first = exchangeRefreshToken(refresh_token, {
+      secret: SECRET,
+      usedTokenStore: store,
+    });
+    expect("access_token" in first).toBe(true);
+    expect("refresh_token" in first).toBe(false);
+
+    const second = exchangeRefreshToken(refresh_token, {
+      secret: SECRET,
+      usedTokenStore: store,
+    });
+    expect("error" in second).toBe(true);
+    if ("error" in second) {
+      expect(second.error).toBe("invalid_grant");
+      expect(second.error_description).toBe("Refresh token was already used");
+    }
+  });
 });
