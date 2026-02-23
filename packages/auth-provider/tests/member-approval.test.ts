@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   getNewMemberStatus,
   createNewMembership,
+  createNewMembershipWithDefaultRoleByDomain,
   canApproveOrRejectMembers,
   approveMembership,
   rejectMembership,
@@ -36,6 +37,65 @@ describe("createNewMembership", () => {
   it("creates active membership when memberApprovalRequired is undefined", () => {
     const m = createNewMembership("u3", "o3", "guest", {});
     expect(m.status).toBe("active");
+  });
+});
+
+describe("createNewMembershipWithDefaultRoleByDomain", () => {
+  const roleByDomainOptions = {
+    defaultRole: "member" as const,
+    domainDefaultRoles: {
+      "company.com": "admin" as const,
+      "contractor.com": "guest" as const,
+    },
+  };
+
+  it("assigns role from email domain when no explicit role", () => {
+    const m = createNewMembershipWithDefaultRoleByDomain(
+      "u1",
+      "o1",
+      "user@company.com",
+      {},
+      roleByDomainOptions
+    );
+    expect(m.role).toBe("admin");
+    expect(m.userId).toBe("u1");
+    expect(m.organizationId).toBe("o1");
+    expect(m.status).toBe("active");
+  });
+
+  it("assigns default role when email domain not in map", () => {
+    const m = createNewMembershipWithDefaultRoleByDomain(
+      "u2",
+      "o1",
+      "user@gmail.com",
+      {},
+      roleByDomainOptions
+    );
+    expect(m.role).toBe("member");
+  });
+
+  it("uses explicit role when provided", () => {
+    const m = createNewMembershipWithDefaultRoleByDomain(
+      "u3",
+      "o1",
+      "user@company.com",
+      {},
+      roleByDomainOptions,
+      "guest"
+    );
+    expect(m.role).toBe("guest");
+  });
+
+  it("respects memberApprovalRequired for status", () => {
+    const m = createNewMembershipWithDefaultRoleByDomain(
+      "u4",
+      "o1",
+      "user@contractor.com",
+      { memberApprovalRequired: true },
+      roleByDomainOptions
+    );
+    expect(m.role).toBe("guest");
+    expect(m.status).toBe("pending");
   });
 });
 

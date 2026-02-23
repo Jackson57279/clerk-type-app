@@ -1,3 +1,6 @@
+import type { DefaultRoleByDomainOptions } from "./default-role-by-domain.js";
+import { resolveMemberRole } from "./default-role-by-domain.js";
+
 export type MembershipStatus = "pending" | "active" | "rejected";
 
 export type MemberRole = "owner" | "admin" | "editor" | "member" | "guest";
@@ -29,6 +32,18 @@ export function createNewMembership(
 ): OrganizationMembership {
   const status = getNewMemberStatus(settings);
   return { userId, organizationId, role, status };
+}
+
+export function createNewMembershipWithDefaultRoleByDomain(
+  userId: string,
+  organizationId: string,
+  email: string,
+  settings: OrganizationApprovalSettings,
+  roleByDomainOptions: DefaultRoleByDomainOptions,
+  explicitRole?: MemberRole
+): OrganizationMembership {
+  const role = resolveMemberRole(email, explicitRole, roleByDomainOptions);
+  return createNewMembership(userId, organizationId, role, settings);
 }
 
 export function canApproveOrRejectMembers(role: MemberRole): boolean {
