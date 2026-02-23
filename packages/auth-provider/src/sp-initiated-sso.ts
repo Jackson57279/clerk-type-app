@@ -416,6 +416,48 @@ export async function handleSpInitiatedAssertEndpoint(
   }
 }
 
+export interface IdpInitiatedAssertEndpointParams {
+  SAMLResponse: string;
+  RelayState?: string;
+}
+
+export interface IdpInitiatedAssertEndpointOptions {
+  spConfig: SpInitiatedSpConfig;
+  idpConfig: SpInitiatedIdpConfig;
+  requireSessionIndex?: boolean;
+}
+
+export type IdpInitiatedAssertEndpointResult = SpInitiatedAssertEndpointResult;
+
+export async function handleIdpInitiatedAssertEndpoint(
+  params: IdpInitiatedAssertEndpointParams,
+  options: IdpInitiatedAssertEndpointOptions
+): Promise<IdpInitiatedAssertEndpointResult> {
+  const samlResponse = params.SAMLResponse?.trim();
+  if (!samlResponse) {
+    return {
+      status: 400,
+      error: "invalid_request",
+      errorDescription: "SAMLResponse is required",
+    };
+  }
+  try {
+    const assertion = await validateIdpInitiatedPostResponse(
+      options.spConfig,
+      options.idpConfig,
+      { SAMLResponse: samlResponse, RelayState: params.RelayState },
+      { requireSessionIndex: options.requireSessionIndex ?? false }
+    );
+    return { status: 200, assertion };
+  } catch (err) {
+    return {
+      status: 400,
+      error: "invalid_request",
+      errorDescription: err instanceof Error ? err.message : "Invalid SAML response",
+    };
+  }
+}
+
 export interface SpInitiatedLogoutResponseEndpointParams {
   SAMLResponse: string;
   RelayState?: string;
