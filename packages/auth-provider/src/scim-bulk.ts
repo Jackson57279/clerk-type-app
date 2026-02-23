@@ -2,6 +2,8 @@ import type { UserProvisioningStore } from "./user-provisioning.js";
 import { provisionUser, deprovisionUser } from "./user-provisioning.js";
 import type { GroupSyncStore } from "./group-sync.js";
 import { syncGroup } from "./group-sync.js";
+import { deliverRealtimeWebhook, createRealtimeSyncPayload } from "./realtime-webhook.js";
+import type { DeliverWebhookOptions, WebhookSubscriptionStore } from "./realtime-webhook.js";
 
 export const BULK_REQUEST_SCHEMA = "urn:ietf:params:scim:api:messages:2.0:BulkRequest";
 export const BULK_RESPONSE_SCHEMA = "urn:ietf:params:scim:api:messages:2.0:BulkResponse";
@@ -63,6 +65,8 @@ export interface ProcessBulkParams {
   organizationId: string;
   baseUrl?: string;
   maxOperations?: number;
+  webhookStore?: WebhookSubscriptionStore;
+  webhookDeliveryOptions?: DeliverWebhookOptions;
 }
 
 function normPath(path: string): string {
@@ -106,7 +110,7 @@ function resolveBulkId(
 }
 
 export async function processBulkRequest(params: ProcessBulkParams): Promise<ScimBulkResponse> {
-  const { request, userStore, groupStore, organizationId, baseUrl = "", maxOperations } = params;
+  const { request, userStore, groupStore, organizationId, baseUrl = "", maxOperations, webhookStore, webhookDeliveryOptions } = params;
   if (maxOperations != null && request.Operations.length > maxOperations) {
     return {
       schemas: [BULK_RESPONSE_SCHEMA],
@@ -177,6 +181,18 @@ export async function processBulkRequest(params: ProcessBulkParams): Promise<Sci
             location,
             response: { id: result.user.id, externalId: result.user.externalId, active: result.user.active },
           });
+          if (webhookStore) {
+            const payload = createRealtimeSyncPayload(
+              result.created ? "user.created" : "user.updated",
+              {
+                id: result.user.id,
+                email: result.user.email,
+                externalId: result.user.externalId,
+                active: result.user.active,
+              }
+            );
+            await deliverRealtimeWebhook(webhookStore, organizationId, payload, webhookDeliveryOptions);
+          }
           continue;
         }
 
@@ -209,6 +225,15 @@ export async function processBulkRequest(params: ProcessBulkParams): Promise<Sci
             status: 200,
             response: { id: updated.id, externalId: updated.externalId, active: updated.active },
           });
+          if (webhookStore) {
+            const payload = createRealtimeSyncPayload("user.updated", {
+              id: updated.id,
+              email: updated.email,
+              externalId: updated.externalId,
+              active: updated.active,
+            });
+            await deliverRealtimeWebhook(webhookStore, organizationId, payload, webhookDeliveryOptions);
+          }
           continue;
         }
 
@@ -220,6 +245,14 @@ export async function processBulkRequest(params: ProcessBulkParams): Promise<Sci
           }
           await deprovisionUser(userStore, user.id, { hard: false });
           results.push({ bulkId: op.bulkId, method: op.method, path: op.path, status: 204 });
+          if (webhookStore) {
+            const payload = createRealtimeSyncPayload("user.deleted", {
+              id: user.id,
+              email: user.email,
+              externalId: user.externalId,
+            });
+            await deliverRealtimeWebhook(webhookStore, organizationId, payload, webhookDeliveryOptions);
+          }
           continue;
         }
       }
@@ -259,6 +292,17 @@ export async function processBulkRequest(params: ProcessBulkParams): Promise<Sci
             location,
             response: { id: result.group.id, externalId: result.group.externalId, displayName: result.group.displayName },
           });
+          if (webhookStore) {
+            const payload = createRealtimeSyncPayload(
+              result.created ? "group.created" : "group.updated",
+              {
+                id: result.group.id,
+                externalId: result.group.externalId,
+                displayName: result.group.displayName,
+              }
+            );
+            await deliverRealtimeWebhook(webhookStore, organizationId, payload, webhookDeliveryOptions);
+          }
           continue;
         }
 
@@ -297,6 +341,14 @@ export async function processBulkRequest(params: ProcessBulkParams): Promise<Sci
             status: 200,
             response: { id: group.id, externalId: group.externalId, displayName: data?.displayName ?? group.displayName },
           });
+          if (webhookStore) {
+            const payload = createRealtimeSyncPayload("group.updated", {
+              id: group.id,
+              externalId: group.externalId,
+              displayName: data?.displayName ?? group.displayName,
+            });
+            await deliverRealtimeWebhook(webhookStore, organizationId, payload, webhookDeliveryOptions);
+          }
           continue;
         }
 
@@ -308,6 +360,14 @@ export async function processBulkRequest(params: ProcessBulkParams): Promise<Sci
           }
           await groupStore.softDeleteGroup(group.id);
           results.push({ bulkId: op.bulkId, method: op.method, path: op.path, status: 204 });
+          if (webhookStore) {
+            const payload = createRealtimeSyncPayload("group.deleted", {
+              id: group.id,
+              externalId: group.externalId,
+              displayName: group.displayName,
+            });
+            await deliverRealtimeWebhook(webhookStore, organizationId, payload, webhookDeliveryOptions);
+          }
           continue;
         }
       }

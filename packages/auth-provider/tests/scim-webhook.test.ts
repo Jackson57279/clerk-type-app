@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { createHmac } from "node:crypto";
 import {
   verifyWebhookSignature,
@@ -8,6 +8,7 @@ import {
 } from "../src/scim-webhook.js";
 import type { UserProvisioningStore, ProvisionedUser, ProvisionUserData } from "../src/user-provisioning.js";
 import type { GroupSyncStore, SyncedGroup } from "../src/group-sync.js";
+import type { WebhookSubscriptionStore } from "../src/realtime-webhook.js";
 
 function memoryUserStore(initial: ProvisionedUser[] = []): UserProvisioningStore {
   const users = new Map<string, ProvisionedUser>();
@@ -460,6 +461,44 @@ describe("processScimWebhook", () => {
       const group = await groupStore.findGroupByExternalId(orgId, "grp-1");
       const memberIds = await groupStore.listGroupMemberIds(group!.id);
       expect(memberIds).toEqual(["user_1"]);
+    });
+  });
+
+  describe("realtime webhook delivery", () => {
+    it("delivers realtime webhook when webhookStore provided and user.created processed", async () => {
+      const userStore = memoryUserStore();
+      const groupStore = memoryGroupStore();
+      const delivered: { type: string; id: string; data: Record<string, unknown> }[] = [];
+      const webhookStore: WebhookSubscriptionStore = {
+        listSubscriptions: vi.fn(async () => [{ url: "https://hooks.example.com/wh", secret: "sec" }]),
+      };
+      const mockFetch = vi.fn(async (_url: unknown, init?: RequestInit) => {
+        const body = init?.body as string;
+        if (body) {
+          const parsed = JSON.parse(body) as { type: string; id: string; data: Record<string, unknown> };
+          delivered.push({ type: parsed.type, id: parsed.id, data: parsed.data });
+        }
+        return new Response(null, { status: 200 });
+      });
+      const payload: ScimWebhookUserPayload = {
+        type: "user.created",
+        id: "evt_rt_1",
+        timestamp: new Date().toISOString(),
+        data: { email: "realtime@example.com", externalId: "ext-rt", firstName: "Realtime" },
+      };
+      const result = await processScimWebhook({
+        payload,
+        userStore,
+        groupStore,
+        organizationId: orgId,
+        webhookStore,
+        webhookDeliveryOptions: { fetchFn: mockFetch },
+      });
+      expect(result.ok).toBe(true);
+      expect(delivered).toHaveLength(1);
+      expect(delivered[0]!.type).toBe("user.created");
+      expect(delivered[0]!.id).toBe("evt_rt_1");
+      expect(delivered[0]!.data.email).toBe("realtime@example.com");
     });
   });
 });

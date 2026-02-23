@@ -3,6 +3,9 @@ import type { UserProvisioningStore } from "./user-provisioning.js";
 import { provisionUser, deprovisionUser } from "./user-provisioning.js";
 import type { GroupSyncStore } from "./group-sync.js";
 import { syncGroup } from "./group-sync.js";
+import { deliverRealtimeWebhook } from "./realtime-webhook.js";
+import type { DeliverWebhookOptions, RealtimeWebhookPayload } from "./realtime-webhook.js";
+import type { WebhookSubscriptionStore } from "./realtime-webhook.js";
 
 export type ScimWebhookEventType =
   | "user.created"
@@ -85,12 +88,23 @@ export interface ProcessScimWebhookParams {
   userStore: UserProvisioningStore;
   groupStore: GroupSyncStore;
   organizationId: string;
+  webhookStore?: WebhookSubscriptionStore;
+  webhookDeliveryOptions?: DeliverWebhookOptions;
+}
+
+function toRealtimePayload(payload: ScimWebhookPayload): RealtimeWebhookPayload {
+  return {
+    type: payload.type,
+    id: payload.id,
+    timestamp: payload.timestamp,
+    data: payload.data as Record<string, unknown>,
+  };
 }
 
 export async function processScimWebhook(
   params: ProcessScimWebhookParams
 ): Promise<ProcessWebhookResult> {
-  const { payload, userStore, groupStore, organizationId } = params;
+  const { payload, userStore, groupStore, organizationId, webhookStore, webhookDeliveryOptions } = params;
   const eventId = payload.id;
 
   if (payload.type === "user.deleted") {
@@ -102,6 +116,9 @@ export async function processScimWebhook(
     const user = await userStore.findByExternalId(externalId);
     if (!user) return { ok: true, eventId };
     await deprovisionUser(userStore, user.id, { hard: false });
+    if (webhookStore) {
+      await deliverRealtimeWebhook(webhookStore, organizationId, toRealtimePayload(payload), webhookDeliveryOptions);
+    }
     return { ok: true, eventId };
   }
 
@@ -122,6 +139,9 @@ export async function processScimWebhook(
       },
       { organizationId, reactivateIfDeactivated: true }
     );
+    if (webhookStore) {
+      await deliverRealtimeWebhook(webhookStore, organizationId, toRealtimePayload(payload), webhookDeliveryOptions);
+    }
     return { ok: true, eventId, created: result.created };
   }
 
@@ -130,6 +150,9 @@ export async function processScimWebhook(
     const group = await groupStore.findGroupByExternalId(organizationId, data.externalId);
     if (!group) return { ok: true, eventId };
     await groupStore.softDeleteGroup(group.id);
+    if (webhookStore) {
+      await deliverRealtimeWebhook(webhookStore, organizationId, toRealtimePayload(payload), webhookDeliveryOptions);
+    }
     return { ok: true, eventId };
   }
 
@@ -151,6 +174,9 @@ export async function processScimWebhook(
       },
       { organizationId }
     );
+    if (webhookStore) {
+      await deliverRealtimeWebhook(webhookStore, organizationId, toRealtimePayload(payload), webhookDeliveryOptions);
+    }
     return { ok: true, eventId, created: result.created };
   }
 

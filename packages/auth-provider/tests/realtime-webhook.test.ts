@@ -4,6 +4,7 @@ import {
   signWebhookPayload,
   deliverWebhook,
   deliverRealtimeWebhook,
+  createRealtimeSyncPayload,
   type RealtimeWebhookPayload,
   type WebhookSubscriptionStore,
 } from "../src/realtime-webhook.js";
@@ -178,5 +179,51 @@ describe("deliverRealtimeWebhook", () => {
     expect(result.delivered).toBe(0);
     expect(result.failed).toBe(0);
     expect(result.results).toHaveLength(0);
+  });
+
+  it("delivers group.created to subscriptions filtered by event type", async () => {
+    const groupPayload = createRealtimeSyncPayload("group.created", {
+      id: "grp_1",
+      externalId: "ext-grp",
+      displayName: "Engineering",
+    });
+    const subs = [{ url: "https://hooks.example.com/sync", secret: "s1" }];
+    const store: WebhookSubscriptionStore = {
+      async listSubscriptions(organizationId, eventType) {
+        expect(organizationId).toBe(orgId);
+        expect(eventType).toBe("group.created");
+        return subs;
+      },
+    };
+    const mockFetch: typeof fetch = async () => new Response(null, { status: 200 });
+    const result = await deliverRealtimeWebhook(store, orgId, groupPayload, { fetchFn: mockFetch });
+    expect(result.delivered).toBe(1);
+    expect(result.failed).toBe(0);
+  });
+});
+
+describe("createRealtimeSyncPayload", () => {
+  it("returns payload with type, id, timestamp, data", () => {
+    const data = { id: "user_1", email: "a@b.com", externalId: "ext-1" };
+    const payload = createRealtimeSyncPayload("user.created", data);
+    expect(payload.type).toBe("user.created");
+    expect(payload.data).toEqual(data);
+    expect(payload.id).toMatch(/^[0-9a-f-]{36}$/);
+    expect(payload.timestamp).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/);
+  });
+
+  it("uses provided id when given", () => {
+    const payload = createRealtimeSyncPayload("user.deleted", { id: "user_1" }, "evt_custom");
+    expect(payload.id).toBe("evt_custom");
+  });
+
+  it("supports group event types", () => {
+    const payload = createRealtimeSyncPayload("group.updated", {
+      id: "grp_1",
+      externalId: "ext-g",
+      displayName: "Sales",
+    });
+    expect(payload.type).toBe("group.updated");
+    expect(payload.data.displayName).toBe("Sales");
   });
 });

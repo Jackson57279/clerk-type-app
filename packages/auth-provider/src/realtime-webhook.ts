@@ -1,9 +1,12 @@
-import { createHmac } from "node:crypto";
+import { createHmac, randomUUID } from "node:crypto";
 
 export type RealtimeWebhookEventType =
   | "user.created"
   | "user.updated"
   | "user.deleted"
+  | "group.created"
+  | "group.updated"
+  | "group.deleted"
   | "session.created"
   | "session.revoked"
   | "organization.created"
@@ -16,6 +19,27 @@ export interface RealtimeWebhookPayload {
   data: Record<string, unknown>;
   timestamp: string;
   id: string;
+}
+
+export type RealtimeSyncEventType =
+  | "user.created"
+  | "user.updated"
+  | "user.deleted"
+  | "group.created"
+  | "group.updated"
+  | "group.deleted";
+
+export function createRealtimeSyncPayload(
+  type: RealtimeSyncEventType,
+  data: Record<string, unknown>,
+  id: string = randomUUID()
+): RealtimeWebhookPayload {
+  return {
+    type,
+    id,
+    timestamp: new Date().toISOString(),
+    data,
+  };
 }
 
 export interface WebhookSubscription {

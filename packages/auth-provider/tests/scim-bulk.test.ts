@@ -1,7 +1,8 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { processBulkRequest, BULK_REQUEST_SCHEMA, BULK_RESPONSE_SCHEMA } from "../src/scim-bulk.js";
 import type { UserProvisioningStore, ProvisionedUser, ProvisionUserData } from "../src/user-provisioning.js";
 import type { GroupSyncStore, SyncedGroup } from "../src/group-sync.js";
+import type { WebhookSubscriptionStore } from "../src/realtime-webhook.js";
 
 function memoryUserStore(initial: ProvisionedUser[] = []): UserProvisioningStore {
   const users = new Map<string, ProvisionedUser>();
@@ -513,5 +514,99 @@ describe("processBulkRequest", () => {
     expect(response.Operations).toHaveLength(1);
     expect(response.Operations[0]!.status).toBe(201);
     expect(await userStore.findByEmail("one@example.com")).not.toBeNull();
+  });
+
+  describe("realtime webhook delivery", () => {
+    it("delivers user.created webhook when webhookStore provided and user created via bulk", async () => {
+      const userStore = memoryUserStore();
+      const groupStore = memoryGroupStore();
+      const delivered: { type: string; data: Record<string, unknown> }[] = [];
+      const webhookStore: WebhookSubscriptionStore = {
+        listSubscriptions: vi.fn(async (organizationId) => {
+          expect(organizationId).toBe(orgId);
+          return [{ url: "https://hooks.example.com/wh", secret: "sec" }];
+        }),
+      };
+      const mockFetch = vi.fn(async (_url: unknown, init?: RequestInit) => {
+        const body = init?.body as string;
+        if (body) {
+          const parsed = JSON.parse(body) as { type: string; data: Record<string, unknown> };
+          delivered.push({ type: parsed.type, data: parsed.data });
+        }
+        return new Response(null, { status: 200 });
+      });
+      await processBulkRequest({
+        request: {
+          schemas: [BULK_REQUEST_SCHEMA],
+          Operations: [
+            { method: "POST", path: "Users", bulkId: "u1", data: { userName: "wh@example.com", externalId: "ext-wh" } },
+          ],
+        },
+        userStore,
+        groupStore,
+        organizationId: orgId,
+        webhookStore,
+        webhookDeliveryOptions: { fetchFn: mockFetch },
+      });
+      expect(delivered).toHaveLength(1);
+      expect(delivered[0]!.type).toBe("user.created");
+      expect(delivered[0]!.data.email).toBe("wh@example.com");
+      expect(delivered[0]!.data.externalId).toBe("ext-wh");
+    });
+
+    it("delivers group.created webhook when webhookStore provided and group created via bulk", async () => {
+      const userStore = memoryUserStore();
+      const groupStore = memoryGroupStore();
+      const delivered: { type: string; data: Record<string, unknown> }[] = [];
+      const webhookStore: WebhookSubscriptionStore = {
+        listSubscriptions: vi.fn(async () => [{ url: "https://hooks.example.com/wh", secret: "sec" }]),
+      };
+      const mockFetch = vi.fn(async (_url: unknown, init?: RequestInit) => {
+        const body = init?.body as string;
+        if (body) {
+          const parsed = JSON.parse(body) as { type: string; data: Record<string, unknown> };
+          delivered.push({ type: parsed.type, data: parsed.data });
+        }
+        return new Response(null, { status: 200 });
+      });
+      await processBulkRequest({
+        request: {
+          schemas: [BULK_REQUEST_SCHEMA],
+          Operations: [
+            {
+              method: "POST",
+              path: "Groups",
+              bulkId: "g1",
+              data: { externalId: "grp-wh", displayName: "Webhook Group" },
+            },
+          ],
+        },
+        userStore,
+        groupStore,
+        organizationId: orgId,
+        webhookStore,
+        webhookDeliveryOptions: { fetchFn: mockFetch },
+      });
+      expect(delivered).toHaveLength(1);
+      expect(delivered[0]!.type).toBe("group.created");
+      expect(delivered[0]!.data.externalId).toBe("grp-wh");
+      expect(delivered[0]!.data.displayName).toBe("Webhook Group");
+    });
+
+    it("succeeds without webhook delivery when webhookStore not provided", async () => {
+      const userStore = memoryUserStore();
+      const groupStore = memoryGroupStore();
+      const response = await processBulkRequest({
+        request: {
+          schemas: [BULK_REQUEST_SCHEMA],
+          Operations: [{ method: "POST", path: "Users", data: { userName: "nowh@example.com" } }],
+        },
+        userStore,
+        groupStore,
+        organizationId: orgId,
+      });
+      expect(response.Operations[0]!.status).toBe(201);
+      expect(await userStore.findByEmail("nowh@example.com")).not.toBeNull();
+    });
   });
 });
