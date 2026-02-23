@@ -6,6 +6,8 @@ import {
   createNoOpConfirmationStore,
   isSensitiveOperation,
   requireConfirmationForSensitiveOperation,
+  assertConfirmationForSensitiveOperation,
+  ConfirmationRequiredError,
   SENSITIVE_OPERATIONS,
   DEFAULT_CONFIRMATION_LINK_TTL_MS,
   type SensitiveOperationType,
@@ -383,5 +385,97 @@ describe("requireConfirmationForSensitiveOperation", () => {
     );
     expect(second.allowed).toBe(false);
     if (!second.allowed) expect(second.reason).toBe("invalid_token");
+  });
+});
+
+describe("ConfirmationRequiredError", () => {
+  it("has name ConfirmationRequiredError and reason", () => {
+    const err = new ConfirmationRequiredError("missing_token");
+    expect(err.name).toBe("ConfirmationRequiredError");
+    expect(err.reason).toBe("missing_token");
+    expect(err.message).toContain("missing_token");
+  });
+
+  it("accepts custom message", () => {
+    const err = new ConfirmationRequiredError("invalid_token", "Custom message");
+    expect(err.message).toBe("Custom message");
+    expect(err.reason).toBe("invalid_token");
+  });
+});
+
+describe("assertConfirmationForSensitiveOperation", () => {
+  const context = {
+    userId: "user-1",
+    email: "user@example.com",
+    operation: "change_email" as SensitiveOperationType,
+  };
+
+  it("returns payload when valid token matches context", () => {
+    const { token } = createConfirmationToken(
+      { userId: context.userId, email: context.email, operation: context.operation },
+      SECRET
+    );
+    const payload = assertConfirmationForSensitiveOperation(
+      "change_email",
+      token,
+      context,
+      SECRET
+    );
+    expect(payload.userId).toBe("user-1");
+    expect(payload.email).toBe("user@example.com");
+    expect(payload.operation).toBe("change_email");
+  });
+
+  it("throws ConfirmationRequiredError with not_sensitive for unknown operation", () => {
+    expect(() =>
+      assertConfirmationForSensitiveOperation("unknown_op", "any-token", context, SECRET)
+    ).toThrow(ConfirmationRequiredError);
+    try {
+      assertConfirmationForSensitiveOperation("unknown_op", "any-token", context, SECRET);
+    } catch (e) {
+      expect(e).toBeInstanceOf(ConfirmationRequiredError);
+      expect((e as ConfirmationRequiredError).reason).toBe("not_sensitive");
+    }
+  });
+
+  it("throws ConfirmationRequiredError with missing_token when token is undefined", () => {
+    try {
+      assertConfirmationForSensitiveOperation(
+        "change_password",
+        undefined,
+        { ...context, operation: "change_password" },
+        SECRET
+      );
+    } catch (e) {
+      expect(e).toBeInstanceOf(ConfirmationRequiredError);
+      expect((e as ConfirmationRequiredError).reason).toBe("missing_token");
+    }
+  });
+
+  it("throws ConfirmationRequiredError with invalid_token when token is bad", () => {
+    try {
+      assertConfirmationForSensitiveOperation(
+        "change_email",
+        "invalid.jwt.here",
+        context,
+        SECRET
+      );
+    } catch (e) {
+      expect(e).toBeInstanceOf(ConfirmationRequiredError);
+      expect((e as ConfirmationRequiredError).reason).toBe("invalid_token");
+    }
+  });
+
+  it("throws ConfirmationRequiredError with user_mismatch when token user does not match", () => {
+    const { token } = createConfirmationToken(
+      { userId: "other-user", email: context.email, operation: context.operation },
+      SECRET
+    );
+    try {
+      assertConfirmationForSensitiveOperation("change_email", token, context, SECRET);
+    } catch (e) {
+      expect(e).toBeInstanceOf(ConfirmationRequiredError);
+      expect((e as ConfirmationRequiredError).reason).toBe("user_mismatch");
+    }
   });
 });

@@ -183,16 +183,25 @@ export interface RequireConfirmationContext {
   operation: SensitiveOperationType;
 }
 
+export type RequirmationDeniedReason =
+  | "not_sensitive"
+  | "missing_token"
+  | "invalid_token"
+  | "user_mismatch";
+
 export type RequireConfirmationResult =
   | { allowed: true; payload: VerifyConfirmationTokenResult }
-  | {
-      allowed: false;
-      reason:
-        | "not_sensitive"
-        | "missing_token"
-        | "invalid_token"
-        | "user_mismatch";
-    };
+  | { allowed: false; reason: RequirmationDeniedReason };
+
+export class ConfirmationRequiredError extends Error {
+  readonly reason: RequirmationDeniedReason;
+  constructor(reason: RequirmationDeniedReason, message?: string) {
+    super(message ?? `Confirmation required for sensitive operation: ${reason}`);
+    this.name = "ConfirmationRequiredError";
+    this.reason = reason;
+    Object.setPrototypeOf(this, ConfirmationRequiredError.prototype);
+  }
+}
 
 export function requireConfirmationForSensitiveOperation(
   operation: string,
@@ -219,4 +228,22 @@ export function requireConfirmationForSensitiveOperation(
     return { allowed: false, reason: "user_mismatch" };
   }
   return { allowed: true, payload };
+}
+
+export function assertConfirmationForSensitiveOperation(
+  operation: string,
+  confirmationToken: string | undefined,
+  context: RequireConfirmationContext,
+  secret: string,
+  options: VerifyConfirmationTokenOptions = {}
+): VerifyConfirmationTokenResult {
+  const result = requireConfirmationForSensitiveOperation(
+    operation,
+    confirmationToken,
+    context,
+    secret,
+    options
+  );
+  if (result.allowed) return result.payload;
+  throw new ConfirmationRequiredError(result.reason);
 }
