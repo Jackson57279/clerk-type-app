@@ -3,6 +3,12 @@ import {
   getFieldEncryptionKey,
   encryptSensitiveField,
   decryptSensitiveField,
+  encryptSSN,
+  decryptSSN,
+  encryptTaxId,
+  decryptTaxId,
+  encryptSensitiveFields,
+  decryptSensitiveFields,
 } from "../src/field-encryption.js";
 
 const HEX_KEY =
@@ -75,5 +81,53 @@ describe("encryptSensitiveField / decryptSensitiveField", () => {
 
   it("decrypt invalid base64 throws", () => {
     expect(() => decryptSensitiveField("not-valid-base64!!", KEY)).toThrow();
+  });
+});
+
+describe("encryptSSN / decryptSSN", () => {
+  it("roundtrips SSN", () => {
+    const ssn = "123-45-6789";
+    const enc = encryptSSN(ssn, KEY);
+    expect(enc).not.toContain(ssn);
+    expect(decryptSSN(enc, KEY)).toBe(ssn);
+  });
+});
+
+describe("encryptTaxId / decryptTaxId", () => {
+  it("roundtrips EIN", () => {
+    const ein = "12-3456789";
+    const enc = encryptTaxId(ein, KEY);
+    expect(decryptTaxId(enc, KEY)).toBe(ein);
+  });
+
+  it("roundtrips other tax ID format", () => {
+    const taxId = "98-7654321";
+    expect(decryptTaxId(encryptTaxId(taxId, KEY), KEY)).toBe(taxId);
+  });
+});
+
+describe("encryptSensitiveFields / decryptSensitiveFields", () => {
+  it("encrypts and decrypts ssn and taxId", () => {
+    const record = { ssn: "123-45-6789", taxId: "12-3456789" };
+    const enc = encryptSensitiveFields(record, KEY);
+    expect(enc.ssn).toBeTruthy();
+    expect(enc.ssn).not.toContain(record.ssn);
+    expect(enc.taxId).not.toContain(record.taxId);
+    const dec = decryptSensitiveFields(enc, KEY);
+    expect(dec.ssn).toBe(record.ssn);
+    expect(dec.taxId).toBe(record.taxId);
+  });
+
+  it("omits empty or undefined fields", () => {
+    expect(encryptSensitiveFields({}, KEY)).toEqual({});
+    expect(encryptSensitiveFields({ ssn: "" }, KEY)).toEqual({});
+    expect(decryptSensitiveFields({}, KEY)).toEqual({});
+  });
+
+  it("encrypts only present fields", () => {
+    const enc = encryptSensitiveFields({ ssn: "123-45-6789" }, KEY);
+    expect(enc.ssn).toBeTruthy();
+    expect(enc.taxId).toBeUndefined();
+    expect(decryptSensitiveFields(enc, KEY).ssn).toBe("123-45-6789");
   });
 });

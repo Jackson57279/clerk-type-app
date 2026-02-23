@@ -36,3 +36,52 @@ export function decryptSensitiveField(
 ): string {
   return decryptAes256Utf8(ciphertextBase64, key);
 }
+
+export function encryptSSN(ssn: string, key: Buffer): string {
+  return encryptSensitiveField(ssn, key);
+}
+
+export function decryptSSN(ciphertextBase64: string, key: Buffer): string {
+  return decryptSensitiveField(ciphertextBase64, key);
+}
+
+export function encryptTaxId(taxId: string, key: Buffer): string {
+  return encryptSensitiveField(taxId, key);
+}
+
+export function decryptTaxId(ciphertextBase64: string, key: Buffer): string {
+  return decryptSensitiveField(ciphertextBase64, key);
+}
+
+export interface SensitiveFieldsRecord {
+  ssn?: string;
+  taxId?: string;
+}
+
+export function encryptSensitiveFields(
+  record: SensitiveFieldsRecord,
+  key: Buffer
+): SensitiveFieldsRecord {
+  const out: SensitiveFieldsRecord = {};
+  if (record.ssn !== undefined && record.ssn !== "") {
+    out.ssn = encryptSSN(record.ssn, key);
+  }
+  if (record.taxId !== undefined && record.taxId !== "") {
+    out.taxId = encryptTaxId(record.taxId, key);
+  }
+  return out;
+}
+
+export function decryptSensitiveFields(
+  record: SensitiveFieldsRecord,
+  key: Buffer
+): SensitiveFieldsRecord {
+  const out: SensitiveFieldsRecord = {};
+  if (record.ssn !== undefined && record.ssn !== "") {
+    out.ssn = decryptSSN(record.ssn, key);
+  }
+  if (record.taxId !== undefined && record.taxId !== "") {
+    out.taxId = decryptTaxId(record.taxId, key);
+  }
+  return out;
+}
