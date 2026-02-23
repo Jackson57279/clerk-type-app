@@ -155,6 +155,49 @@ describe("requestSensitiveOperation", () => {
   });
 });
 
+describe("double-opt-in required for sensitive operations", () => {
+  it("sensitive operations cannot be executed without a valid confirmation token", async () => {
+    const context = {
+      userId: "u1",
+      email: "u@example.com",
+      operation: "delete_account" as SensitiveOperationType,
+    };
+    const action = vi.fn().mockResolvedValue(undefined);
+    await expect(
+      executeSensitiveOperation("delete_account", undefined, context, SECRET, action)
+    ).rejects.toThrow(ConfirmationRequiredError);
+    expect(action).not.toHaveBeenCalled();
+  });
+
+  it("sensitive operation executes only after request and with token from confirmation link", async () => {
+    const context = {
+      userId: "u1",
+      email: "u@example.com",
+      operation: "change_password" as SensitiveOperationType,
+    };
+    const req = await requestSensitiveOperation({
+      operation: "change_password",
+      userId: context.userId,
+      email: context.email,
+      secret: SECRET,
+      buildConfirmLink: (t) => `https://app.example.com/confirm?token=${t}`,
+    });
+    if (!isRequestSensitiveOperationSuccess(req)) throw new Error("expected success");
+    const action = vi.fn().mockResolvedValue({ updated: true });
+    const out = await executeSensitiveOperation(
+      "change_password",
+      req.token,
+      context,
+      SECRET,
+      action
+    );
+    expect(out).toEqual({ updated: true });
+    expect(action).toHaveBeenCalledWith(
+      expect.objectContaining({ userId: "u1", email: "u@example.com", operation: "change_password" })
+    );
+  });
+});
+
 describe("executeSensitiveOperation", () => {
   const context = {
     userId: "u1",
