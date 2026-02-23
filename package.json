@@ -4,8 +4,8 @@
   "private": true,
   "workspaces": ["packages/*"],
   "scripts": {
-    "build": "bun run --cwd packages/auth-provider build && bun run --cwd packages/react build",
-    "test": "bun run --cwd packages/auth-provider test && bun run --cwd packages/react test",
-    "lint": "bun run --cwd packages/auth-provider lint && bun run --cwd packages/react lint"
+    "build": "bun run --cwd packages/auth-provider build && bun run --cwd packages/react build && bun run --cwd packages/node build",
+    "test": "bun run --cwd packages/auth-provider test && bun run --cwd packages/react test && bun run --cwd packages/node test",
+    "lint": "bun run --cwd packages/auth-provider lint && bun run --cwd packages/react lint && bun run --cwd packages/node lint"
   }
 }

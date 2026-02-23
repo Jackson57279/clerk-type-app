@@ -1,0 +1,32 @@
+{
+  "name": "@ourauth/node",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "test": "vitest run",
+    "lint": "eslint src tests"
+  },
+  "peerDependencies": {
+    "express": ">=4.0.0"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.16.0",
+    "@types/express": "^5.0.0",
+    "eslint": "^9.16.0",
+    "express": "^4.21.0",
+    "typescript": "^5.7.2",
+    "typescript-eslint": "^8.16.0",
+    "vitest": "^2.1.6"
+  }
+}
