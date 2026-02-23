@@ -30,6 +30,7 @@ export interface GdprPasskeyMetadata {
   deviceType: string;
   backedUp: boolean;
   friendlyName?: string;
+  deviceInfo?: string;
   lastUsedAt?: string;
 }
 
@@ -60,6 +61,7 @@ function passkeyToMetadata(p: StoredPasskey): GdprPasskeyMetadata {
     deviceType: p.deviceType,
     backedUp: p.backedUp,
     friendlyName: p.friendlyName,
+    deviceInfo: p.deviceInfo,
     lastUsedAt: p.lastUsedAt,
   };
 }

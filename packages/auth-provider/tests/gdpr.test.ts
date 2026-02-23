@@ -77,6 +77,7 @@ describe("exportUserData", () => {
       backedUp: false,
       webauthnUserID: "webauthn-1",
       friendlyName: "My key",
+      deviceInfo: "Chrome on macOS · internal",
       lastUsedAt: "2025-01-01T00:00:00.000Z",
     };
     await passkeyStore.save(pk);
@@ -101,6 +102,7 @@ describe("exportUserData", () => {
       deviceType: "singleDevice",
       backedUp: false,
       friendlyName: "My key",
+      deviceInfo: "Chrome on macOS · internal",
       lastUsedAt: "2025-01-01T00:00:00.000Z",
     });
     expect(result!.totpEnabled).toBe(true);
