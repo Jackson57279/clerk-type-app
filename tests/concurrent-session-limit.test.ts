@@ -6,6 +6,7 @@ import {
   getActiveCountByUser,
   getActiveCountByOrg,
   createConcurrentSessionLimit,
+  getConcurrentSessionLimitDefaults,
   clearAllSessions,
   invalidateAllSessionsForUser,
   enforceConcurrentLimitAndRegister,
@@ -321,5 +322,63 @@ describe("createConcurrentSessionLimit (getLimits per user/org)", () => {
     const r = limiter.check("u1", null);
     expect(r.allowed).toBe(true);
     expect(r.evictSessionIds).toHaveLength(1);
+  });
+});
+
+describe("getConcurrentSessionLimitDefaults (configurable via env)", () => {
+  it("returns default user limit 5 when env not set", () => {
+    const out = getConcurrentSessionLimitDefaults({});
+    expect(out.defaultUserLimit).toBe(5);
+    expect(out.defaultOrgLimit).toBeUndefined();
+  });
+
+  it("uses CONCURRENT_SESSION_LIMIT_USER when valid integer", () => {
+    expect(getConcurrentSessionLimitDefaults({ CONCURRENT_SESSION_LIMIT_USER: "3" }).defaultUserLimit).toBe(3);
+    expect(getConcurrentSessionLimitDefaults({ CONCURRENT_SESSION_LIMIT_USER: "1" }).defaultUserLimit).toBe(1);
+    expect(getConcurrentSessionLimitDefaults({ CONCURRENT_SESSION_LIMIT_USER: "1000" }).defaultUserLimit).toBe(1000);
+  });
+
+  it("uses CONCURRENT_SESSION_LIMIT_ORG when valid integer", () => {
+    const out = getConcurrentSessionLimitDefaults({ CONCURRENT_SESSION_LIMIT_ORG: "10" });
+    expect(out.defaultOrgLimit).toBe(10);
+  });
+
+  it("falls back to default when env invalid or out of range", () => {
+    expect(getConcurrentSessionLimitDefaults({ CONCURRENT_SESSION_LIMIT_USER: "" }).defaultUserLimit).toBe(5);
+    expect(getConcurrentSessionLimitDefaults({ CONCURRENT_SESSION_LIMIT_USER: "0" }).defaultUserLimit).toBe(5);
+    expect(getConcurrentSessionLimitDefaults({ CONCURRENT_SESSION_LIMIT_USER: "abc" }).defaultUserLimit).toBe(5);
+    expect(getConcurrentSessionLimitDefaults({ CONCURRENT_SESSION_LIMIT_USER: "1001" }).defaultUserLimit).toBe(5);
+    expect(getConcurrentSessionLimitDefaults({ CONCURRENT_SESSION_LIMIT_ORG: "0" }).defaultOrgLimit).toBeUndefined();
+  });
+
+  it("createConcurrentSessionLimit with env defaults and getLimits gives per user/org configurable limits", () => {
+    const defaults = getConcurrentSessionLimitDefaults({
+      CONCURRENT_SESSION_LIMIT_USER: "2",
+      CONCURRENT_SESSION_LIMIT_ORG: "2",
+    });
+    const limiter = createConcurrentSessionLimit({
+      ...defaults,
+      getLimits: (userId, orgId) => {
+        if (userId === "vip") return { user: 5, org: 10 };
+        if (orgId === "large-org") return { user: 2, org: 20 };
+        return {};
+      },
+    });
+    limiter.register("s0", "normal", "small");
+    limiter.register("s1", "normal", "small");
+    const rNormal = limiter.check("normal", "small");
+    expect(rNormal.allowed).toBe(true);
+    expect(rNormal.evictSessionIds).toHaveLength(1);
+
+    for (let i = 0; i < 5; i++) limiter.register(`v${i}`, "vip", null);
+    const rVip = limiter.check("vip", null);
+    expect(rVip.allowed).toBe(true);
+    expect(rVip.evictSessionIds).toHaveLength(1);
+
+    limiter.register("e0", "u1", "large-org");
+    limiter.register("e1", "u2", "large-org");
+    const rLarge = limiter.check("u3", "large-org");
+    expect(rLarge.allowed).toBe(true);
+    expect(rLarge.evictSessionIds).toEqual([]);
   });
 });

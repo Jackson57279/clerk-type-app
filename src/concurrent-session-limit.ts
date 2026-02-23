@@ -1,4 +1,33 @@
 const DEFAULT_USER_LIMIT = 5;
+const MIN_LIMIT = 1;
+const MAX_LIMIT = 1000;
+
+export interface ConcurrentSessionLimitDefaults {
+  defaultUserLimit: number;
+  defaultOrgLimit?: number;
+}
+
+export function getConcurrentSessionLimitDefaults(
+  env: NodeJS.ProcessEnv = process.env
+): ConcurrentSessionLimitDefaults {
+  const userRaw = env.CONCURRENT_SESSION_LIMIT_USER;
+  let defaultUserLimit = DEFAULT_USER_LIMIT;
+  if (userRaw !== undefined && userRaw !== "") {
+    const n = Number(userRaw);
+    if (Number.isInteger(n) && n >= MIN_LIMIT && n <= MAX_LIMIT) {
+      defaultUserLimit = n;
+    }
+  }
+  const orgRaw = env.CONCURRENT_SESSION_LIMIT_ORG;
+  let defaultOrgLimit: number | undefined;
+  if (orgRaw !== undefined && orgRaw !== "") {
+    const n = Number(orgRaw);
+    if (Number.isInteger(n) && n >= MIN_LIMIT && n <= MAX_LIMIT) {
+      defaultOrgLimit = n;
+    }
+  }
+  return { defaultUserLimit, ...(defaultOrgLimit !== undefined && { defaultOrgLimit }) };
+}
 
 interface SessionRecord {
   userId: string;
