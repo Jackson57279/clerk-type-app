@@ -155,7 +155,10 @@ export async function processBulkRequest(params: ProcessBulkParams): Promise<Sci
 
     try {
       const { resource, id: rawId } = parsePath(op.path);
-      const id = rawId ? resolveBulkId(resource, rawId, bulkIdMap) : null;
+      const id =
+        rawId && (resource === "Users" || resource === "Groups")
+          ? resolveBulkId(resource, rawId, bulkIdMap)
+          : rawId ?? null;
       if (rawId && rawId.startsWith("bulkId:") && !id) {
         results.push({
           bulkId: op.bulkId,
