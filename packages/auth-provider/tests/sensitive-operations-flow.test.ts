@@ -58,7 +58,8 @@ describe("requestSensitiveOperation", () => {
         text: expect.any(String),
       })
     );
-    expect(sendEmail.mock.calls[0][0].html).toContain(
+    const firstCall = sendEmail.mock.calls[0];
+    expect(firstCall?.[0]?.html).toContain(
       SENSITIVE_OPERATION_LABELS.change_password
     );
   });

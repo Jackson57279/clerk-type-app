@@ -189,6 +189,15 @@ describe("getPasswordPolicyFromEnv", () => {
     const policy = getPasswordPolicyFromEnv({ PASSWORD_MIN_LENGTH: "abc" });
     expect(policy.minLength).toBe(8);
   });
+
+  it("ensures maxLength >= minLength when min is larger than max from env", () => {
+    const policy = getPasswordPolicyFromEnv({
+      PASSWORD_MIN_LENGTH: "64",
+      PASSWORD_MAX_LENGTH: "32",
+    });
+    expect(policy.minLength).toBe(64);
+    expect(policy.maxLength).toBe(64);
+  });
 });
 
 describe("getPasswordPolicyRequirements", () => {

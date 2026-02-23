@@ -45,9 +45,11 @@ function parsePositiveInt(val: string | undefined, fallback: number): number {
 export function getPasswordPolicyFromEnv(
   env: NodeJS.ProcessEnv = process.env
 ): PasswordPolicy {
+  const minLength = parsePositiveInt(env.PASSWORD_MIN_LENGTH, 8);
+  const maxLengthRaw = parsePositiveInt(env.PASSWORD_MAX_LENGTH, 128);
   return {
-    minLength: parsePositiveInt(env.PASSWORD_MIN_LENGTH, 8),
-    maxLength: parsePositiveInt(env.PASSWORD_MAX_LENGTH, 128),
+    minLength,
+    maxLength: Math.max(minLength, maxLengthRaw),
     requireUppercase: parseBool(env.PASSWORD_REQUIRE_UPPERCASE),
     requireLowercase:
       env.PASSWORD_REQUIRE_LOWERCASE === undefined
