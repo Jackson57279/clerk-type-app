@@ -140,6 +140,8 @@ describe("createSessionAfterLogin (session fixation + Set-Cookie)", () => {
     expect(setCookieHeader).toMatch(/^session=/);
     expect(setCookieHeader).toContain(newSessionId);
     expect(setCookieHeader).toContain("HttpOnly");
+    expect(setCookieHeader).toContain("Secure");
+    expect(setCookieHeader).toContain("SameSite=Strict");
     expect(store.has(oldId)).toBe(false);
     expect(store.get(newSessionId)).toEqual({ userId: "user1", orgId: null });
   });
