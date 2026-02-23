@@ -201,6 +201,30 @@ export type SessionLimitsResolver = (
   orgId: string | null
 ) => { user?: number; org?: number };
 
+export interface PerUserOrgLimitOptions {
+  defaultUserLimit: number;
+  defaultOrgLimit?: number;
+  getUserLimit?: (userId: string) => number | undefined;
+  getOrgLimit?: (orgId: string) => number | undefined;
+}
+
+export function createLimitsResolver(
+  options: PerUserOrgLimitOptions
+): SessionLimitsResolver {
+  const {
+    defaultUserLimit,
+    defaultOrgLimit,
+    getUserLimit,
+    getOrgLimit,
+  } = options;
+  return (userId: string, orgId: string | null) => {
+    const user = getUserLimit?.(userId) ?? defaultUserLimit;
+    const org =
+      orgId != null ? (getOrgLimit?.(orgId) ?? defaultOrgLimit) : undefined;
+    return { user, ...(org !== undefined && { org }) };
+  };
+}
+
 export interface ConcurrentSessionLimitOptions {
   defaultUserLimit?: number;
   defaultOrgLimit?: number;

@@ -6,6 +6,7 @@ import {
   getActiveCountByUser,
   getActiveCountByOrg,
   createConcurrentSessionLimit,
+  createLimitsResolver,
   getConcurrentSessionLimitDefaults,
   clearAllSessions,
   invalidateAllSessionsForUser,
@@ -535,5 +536,76 @@ describe("getConcurrentSessionLimitDefaults (configurable via env)", () => {
     const rLarge = limiter.check("u3", "large-org");
     expect(rLarge.allowed).toBe(true);
     expect(rLarge.evictSessionIds).toEqual([]);
+  });
+});
+
+describe("createLimitsResolver (configurable per user/org)", () => {
+  it("returns default user and org limits when no getters", () => {
+    const resolve = createLimitsResolver({
+      defaultUserLimit: 3,
+      defaultOrgLimit: 2,
+    });
+    expect(resolve("u1", null)).toEqual({ user: 3 });
+    expect(resolve("u1", "org1")).toEqual({ user: 3, org: 2 });
+  });
+
+  it("uses getUserLimit for per-user override", () => {
+    const resolve = createLimitsResolver({
+      defaultUserLimit: 2,
+      getUserLimit: (userId) => (userId === "vip" ? 10 : undefined),
+    });
+    expect(resolve("normal", null)).toEqual({ user: 2 });
+    expect(resolve("vip", null)).toEqual({ user: 10 });
+  });
+
+  it("uses getOrgLimit for per-org override", () => {
+    const resolve = createLimitsResolver({
+      defaultUserLimit: 5,
+      defaultOrgLimit: 2,
+      getOrgLimit: (orgId) => (orgId === "enterprise" ? 50 : undefined),
+    });
+    expect(resolve("u1", "small")).toEqual({ user: 5, org: 2 });
+    expect(resolve("u1", "enterprise")).toEqual({ user: 5, org: 50 });
+  });
+
+  it("combines per-user and per-org in single resolver", () => {
+    const resolve = createLimitsResolver({
+      defaultUserLimit: 2,
+      defaultOrgLimit: 3,
+      getUserLimit: (userId) => (userId === "premium" ? 5 : undefined),
+      getOrgLimit: (orgId) => (orgId === "large" ? 20 : undefined),
+    });
+    expect(resolve("free", "small")).toEqual({ user: 2, org: 3 });
+    expect(resolve("premium", "small")).toEqual({ user: 5, org: 3 });
+    expect(resolve("free", "large")).toEqual({ user: 2, org: 20 });
+    expect(resolve("premium", "large")).toEqual({ user: 5, org: 20 });
+  });
+
+  it("works with createConcurrentSessionLimit for configurable per user/org", () => {
+    const limiter = createConcurrentSessionLimit({
+      defaultUserLimit: 2,
+      defaultOrgLimit: 2,
+      getLimits: createLimitsResolver({
+        defaultUserLimit: 2,
+        defaultOrgLimit: 2,
+        getUserLimit: (id) => (id === "vip" ? 5 : undefined),
+        getOrgLimit: (id) => (id === "enterprise" ? 10 : undefined),
+      }),
+    });
+    limiter.register("s0", "normal", "small");
+    limiter.register("s1", "normal", "small");
+    const rNormal = limiter.check("normal", "small");
+    expect(rNormal.allowed).toBe(true);
+    expect(rNormal.evictSessionIds).toHaveLength(1);
+
+    for (let i = 0; i < 5; i++) limiter.register(`v${i}`, "vip", null);
+    const rVip = limiter.check("vip", null);
+    expect(rVip.allowed).toBe(true);
+    expect(rVip.evictSessionIds).toHaveLength(1);
+
+    for (let i = 0; i < 10; i++) limiter.register(`e${i}`, `u${i}`, "enterprise");
+    const rEnt = limiter.check("u10", "enterprise");
+    expect(rEnt.allowed).toBe(true);
+    expect(rEnt.evictSessionIds).toHaveLength(1);
   });
 });
