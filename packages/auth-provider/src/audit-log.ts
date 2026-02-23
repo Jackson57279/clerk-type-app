@@ -13,6 +13,8 @@ export const AUDIT_EVENT_TYPES = {
   ORG_SSO_CONFIG_CHANGED: "org.sso_config_changed",
   SECURITY_SUSPICIOUS_LOGIN: "security.suspicious_login",
   SECURITY_MFA_CHALLENGE_FAILED: "security.mfa_challenge_failed",
+  GDPR_DATA_EXPORT: "gdpr.data_export",
+  GDPR_DATA_ERASURE: "gdpr.data_erasure",
 } as const;
 
 export type AuditEventType = (typeof AUDIT_EVENT_TYPES)[keyof typeof AUDIT_EVENT_TYPES];

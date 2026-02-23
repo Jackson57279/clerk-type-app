@@ -117,5 +117,7 @@ describe("AUDIT_EVENT_TYPES", () => {
     expect(AUDIT_EVENT_TYPES.SECURITY_MFA_CHALLENGE_FAILED).toBe(
       "security.mfa_challenge_failed"
     );
+    expect(AUDIT_EVENT_TYPES.GDPR_DATA_EXPORT).toBe("gdpr.data_export");
+    expect(AUDIT_EVENT_TYPES.GDPR_DATA_ERASURE).toBe("gdpr.data_erasure");
   });
 });

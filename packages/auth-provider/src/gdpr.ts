@@ -1,6 +1,15 @@
 import type { ProvisionedUser } from "./user-provisioning.js";
 import type { StoredPasskey } from "./passkeys.js";
 import type { TotpStoreData } from "./totp-authenticator.js";
+import { createAuditEvent, AUDIT_EVENT_TYPES, type AuditLogStore } from "./audit-log.js";
+
+export interface GdprAuditContext {
+  actorId?: string | null;
+  actorType?: string | null;
+  actorEmail?: string | null;
+  ipAddress?: string | null;
+  userAgent?: string | null;
+}
 
 export interface GdprExportUserStore {
   findById(id: string): Promise<ProvisionedUser | null>;
@@ -23,6 +32,8 @@ export interface GdprExportOptions {
   passkeyStore?: GdprExportPasskeyStore;
   totpStore?: GdprExportTotpStore;
   backupCodeStore?: GdprExportBackupCodeStore;
+  auditLogStore?: AuditLogStore;
+  auditContext?: GdprAuditContext;
 }
 
 export interface GdprPasskeyMetadata {
@@ -70,7 +81,7 @@ export async function exportUserData(
   userId: string,
   options: GdprExportOptions
 ): Promise<GdprExportResult | null> {
-  const { userStore, passkeyStore, totpStore, backupCodeStore } = options;
+  const { userStore, passkeyStore, totpStore, backupCodeStore, auditLogStore, auditContext } = options;
   const user = await userStore.findById(userId);
   if (!user) return null;
 
@@ -80,7 +91,7 @@ export async function exportUserData(
     backupCodeStore ? backupCodeStore.getHashes(userId) : Promise.resolve([]),
   ]);
 
-  return {
+  const result: GdprExportResult = {
     version: 1,
     exportedAt: new Date().toISOString(),
     user: {
@@ -96,6 +107,16 @@ export async function exportUserData(
     totpEnabled: Boolean(totpData.secret && totpData.enabled),
     backupCodesRemainingCount: backupHashes.length,
   };
+
+  if (auditLogStore) {
+    await createAuditEvent(auditLogStore, {
+      eventType: AUDIT_EVENT_TYPES.GDPR_DATA_EXPORT,
+      targetType: "user",
+      targetId: userId,
+      ...auditContext,
+    });
+  }
+  return result;
 }
 
 export interface GdprErasureUserStore {
@@ -134,6 +155,8 @@ export interface GdprErasureOptions {
   deleteAllPhoneVerificationForUser?: (userId: string) => void | Promise<void>;
   suspiciousActivityStore?: GdprErasureSuspiciousActivityStore;
   clearSuspiciousActivityState?: (userId: string) => void;
+  auditLogStore?: AuditLogStore;
+  auditContext?: GdprAuditContext;
 }
 
 export interface GdprErasureResult {
@@ -155,6 +178,8 @@ export async function eraseUserData(
     deleteAllPhoneVerificationForUser,
     suspiciousActivityStore,
     clearSuspiciousActivityState,
+    auditLogStore,
+    auditContext,
   } = options;
 
   const user = await userStore.findById(userId);
@@ -198,5 +223,15 @@ export async function eraseUserData(
   }
 
   await userStore.hardDelete(userId);
+
+  if (auditLogStore) {
+    await createAuditEvent(auditLogStore, {
+      eventType: AUDIT_EVENT_TYPES.GDPR_DATA_ERASURE,
+      targetType: "user",
+      targetId: userId,
+      metadata: { invalidatedSessionIds },
+      ...auditContext,
+    });
+  }
   return { erased: true, invalidatedSessionIds };
 }

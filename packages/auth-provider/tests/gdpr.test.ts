@@ -10,6 +10,7 @@ import type { StoredPasskey } from "../src/passkeys.js";
 import { createMemoryBackupCodeStore } from "../src/backup-codes.js";
 import { createMemoryTotpStore } from "../src/totp-authenticator.js";
 import { createMemoryPasskeyStore } from "../src/passkeys.js";
+import { AUDIT_EVENT_TYPES, type AuditLogStore, type AuditEventRecord } from "../src/audit-log.js";
 
 const testUser: ProvisionedUser = {
   id: "user-1",
@@ -128,6 +129,40 @@ describe("exportUserData", () => {
     expect(JSON.stringify(result)).not.toContain("SECRET");
     expect(JSON.stringify(result)).not.toContain("hash1");
   });
+
+  it("logs gdpr.data_export audit event when auditLogStore provided", async () => {
+    const users = new Map([["user-1", testUser]]);
+    const userStore = {
+      findById: vi.fn((id: string) => Promise.resolve(users.get(id) ?? null)),
+    };
+    const events: AuditEventRecord[] = [];
+    const auditLogStore: AuditLogStore = {
+      append: vi.fn(async (e) => events.push({ ...e })),
+    };
+    const result = await exportUserData("user-1", {
+      userStore,
+      auditLogStore,
+      auditContext: { actorId: "user-1", actorType: "user", ipAddress: "1.2.3.4" },
+    });
+    expect(result).not.toBeNull();
+    expect(events).toHaveLength(1);
+    expect(events[0].eventType).toBe(AUDIT_EVENT_TYPES.GDPR_DATA_EXPORT);
+    expect(events[0].targetType).toBe("user");
+    expect(events[0].targetId).toBe("user-1");
+    expect(events[0].actorId).toBe("user-1");
+    expect(events[0].ipAddress).toBe("1.2.3.4");
+  });
+
+  it("does not log audit event when user not found for export", async () => {
+    const userStore = { findById: vi.fn().mockResolvedValue(null) };
+    const events: AuditEventRecord[] = [];
+    const auditLogStore: AuditLogStore = {
+      append: vi.fn(async (e) => events.push({ ...e })),
+    };
+    const result = await exportUserData("missing", { userStore, auditLogStore });
+    expect(result).toBeNull();
+    expect(events).toHaveLength(0);
+  });
 });
 
 describe("eraseUserData", () => {
@@ -203,5 +238,58 @@ describe("eraseUserData", () => {
     expect(suspiciousActivityStore.delete).toHaveBeenCalledWith("user-1");
     expect(clearSuspiciousActivityState).toHaveBeenCalledWith("user-1");
     expect(users.has("user-1")).toBe(false);
+  });
+
+  it("logs gdpr.data_erasure audit event when auditLogStore provided", async () => {
+    const users = new Map([["user-1", { ...testUser }]]);
+    const userStore = createMockUserStore(users);
+    const events: AuditEventRecord[] = [];
+    const auditLogStore: AuditLogStore = {
+      append: vi.fn(async (e) => events.push({ ...e })),
+    };
+    const result = await eraseUserData("user-1", {
+      userStore: { findById: userStore.findById, hardDelete: userStore.hardDelete },
+      auditLogStore,
+      auditContext: { actorId: "admin-1", actorType: "admin" },
+    });
+    expect(result).toEqual({ erased: true, invalidatedSessionIds: [] });
+    expect(events).toHaveLength(1);
+    expect(events[0].eventType).toBe(AUDIT_EVENT_TYPES.GDPR_DATA_ERASURE);
+    expect(events[0].targetType).toBe("user");
+    expect(events[0].targetId).toBe("user-1");
+    expect(events[0].actorId).toBe("admin-1");
+    expect(events[0].actorType).toBe("admin");
+  });
+
+  it("includes invalidatedSessionIds in erasure audit metadata", async () => {
+    const users = new Map([["user-1", { ...testUser }]]);
+    const userStore = createMockUserStore(users);
+    const sessionStore = {
+      invalidateAllSessionsForUser: vi.fn(() => ["s1", "s2"]),
+    };
+    const events: AuditEventRecord[] = [];
+    const auditLogStore: AuditLogStore = {
+      append: vi.fn(async (e) => events.push({ ...e })),
+    };
+    await eraseUserData("user-1", {
+      userStore: { findById: userStore.findById, hardDelete: userStore.hardDelete },
+      sessionStore,
+      auditLogStore,
+    });
+    expect(events[0].metadata).toEqual({ invalidatedSessionIds: ["s1", "s2"] });
+  });
+
+  it("does not log audit event when user not found for erasure", async () => {
+    const userStore = {
+      findById: vi.fn().mockResolvedValue(null),
+      hardDelete: vi.fn(),
+    };
+    const events: AuditEventRecord[] = [];
+    const auditLogStore: AuditLogStore = {
+      append: vi.fn(async (e) => events.push({ ...e })),
+    };
+    const result = await eraseUserData("missing", { userStore, auditLogStore });
+    expect(result).toEqual({ erased: false, invalidatedSessionIds: [] });
+    expect(events).toHaveLength(0);
   });
 });
