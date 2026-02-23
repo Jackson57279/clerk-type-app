@@ -140,6 +140,20 @@ describe("exchangeAuthorizationCode", () => {
     expect("error" in second).toBe(true);
     if ("error" in second) expect(second.error).toBe("invalid_grant");
   });
+
+  it("invalidates authorization code after use by default (single-use)", () => {
+    const { code, verifier } = makeCodeAndVerifier();
+    const first = exchangeAuthorizationCode(code, verifier, REDIRECT_URI, CLIENT_ID, {
+      secret: SECRET,
+    });
+    expect("error" in first).toBe(false);
+    expect("access_token" in first).toBe(true);
+    const second = exchangeAuthorizationCode(code, verifier, REDIRECT_URI, CLIENT_ID, {
+      secret: SECRET,
+    });
+    expect("error" in second).toBe(true);
+    if ("error" in second) expect(second.error).toBe("invalid_grant");
+  });
 });
 
 describe("handleAuthorizationCodeFlow", () => {
