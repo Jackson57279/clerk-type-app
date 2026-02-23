@@ -204,6 +204,45 @@ describe("createSecretProviderFromEnv", () => {
       createSecretProviderFromEnv({ SECRET_PROVIDER: "unknown" })
     ).toThrow("Unknown SECRET_PROVIDER");
   });
+
+  it("returns aws-kms provider when SECRET_PROVIDER=aws-kms and region set", async () => {
+    mockKmsSend.mockReset();
+    mockKmsSend.mockResolvedValueOnce({
+      Plaintext: new Uint8Array(Buffer.from(HEX_KEY, "utf8")),
+    });
+    const provider = createSecretProviderFromEnv({
+      SECRET_PROVIDER: "aws-kms",
+      AWS_REGION: "us-west-2",
+      FIELD_ENCRYPTION_KEY_KMS_CIPHERTEXT: "YmFzZTY0Y2lwaGVydGV4dA==",
+    });
+    const value = await provider.getSecret("FIELD_ENCRYPTION_KEY");
+    expect(value).toBe(HEX_KEY);
+    expect(mockKmsSend).toHaveBeenCalledTimes(1);
+  });
+
+  it("returns vault provider when SECRET_PROVIDER=vault and VAULT_ADDR/VAULT_TOKEN set", async () => {
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = vi.fn();
+    vi.mocked(fetch).mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        data: { data: { value: HEX_KEY } },
+      }),
+    } as Response);
+
+    const provider = createSecretProviderFromEnv({
+      SECRET_PROVIDER: "vault",
+      VAULT_ADDR: "https://vault.example.com",
+      VAULT_TOKEN: "s3cr3t",
+    });
+    const value = await provider.getSecret("FIELD_ENCRYPTION_KEY");
+    expect(value).toBe(HEX_KEY);
+    expect(fetch).toHaveBeenCalledWith(
+      expect.stringContaining("/v1/secret/data/auth-provider/field-encryption-key"),
+      expect.any(Object)
+    );
+    globalThis.fetch = originalFetch;
+  });
 });
 
 describe("getFieldEncryptionKeyFromProvider", () => {
