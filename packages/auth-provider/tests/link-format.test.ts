@@ -12,6 +12,10 @@ import {
   verifyPasswordResetToken,
   DEFAULT_PASSWORD_RESET_TTL_MS,
 } from "../src/password-reset.js";
+import {
+  createEmailVerificationToken,
+  verifyEmailVerificationToken,
+} from "../src/email-verification.js";
 
 const SECRET = "link-format-secret";
 
@@ -109,6 +113,24 @@ describe("JWT-based link with short expiry (confirmation)", () => {
     expect(payload).not.toBeNull();
     expect(payload?.email).toBe("u@example.com");
     expect(payload?.operation).toBe("change_email");
+    const ttlMs = expiresAt - Date.now();
+    expect(ttlMs).toBeLessThanOrEqual(DEFAULT_LINK_TTL_MS + 2000);
+    expect(ttlMs).toBeGreaterThanOrEqual(DEFAULT_LINK_TTL_MS - 2000);
+  });
+});
+
+describe("JWT-based link with short expiry (email verification)", () => {
+  it("buildJwtLink produces URL whose token is valid JWT with short expiry", () => {
+    const { token, expiresAt } = createEmailVerificationToken(
+      { userId: "u1", email: "u@example.com" },
+      SECRET
+    );
+    const link = buildJwtLink("https://app.example.com/verify-email", token);
+    const extracted = parseJwtFromLink(link);
+    expect(extracted).toBe(token);
+    const payload = verifyEmailVerificationToken(extracted!, SECRET);
+    expect(payload).not.toBeNull();
+    expect(payload?.email).toBe("u@example.com");
     const ttlMs = expiresAt - Date.now();
     expect(ttlMs).toBeLessThanOrEqual(DEFAULT_LINK_TTL_MS + 2000);
     expect(ttlMs).toBeGreaterThanOrEqual(DEFAULT_LINK_TTL_MS - 2000);
