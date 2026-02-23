@@ -145,6 +145,47 @@ describe("Password policy", () => {
   });
 });
 
+describe("Password Policy (PRD 3.1.1)", () => {
+  it("enforces minimum 8 characters by default", () => {
+    expect(validatePassword("short1").valid).toBe(false);
+    expect(validatePassword("eightch1").valid).toBe(true);
+  });
+
+  it("supports configurable complexity via env (uppercase, lowercase, digit, special)", () => {
+    const strict = getPasswordPolicyFromEnv({
+      PASSWORD_REQUIRE_UPPERCASE: "true",
+      PASSWORD_REQUIRE_SPECIAL: "true",
+    });
+    expect(validatePassword("lowercase1", strict).valid).toBe(false);
+    expect(validatePassword("Lowercase1!", strict).valid).toBe(true);
+  });
+
+  it("supports breach detection via HaveIBeenPwned when checkBreach is enabled", async () => {
+    const originalFetch = globalThis.fetch;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((url: string) =>
+        url.includes("5BAA6")
+          ? Promise.resolve({
+              ok: true,
+              text: () =>
+                Promise.resolve("1E4C9B93F3F0682250B6CF8331B7EE68FD8:3730471\r\n"),
+            } as Response)
+          : Promise.resolve({ ok: false } as Response)
+      )
+    );
+    try {
+      const r = await validatePasswordWithPolicy("password", { ...defaultPasswordPolicy, requireDigit: false }, {
+        checkBreach: true,
+      });
+      expect(r.valid).toBe(false);
+      expect(r.errors.some((e) => e.includes("breach"))).toBe(true);
+    } finally {
+      vi.stubGlobal("fetch", originalFetch);
+    }
+  });
+});
+
 describe("getPasswordPolicyFromEnv", () => {
   it("returns default policy when env is empty", () => {
     const policy = getPasswordPolicyFromEnv({});
