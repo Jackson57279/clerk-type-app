@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   getNewMemberStatus,
+  createNewMembership,
   canApproveOrRejectMembers,
   approveMembership,
   rejectMembership,
@@ -9,6 +10,34 @@ import {
   filterPendingMembers,
   type OrganizationMembership,
 } from "../src/member-approval.js";
+
+describe("createNewMembership", () => {
+  it("creates membership with pending status when org requires approval", () => {
+    const m = createNewMembership("u1", "o1", "member", {
+      memberApprovalRequired: true,
+    });
+    expect(m).toEqual({
+      userId: "u1",
+      organizationId: "o1",
+      role: "member",
+      status: "pending",
+    });
+    expect(isPendingMember(m)).toBe(true);
+  });
+
+  it("creates membership with active status when org does not require approval", () => {
+    const m = createNewMembership("u2", "o2", "editor", {
+      memberApprovalRequired: false,
+    });
+    expect(m.status).toBe("active");
+    expect(isActiveMember(m)).toBe(true);
+  });
+
+  it("creates active membership when memberApprovalRequired is undefined", () => {
+    const m = createNewMembership("u3", "o3", "guest", {});
+    expect(m.status).toBe("active");
+  });
+});
 
 describe("getNewMemberStatus", () => {
   it("returns pending when memberApprovalRequired is true", () => {

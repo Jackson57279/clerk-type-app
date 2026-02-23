@@ -21,6 +21,16 @@ export function getNewMemberStatus(
   return settings.memberApprovalRequired === true ? "pending" : "active";
 }
 
+export function createNewMembership(
+  userId: string,
+  organizationId: string,
+  role: MemberRole,
+  settings: OrganizationApprovalSettings
+): OrganizationMembership {
+  const status = getNewMemberStatus(settings);
+  return { userId, organizationId, role, status };
+}
+
 export function canApproveOrRejectMembers(role: MemberRole): boolean {
   return APPROVER_ROLES.includes(role);
 }
