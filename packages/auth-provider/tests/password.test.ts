@@ -4,6 +4,7 @@ import {
   verifyPassword,
   validatePassword,
   validatePasswordWithPolicy,
+  validatePasswordWithEnv,
   isPasswordPwned,
   getPasswordPolicyFromEnv,
   getPasswordPolicyRequirements,
@@ -57,6 +58,12 @@ describe("Argon2id password hashing", () => {
 });
 
 describe("Password policy", () => {
+  it("rejects empty password", () => {
+    const r = validatePassword("");
+    expect(r.valid).toBe(false);
+    expect(r.errors.some((e) => e.includes("at least"))).toBe(true);
+  });
+
   it("accepts password meeting default policy (min 8, lowercase, digit)", () => {
     const r = validatePassword("secret12");
     expect(r.valid).toBe(true);
@@ -194,6 +201,52 @@ describe("getPasswordPolicyRequirements", () => {
     const reqs = getPasswordPolicyRequirements(policy);
     expect(reqs).toContain("Password must be at least 12 characters");
     expect(reqs).toContain("Password must be at most 64 characters");
+  });
+});
+
+describe("validatePasswordWithEnv", () => {
+  it("uses policy from env and rejects short password when PASSWORD_MIN_LENGTH is set", async () => {
+    const r = await validatePasswordWithEnv("short1a", { PASSWORD_MIN_LENGTH: "12" });
+    expect(r.valid).toBe(false);
+    expect(r.errors.some((e) => e.includes("at least 12"))).toBe(true);
+  });
+
+  it("accepts valid password when policy from env is satisfied", async () => {
+    const r = await validatePasswordWithEnv("validpass12", {});
+    expect(r.valid).toBe(true);
+    expect(r.errors).toHaveLength(0);
+  });
+
+  it("does not check breach when PASSWORD_CHECK_BREACH is unset", async () => {
+    const r = await validatePasswordWithEnv("validpass1", {});
+    expect(r.valid).toBe(true);
+  });
+
+  it("checks breach when PASSWORD_CHECK_BREACH is true", async () => {
+    const originalFetch = globalThis.fetch;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((url: string) => {
+        if (url.includes("5BAA6")) {
+          return Promise.resolve({
+            ok: true,
+            text: () =>
+              Promise.resolve(
+                "1E4C9B93F3F0682250B6CF8331B7EE68FD8:3730471\r\nOTHERSUFFIX:1"
+              ),
+          } as Response);
+        }
+        return Promise.resolve({ ok: false } as Response);
+      })
+    );
+    try {
+      const env = { PASSWORD_REQUIRE_DIGIT: "0", PASSWORD_CHECK_BREACH: "true" };
+      const r = await validatePasswordWithEnv("password", env);
+      expect(r.valid).toBe(false);
+      expect(r.errors.some((e) => e.includes("breach"))).toBe(true);
+    } finally {
+      vi.stubGlobal("fetch", originalFetch);
+    }
   });
 });
 

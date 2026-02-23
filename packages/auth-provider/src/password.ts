@@ -142,6 +142,15 @@ export async function validatePasswordWithPolicy(
   return result;
 }
 
+export async function validatePasswordWithEnv(
+  plainPassword: string,
+  env: NodeJS.ProcessEnv = process.env
+): Promise<PasswordValidationResult> {
+  const policy = getPasswordPolicyFromEnv(env);
+  const checkBreach = parseBool(env.PASSWORD_CHECK_BREACH);
+  return validatePasswordWithPolicy(plainPassword, policy, { checkBreach, env });
+}
+
 const DEFAULT_HIBP_RANGE_URL = "https://api.pwnedpasswords.com/range/";
 
 function getHibpRangeUrl(env: NodeJS.ProcessEnv = process.env): string {
