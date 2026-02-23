@@ -148,7 +148,25 @@ export interface DeviceTokenResponse {
   token_type: "Bearer";
   expires_in: number;
   scope?: string;
+  refresh_token?: string;
 }
+
+export const DEVICE_CODE_GRANT_TYPE = "urn:ietf:params:oauth:grant-type:device_code";
+
+export interface DeviceCodeFlowParams {
+  grant_type: string;
+  device_code?: string;
+  client_id?: string;
+}
+
+export type DeviceCodeFlowErrorRequest =
+  | { error: "unsupported_grant_type"; error_description: string }
+  | { error: "invalid_request"; error_description: string };
+
+export type DeviceCodeFlowResponse =
+  | DeviceTokenResponse
+  | DeviceExchangeError
+  | DeviceCodeFlowErrorRequest;
 
 export interface ExchangeDeviceCodeOptions {
   deviceCode: string;
@@ -262,6 +280,42 @@ export function exchangeDeviceCode(
     return result;
   }
   return { error: "invalid_grant", error_description: "Invalid device state" };
+}
+
+export type HandleDeviceCodeFlowOptions = Omit<
+  ExchangeDeviceCodeOptions,
+  "deviceCode" | "clientId"
+>;
+
+export function handleDeviceCodeFlow(
+  params: DeviceCodeFlowParams,
+  options: HandleDeviceCodeFlowOptions
+): DeviceCodeFlowResponse {
+  if (params.grant_type !== DEVICE_CODE_GRANT_TYPE) {
+    return {
+      error: "unsupported_grant_type",
+      error_description: `grant_type must be ${DEVICE_CODE_GRANT_TYPE}`,
+    };
+  }
+  const deviceCode = params.device_code?.trim();
+  if (!deviceCode) {
+    return {
+      error: "invalid_request",
+      error_description: "device_code is required",
+    };
+  }
+  const clientId = params.client_id?.trim();
+  if (!clientId) {
+    return {
+      error: "invalid_request",
+      error_description: "client_id is required",
+    };
+  }
+  return exchangeDeviceCode({
+    ...options,
+    deviceCode,
+    clientId,
+  });
 }
 
 export interface DeviceAccessTokenPayload {

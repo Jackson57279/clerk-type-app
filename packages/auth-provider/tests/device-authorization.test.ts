@@ -6,6 +6,8 @@ import {
   exchangeDeviceCode,
   verifyDeviceAccessToken,
   createMemoryDeviceCodeStore,
+  handleDeviceCodeFlow,
+  DEVICE_CODE_GRANT_TYPE,
 } from "../src/device-authorization.js";
 
 const SECRET = "device-oauth-secret";
@@ -400,5 +402,127 @@ describe("createMemoryDeviceCodeStore", () => {
     const entry = store.findByUserCode(lower);
     expect(entry).not.toBeNull();
     expect(entry?.userCode).toBe(created.user_code);
+  });
+});
+
+describe("handleDeviceCodeFlow", () => {
+  it("returns access_token for valid grant_type, device_code, and client_id when authorized", () => {
+    const store = createMemoryDeviceCodeStore();
+    const created = createDeviceAuthorization({
+      clientId: "iot-client",
+      verificationUri: VERIFICATION_URI,
+      store,
+    });
+    approveDeviceByUserCode(created.user_code, "user-123", store);
+    const result = handleDeviceCodeFlow(
+      {
+        grant_type: DEVICE_CODE_GRANT_TYPE,
+        device_code: created.device_code,
+        client_id: "iot-client",
+      },
+      { store, secret: SECRET }
+    );
+    expect("access_token" in result).toBe(true);
+    if ("access_token" in result) {
+      expect(result.access_token).toBeDefined();
+      expect(result.token_type).toBe("Bearer");
+      expect(result.expires_in).toBe(3600);
+    }
+  });
+
+  it("returns unsupported_grant_type when grant_type is not device_code", () => {
+    const store = createMemoryDeviceCodeStore();
+    const created = createDeviceAuthorization({
+      clientId: "c",
+      verificationUri: VERIFICATION_URI,
+      store,
+    });
+    const result = handleDeviceCodeFlow(
+      {
+        grant_type: "authorization_code",
+        device_code: created.device_code,
+        client_id: "c",
+      },
+      { store, secret: SECRET }
+    );
+    expect("error" in result).toBe(true);
+    if ("error" in result) {
+      expect(result.error).toBe("unsupported_grant_type");
+      expect(result.error_description).toContain(DEVICE_CODE_GRANT_TYPE);
+    }
+  });
+
+  it("returns invalid_request when device_code is missing", () => {
+    const store = createMemoryDeviceCodeStore();
+    const result = handleDeviceCodeFlow(
+      {
+        grant_type: DEVICE_CODE_GRANT_TYPE,
+        client_id: "c",
+      },
+      { store, secret: SECRET }
+    );
+    expect("error" in result).toBe(true);
+    if ("error" in result) {
+      expect(result.error).toBe("invalid_request");
+      expect(result.error_description).toContain("device_code");
+    }
+  });
+
+  it("returns invalid_request when device_code is blank", () => {
+    const store = createMemoryDeviceCodeStore();
+    const result = handleDeviceCodeFlow(
+      {
+        grant_type: DEVICE_CODE_GRANT_TYPE,
+        device_code: "   ",
+        client_id: "c",
+      },
+      { store, secret: SECRET }
+    );
+    expect("error" in result).toBe(true);
+    if ("error" in result) {
+      expect(result.error).toBe("invalid_request");
+    }
+  });
+
+  it("returns invalid_request when client_id is missing", () => {
+    const store = createMemoryDeviceCodeStore();
+    const created = createDeviceAuthorization({
+      clientId: "c",
+      verificationUri: VERIFICATION_URI,
+      store,
+    });
+    const result = handleDeviceCodeFlow(
+      {
+        grant_type: DEVICE_CODE_GRANT_TYPE,
+        device_code: created.device_code,
+      },
+      { store, secret: SECRET }
+    );
+    expect("error" in result).toBe(true);
+    if ("error" in result) {
+      expect(result.error).toBe("invalid_request");
+      expect(result.error_description).toContain("client_id");
+    }
+  });
+
+  it("returns authorization_pending when device not yet authorized", () => {
+    const store = createMemoryDeviceCodeStore();
+    const created = createDeviceAuthorization({
+      clientId: "c",
+      verificationUri: VERIFICATION_URI,
+      store,
+    });
+    const result = handleDeviceCodeFlow(
+      {
+        grant_type: DEVICE_CODE_GRANT_TYPE,
+        device_code: created.device_code,
+        client_id: "c",
+      },
+      { store, secret: SECRET }
+    );
+    expect("error" in result).toBe(true);
+    if ("error" in result) {
+      expect(result.error).toBe("authorization_pending");
+    }
   });
 });
