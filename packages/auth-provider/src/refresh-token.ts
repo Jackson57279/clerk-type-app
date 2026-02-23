@@ -179,6 +179,15 @@ export function createMemoryUsedRefreshTokenStore(): UsedRefreshTokenStore {
   };
 }
 
+const defaultUsedRefreshTokenStore = createMemoryUsedRefreshTokenStore();
+
+export function createNoOpUsedRefreshTokenStore(): UsedRefreshTokenStore {
+  return {
+    isUsed: () => false,
+    markUsed: () => {},
+  };
+}
+
 export interface RefreshTokenSuccessResponse {
   access_token: string;
   token_type: "Bearer";
@@ -309,8 +318,8 @@ export function exchangeRefreshToken(
   if (!payload) {
     return { error: "invalid_grant", error_description: "Invalid or expired refresh_token" };
   }
-  const store = options.usedTokenStore;
-  if (store?.isUsed(payload.jti)) {
+  const store = options.usedTokenStore ?? defaultUsedRefreshTokenStore;
+  if (store.isUsed(payload.jti)) {
     return { error: "invalid_grant", error_description: "Refresh token was already used" };
   }
   const { secret, keyId } = getSigningSecretAndKeyId(options);
@@ -333,9 +342,9 @@ export function exchangeRefreshToken(
   };
   if (payload.scope) result.scope = payload.scope;
 
-  if (store) store.markUsed(payload.jti, payload.exp * 1000);
+  store.markUsed(payload.jti, payload.exp * 1000);
 
-  if (options.rotateRefreshToken && store) {
+  if (options.rotateRefreshToken) {
     const newRefresh = createRefreshToken(
       { sub: payload.sub, clientId: payload.client_id, scope: payload.scope },
       secret,

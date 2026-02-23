@@ -5,6 +5,7 @@ import {
   verifyRefreshTokenWithKeySet,
   exchangeRefreshToken,
   createMemoryUsedRefreshTokenStore,
+  createNoOpUsedRefreshTokenStore,
   handleRefreshTokenFlow,
 } from "../src/refresh-token.js";
 import {
@@ -235,17 +236,33 @@ describe("exchangeRefreshToken", () => {
     if ("error" in result3) expect(result3.error).toBe("invalid_grant");
   });
 
-  it("without rotateRefreshToken, same refresh_token can be used multiple times", () => {
+  it("without rotateRefreshToken, same refresh_token can be used multiple times when no-op store provided", () => {
     const { refresh_token } = createRefreshToken(
       { sub: "u", clientId: "c" },
       SECRET
     );
-    const r1 = exchangeRefreshToken(refresh_token, { secret: SECRET });
-    const r2 = exchangeRefreshToken(refresh_token, { secret: SECRET });
+    const noop = createNoOpUsedRefreshTokenStore();
+    const r1 = exchangeRefreshToken(refresh_token, { secret: SECRET, usedTokenStore: noop });
+    const r2 = exchangeRefreshToken(refresh_token, { secret: SECRET, usedTokenStore: noop });
     expect("access_token" in r1).toBe(true);
     expect("access_token" in r2).toBe(true);
     if ("access_token" in r1 && "access_token" in r2) {
       expect(r1.access_token).not.toBe(r2.access_token);
+    }
+  });
+
+  it("single-use by default: token invalidated after first use when usedTokenStore omitted", () => {
+    const { refresh_token } = createRefreshToken(
+      { sub: "u", clientId: "c" },
+      SECRET
+    );
+    const first = exchangeRefreshToken(refresh_token, { secret: SECRET });
+    expect("access_token" in first).toBe(true);
+    const second = exchangeRefreshToken(refresh_token, { secret: SECRET });
+    expect("error" in second).toBe(true);
+    if ("error" in second) {
+      expect(second.error).toBe("invalid_grant");
+      expect(second.error_description).toBe("Refresh token was already used");
     }
   });
 
