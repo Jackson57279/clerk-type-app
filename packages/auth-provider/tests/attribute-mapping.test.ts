@@ -2,7 +2,10 @@ import { describe, it, expect } from "vitest";
 import {
   applyAttributeMapping,
   DEFAULT_ATTRIBUTE_MAPPING,
+  mapScimUserToProvisionData,
+  DEFAULT_SCIM_USER_ATTRIBUTE_MAPPING,
   type AttributeMappingConfig,
+  type ScimUserAttributeMappingConfig,
 } from "../src/attribute-mapping.js";
 
 const EMAIL_ATTR = "http://schemas.xmlsoap.org/ws/2005/05/identity/claims/emailaddress";
@@ -159,5 +162,96 @@ describe("applyAttributeMapping", () => {
     expect(claims.lastName).toBe("Surname");
     expect(claims.groups).toEqual(["g1", "g2"]);
     expect(claims.roles).toEqual(["r1"]);
+  });
+});
+
+describe("mapScimUserToProvisionData", () => {
+  it("maps standard SCIM user to provision data using default config", () => {
+    const scimUser = {
+      userName: "jane@example.com",
+      emails: [{ value: "jane@example.com", primary: true }],
+      name: { formatted: "Jane Doe", givenName: "Jane", familyName: "Doe" },
+      externalId: "ext-123",
+      active: true,
+    };
+    const result = mapScimUserToProvisionData(scimUser);
+    expect(result.email).toBe("jane@example.com");
+    expect(result.name).toBe("Jane Doe");
+    expect(result.firstName).toBe("Jane");
+    expect(result.lastName).toBe("Doe");
+    expect(result.externalId).toBe("ext-123");
+    expect(result.active).toBe(true);
+  });
+
+  it("uses primary email when emails array has multiple", () => {
+    const scimUser = {
+      emails: [
+        { value: "secondary@example.com", primary: false },
+        { value: "primary@example.com", primary: true },
+      ],
+    };
+    const result = mapScimUserToProvisionData(scimUser);
+    expect(result.email).toBe("primary@example.com");
+  });
+
+  it("falls back to userName when emails missing", () => {
+    const scimUser = { userName: "login@example.com" };
+    const result = mapScimUserToProvisionData(scimUser);
+    expect(result.email).toBe("login@example.com");
+  });
+
+  it("uses custom emailPath to take email from userName", () => {
+    const scimUser = {
+      userName: "user@corp.com",
+      emails: [{ value: "other@corp.com" }],
+    };
+    const config: ScimUserAttributeMappingConfig = { emailPath: "userName" };
+    const result = mapScimUserToProvisionData(scimUser, config);
+    expect(result.email).toBe("user@corp.com");
+  });
+
+  it("uses custom paths for name fields", () => {
+    const scimUser = {
+      name: { formatted: "Ignore", givenName: "First", familyName: "Last" },
+    };
+    const config: ScimUserAttributeMappingConfig = {
+      namePath: "name.formatted",
+      givenNamePath: "name.givenName",
+      familyNamePath: "name.familyName",
+    };
+    const result = mapScimUserToProvisionData(scimUser, config);
+    expect(result.name).toBe("Ignore");
+    expect(result.firstName).toBe("First");
+    expect(result.lastName).toBe("Last");
+  });
+
+  it("derives name from givenName and familyName when namePath empty", () => {
+    const scimUser = {
+      emails: [{ value: "a@b.com" }],
+      name: { givenName: "Alice", familyName: "Smith" },
+    };
+    const result = mapScimUserToProvisionData(scimUser);
+    expect(result.name).toBe("Alice Smith");
+  });
+
+  it("defaults active to true when missing", () => {
+    const scimUser = { userName: "u@example.com" };
+    const result = mapScimUserToProvisionData(scimUser);
+    expect(result.active).toBe(true);
+  });
+
+  it("respects active false from SCIM user", () => {
+    const scimUser = { userName: "u@example.com", active: false };
+    const result = mapScimUserToProvisionData(scimUser);
+    expect(result.active).toBe(false);
+  });
+
+  it("DEFAULT_SCIM_USER_ATTRIBUTE_MAPPING has expected paths", () => {
+    expect(DEFAULT_SCIM_USER_ATTRIBUTE_MAPPING.emailPath).toBe("emails");
+    expect(DEFAULT_SCIM_USER_ATTRIBUTE_MAPPING.namePath).toBe("name.formatted");
+    expect(DEFAULT_SCIM_USER_ATTRIBUTE_MAPPING.givenNamePath).toBe("name.givenName");
+    expect(DEFAULT_SCIM_USER_ATTRIBUTE_MAPPING.familyNamePath).toBe("name.familyName");
+    expect(DEFAULT_SCIM_USER_ATTRIBUTE_MAPPING.externalIdPath).toBe("externalId");
+    expect(DEFAULT_SCIM_USER_ATTRIBUTE_MAPPING.activePath).toBe("active");
   });
 });

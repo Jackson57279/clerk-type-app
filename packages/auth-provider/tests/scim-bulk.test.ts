@@ -218,6 +218,39 @@ describe("processBulkRequest", () => {
     expect(userB?.externalId).toBe("ext-b");
   });
 
+  it("uses scimUserAttributeMapping when provided for user create and update", async () => {
+    const userStore = memoryUserStore();
+    const groupStore = memoryGroupStore();
+    const response = await processBulkRequest({
+      request: {
+        schemas: [BULK_REQUEST_SCHEMA],
+        Operations: [
+          {
+            method: "POST",
+            path: "Users",
+            bulkId: "u1",
+            data: {
+              userName: "mapped-login@corp.com",
+              emails: [{ value: "other@corp.com" }],
+              name: { formatted: "Mapped User", givenName: "Mapped", familyName: "User" },
+              active: true,
+            },
+          },
+        ],
+      },
+      userStore,
+      groupStore,
+      organizationId: orgId,
+      scimUserAttributeMapping: { emailPath: "userName" },
+    });
+    expect(response.Operations[0]!.status).toBe(201);
+    const user = await userStore.findByEmail("mapped-login@corp.com");
+    expect(user).not.toBeNull();
+    expect(user?.name).toBe("Mapped User");
+    expect(user?.firstName).toBe("Mapped");
+    expect(user?.lastName).toBe("User");
+  });
+
   it("bulk creates group via POST /Groups", async () => {
     const userStore = memoryUserStore([
       { id: "user_1", email: "m@example.com", externalId: "ext-m", name: undefined, firstName: undefined, lastName: undefined, active: true },

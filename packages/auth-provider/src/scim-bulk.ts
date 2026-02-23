@@ -1,5 +1,6 @@
 import type { UserProvisioningStore } from "./user-provisioning.js";
 import { provisionUser, deprovisionUser } from "./user-provisioning.js";
+import { mapScimUserToProvisionData, type ScimUserAttributeMappingConfig } from "./attribute-mapping.js";
 import type { GroupSyncStore } from "./group-sync.js";
 import { syncGroup, syncGroups } from "./group-sync.js";
 import type { SyncGroupData } from "./group-sync.js";
@@ -78,6 +79,7 @@ export interface ProcessBulkParams {
   maxOperations?: number;
   webhookStore?: WebhookSubscriptionStore;
   webhookDeliveryOptions?: DeliverWebhookOptions;
+  scimUserAttributeMapping?: ScimUserAttributeMappingConfig;
 }
 
 export interface ProcessGroupSyncParams {
@@ -199,6 +201,10 @@ function userDataToProvision(d: ScimBulkUserData): { email: string; externalId?:
   };
 }
 
+function toProvisionData(data: ScimBulkUserData, mapping?: ScimUserAttributeMappingConfig) {
+  return mapping ? mapScimUserToProvisionData(data, mapping) : userDataToProvision(data);
+}
+
 function resolveBulkId(
   resource: "Users" | "Groups",
   id: string,
@@ -210,7 +216,7 @@ function resolveBulkId(
 }
 
 export async function processBulkRequest(params: ProcessBulkParams): Promise<ScimBulkResponse> {
-  const { request, userStore, groupStore, organizationId, baseUrl = "", maxOperations, webhookStore, webhookDeliveryOptions } = params;
+  const { request, userStore, groupStore, organizationId, baseUrl = "", maxOperations, webhookStore, webhookDeliveryOptions, scimUserAttributeMapping } = params;
   if (maxOperations != null && request.Operations.length > maxOperations) {
     return {
       schemas: [BULK_RESPONSE_SCHEMA],
@@ -267,7 +273,7 @@ export async function processBulkRequest(params: ProcessBulkParams): Promise<Sci
             errorCount++;
             continue;
           }
-          const provisionData = userDataToProvision(data);
+          const provisionData = toProvisionData(data, scimUserAttributeMapping);
           if (!provisionData.email) {
             results.push({ bulkId: op.bulkId, method: op.method, path: op.path, status: 400, response: { detail: "User email or userName required" } });
             errorCount++;
@@ -312,7 +318,7 @@ export async function processBulkRequest(params: ProcessBulkParams): Promise<Sci
             errorCount++;
             continue;
           }
-          const provisionData = userDataToProvision(data);
+          const provisionData = toProvisionData(data, scimUserAttributeMapping);
           const updated = await userStore.update(user.id, {
             email: provisionData.email || user.email,
             externalId: provisionData.externalId ?? user.externalId,
