@@ -7,6 +7,15 @@ export interface AttributeMappingConfig {
   rolesAttribute?: string;
 }
 
+export const DEFAULT_ATTRIBUTE_MAPPING: AttributeMappingConfig = {
+  emailAttribute: "email",
+  nameAttribute: "name",
+  givenNameAttribute: "givenName",
+  surnameAttribute: "surname",
+  groupsAttribute: "groups",
+  rolesAttribute: "roles",
+};
+
 export interface MappedClaims {
   email: string | undefined;
   name: string | undefined;

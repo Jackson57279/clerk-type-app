@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   applyAttributeMapping,
+  DEFAULT_ATTRIBUTE_MAPPING,
   type AttributeMappingConfig,
 } from "../src/attribute-mapping.js";
 
@@ -132,5 +133,23 @@ describe("applyAttributeMapping", () => {
     expect(claims.lastName).toBeUndefined();
     expect(claims.groups).toEqual([]);
     expect(claims.roles).toEqual([]);
+  });
+
+  it("DEFAULT_ATTRIBUTE_MAPPING maps standard attribute names", () => {
+    const attrs: Record<string, string[]> = {
+      email: ["u@example.com"],
+      name: ["Full Name"],
+      givenName: ["Given"],
+      surname: ["Surname"],
+      groups: ["g1", "g2"],
+      roles: ["r1"],
+    };
+    const claims = applyAttributeMapping(attrs, DEFAULT_ATTRIBUTE_MAPPING);
+    expect(claims.email).toBe("u@example.com");
+    expect(claims.name).toBe("Full Name");
+    expect(claims.firstName).toBe("Given");
+    expect(claims.lastName).toBe("Surname");
+    expect(claims.groups).toEqual(["g1", "g2"]);
+    expect(claims.roles).toEqual(["r1"]);
   });
 });
