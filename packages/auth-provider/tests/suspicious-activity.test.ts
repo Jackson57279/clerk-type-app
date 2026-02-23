@@ -82,6 +82,18 @@ describe("suspicious activity detection", () => {
       });
       expect(r.reasons).toContain("new_location");
     });
+
+    it("can report both new_device and new_location on first login with both", () => {
+      const r = evaluateLogin({
+        userId: "user1",
+        deviceFingerprint: "device-X",
+        location: { lat: 37.77, lng: -122.42 },
+      });
+      expect(r.suspicious).toBe(true);
+      expect(r.reasons).toContain("new_device");
+      expect(r.reasons).toContain("new_location");
+      expect(r.reasons).toHaveLength(2);
+    });
   });
 
   describe("impossible travel", () => {
