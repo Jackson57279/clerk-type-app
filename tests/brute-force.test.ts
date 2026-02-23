@@ -77,6 +77,14 @@ describe("brute force protection (progressive delays)", () => {
     expect(checkBruteForce(key).allowed).toBe(true);
   });
 
+  it("returns retryAfterSeconds >= 1 when not allowed", () => {
+    recordFailedAttempt("192.168.1.7");
+    const r = checkBruteForce("192.168.1.7");
+    expect(r.allowed).toBe(false);
+    expect(r.retryAfterSeconds).toBeDefined();
+    expect(r.retryAfterSeconds).toBeGreaterThanOrEqual(1);
+  });
+
   it("caps delay at maxDelayMs", () => {
     const key = "192.168.1.6";
     for (let i = 0; i < 15; i++) {
