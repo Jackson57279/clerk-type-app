@@ -86,6 +86,23 @@ export function getPasswordPolicyRequirements(
   return requirements;
 }
 
+export interface PasswordPolicyConfig {
+  policy: PasswordPolicy;
+  requirements: string[];
+  checkBreach: boolean;
+}
+
+export function getPasswordPolicyConfig(
+  env: NodeJS.ProcessEnv = process.env
+): PasswordPolicyConfig {
+  const policy = getPasswordPolicyFromEnv(env);
+  return {
+    policy,
+    requirements: getPasswordPolicyRequirements(policy),
+    checkBreach: parseBool(env.PASSWORD_CHECK_BREACH),
+  };
+}
+
 export interface PasswordValidationResult {
   valid: boolean;
   errors: string[];

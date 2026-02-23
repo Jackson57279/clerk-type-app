@@ -8,6 +8,7 @@ import {
   isPasswordPwned,
   getPasswordPolicyFromEnv,
   getPasswordPolicyRequirements,
+  getPasswordPolicyConfig,
   defaultPasswordPolicy,
   type PasswordPolicy,
 } from "../src/password.js";
@@ -229,6 +230,35 @@ describe("getPasswordPolicyRequirements", () => {
     const reqs = getPasswordPolicyRequirements(policy);
     expect(reqs).toContain("Password must be at least 12 characters");
     expect(reqs).toContain("Password must be at most 64 characters");
+  });
+});
+
+describe("getPasswordPolicyConfig", () => {
+  it("returns policy, requirements and checkBreach from env", () => {
+    const config = getPasswordPolicyConfig({});
+    expect(config.policy).toEqual(defaultPasswordPolicy);
+    expect(config.requirements).toContain("Password must be at least 8 characters");
+    expect(config.requirements).toContain("Password must contain at least one digit");
+    expect(config.checkBreach).toBe(false);
+  });
+
+  it("uses env for policy and sets checkBreach when PASSWORD_CHECK_BREACH is true", () => {
+    const config = getPasswordPolicyConfig({
+      PASSWORD_MIN_LENGTH: "12",
+      PASSWORD_REQUIRE_SPECIAL: "true",
+      PASSWORD_CHECK_BREACH: "1",
+    });
+    expect(config.policy.minLength).toBe(12);
+    expect(config.policy.requireSpecial).toBe(true);
+    expect(config.requirements).toContain("Password must be at least 12 characters");
+    expect(config.requirements).toContain("Password must contain at least one special character");
+    expect(config.checkBreach).toBe(true);
+  });
+
+  it("validates passwords against returned policy", () => {
+    const config = getPasswordPolicyConfig({ PASSWORD_MIN_LENGTH: "10" });
+    expect(validatePassword("short1a", config.policy).valid).toBe(false);
+    expect(validatePassword("longenough1a", config.policy).valid).toBe(true);
   });
 });
 
