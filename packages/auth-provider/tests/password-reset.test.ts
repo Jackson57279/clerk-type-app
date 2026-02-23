@@ -23,7 +23,7 @@ describe("createPasswordResetToken", () => {
     expect(result.jti).toMatch(/^[a-f0-9]{32}$/);
   });
 
-  it("emits JWT format (header.payload.signature) with short expiry", () => {
+  it("emits JWT format (header.payload.signature) with 1 hour expiry", () => {
     const result = createPasswordResetToken(
       { userId: "u1", email: "u@example.com" },
       SECRET
@@ -39,16 +39,16 @@ describe("createPasswordResetToken", () => {
     expect(ttlMs).toBeGreaterThanOrEqual(DEFAULT_PASSWORD_RESET_TTL_MS - 1000);
   });
 
-  it("uses default TTL of 15 minutes", () => {
+  it("uses default TTL of 1 hour", () => {
     const before = Date.now();
     const result = createPasswordResetToken(
       { userId: "u1", email: "u@example.com" },
       SECRET
     );
     const after = Date.now();
-    const fifteenMin = 15 * 60 * 1000;
-    expect(result.expiresAt).toBeGreaterThanOrEqual(before + fifteenMin - 1000);
-    expect(result.expiresAt).toBeLessThanOrEqual(after + fifteenMin + 1000);
+    const oneHour = 60 * 60 * 1000;
+    expect(result.expiresAt).toBeGreaterThanOrEqual(before + oneHour - 1000);
+    expect(result.expiresAt).toBeLessThanOrEqual(after + oneHour + 1000);
   });
 
   it("accepts custom ttlMs", () => {
@@ -77,8 +77,8 @@ describe("createPasswordResetToken", () => {
 });
 
 describe("DEFAULT_PASSWORD_RESET_TTL_MS", () => {
-  it("is 15 minutes in milliseconds (short expiry for link format)", () => {
-    expect(DEFAULT_PASSWORD_RESET_TTL_MS).toBe(15 * 60 * 1000);
+  it("is 1 hour in milliseconds", () => {
+    expect(DEFAULT_PASSWORD_RESET_TTL_MS).toBe(60 * 60 * 1000);
   });
 });
 
