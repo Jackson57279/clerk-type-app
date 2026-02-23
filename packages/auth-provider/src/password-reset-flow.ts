@@ -34,6 +34,8 @@ export interface RequestPasswordResetOptions {
   fallbackSendEmail?: SendEmailFn;
   usedTokenStore?: SingleUseTokenStore;
   branding?: BrandingConfig | null;
+  htmlTemplate?: string;
+  textTemplate?: string;
   ttlMs?: number;
 }
 
@@ -52,6 +54,8 @@ export async function requestPasswordReset(
     sendEmail,
     fallbackSendEmail,
     branding,
+    htmlTemplate,
+    textTemplate,
     ttlMs = DEFAULT_PASSWORD_RESET_TTL_MS,
   } = options;
 
@@ -67,7 +71,7 @@ export async function requestPasswordReset(
   const expiresInMinutes = Math.max(1, Math.round(ttlMs / 60000));
   const { html, text } = renderPasswordResetEmail(
     { resetLink, expiresInMinutes },
-    { branding }
+    { branding, htmlTemplate, textTemplate }
   );
   const payload = { to: user.email, html, text };
   try {

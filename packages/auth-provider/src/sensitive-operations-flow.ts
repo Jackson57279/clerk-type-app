@@ -41,6 +41,8 @@ export interface RequestSensitiveOperationOptions {
   sendEmail?: SendEmailFn;
   usedTokenStore?: SingleUseConfirmationStore;
   branding?: BrandingConfig | null;
+  htmlTemplate?: string;
+  textTemplate?: string;
   ttlMs?: number;
   resendPolicyStore?: ResendPolicyStore;
   resendPolicyOptions?: ResendPolicyOptions;
@@ -80,6 +82,8 @@ export async function requestSensitiveOperation(
     operationParams,
     sendEmail,
     branding,
+    htmlTemplate,
+    textTemplate,
     ttlMs = DEFAULT_CONFIRMATION_LINK_TTL_MS,
     resendPolicyStore,
     resendPolicyOptions,
@@ -114,7 +118,7 @@ export async function requestSensitiveOperation(
       operation: label,
       expiresInMinutes,
     },
-    { branding }
+    { branding, htmlTemplate, textTemplate }
   );
 
   if (sendEmail) {

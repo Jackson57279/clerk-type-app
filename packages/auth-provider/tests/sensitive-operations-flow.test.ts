@@ -68,6 +68,50 @@ describe("requestSensitiveOperation", () => {
     );
   });
 
+  it("uses custom branding (logo, colors) in sent email when sendEmail provided", async () => {
+    const sendEmail = vi.fn().mockResolvedValue(undefined);
+    const result = await requestSensitiveOperation({
+      operation: "change_email",
+      userId: "u1",
+      email: "u@example.com",
+      secret: SECRET,
+      buildConfirmLink: (t) => `https://app.example.com/confirm?token=${t}`,
+      sendEmail,
+      branding: {
+        logoUrl: "https://cdn.example.com/logo.png",
+        primaryColor: "#059669",
+        companyName: "Acme",
+      },
+    });
+    if (!isRequestSensitiveOperationSuccess(result)) throw new Error("expected success");
+    expect(sendEmail).toHaveBeenCalledTimes(1);
+    const payload = sendEmail.mock.calls[0]?.[0];
+    expect(payload?.html).toContain("https://cdn.example.com/logo.png");
+    expect(payload?.html).toContain("#059669");
+  });
+
+  it("uses custom htmlTemplate and textTemplate when provided", async () => {
+    const sendEmail = vi.fn().mockResolvedValue(undefined);
+    const result = await requestSensitiveOperation({
+      operation: "change_password",
+      userId: "u1",
+      email: "u@example.com",
+      secret: SECRET,
+      buildConfirmLink: (t) => `https://app.example.com/confirm?token=${t}`,
+      sendEmail,
+      htmlTemplate: "<p>Confirm: {{confirmationLink}} {{operation}}</p>",
+      textTemplate: "Confirm: {{confirmationLink}} {{operation}}",
+    });
+    if (!isRequestSensitiveOperationSuccess(result)) throw new Error("expected success");
+    expect(sendEmail).toHaveBeenCalledTimes(1);
+    const payload = sendEmail.mock.calls[0]?.[0];
+    expect(payload?.html).toContain("Confirm:");
+    expect(payload?.html).toContain("change password");
+    expect(payload?.html).not.toContain("{{confirmationLink}}");
+    expect(payload?.text).toContain("Confirm:");
+    expect(payload?.text).not.toContain("{{operation}}");
+  });
+
   it("includes operationParams in token and uses custom ttlMs", async () => {
     const result = await requestSensitiveOperation({
       operation: "change_email",

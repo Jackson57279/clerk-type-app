@@ -137,6 +137,61 @@ describe("requestPasswordReset", () => {
     ).rejects.toThrow("Failed to send password reset email");
     expect(sendEmail).toHaveBeenCalledTimes(1);
   });
+
+  it("uses custom branding (logo, colors) in sent email", async () => {
+    const findUserByEmail = vi.fn().mockResolvedValue({
+      userId: "user-1",
+      email: "user@example.com",
+    });
+    const sendEmail = vi.fn().mockResolvedValue(undefined);
+    const buildResetLink = (t: string) => `https://app.example.com/reset?t=${t}`;
+
+    await requestPasswordReset({
+      email: "user@example.com",
+      secret: SECRET,
+      findUserByEmail,
+      buildResetLink,
+      sendEmail,
+      branding: {
+        logoUrl: "https://cdn.example.com/logo.png",
+        primaryColor: "#dc2626",
+        companyName: "Acme",
+      },
+    });
+
+    expect(sendEmail).toHaveBeenCalledTimes(1);
+    const payload = sendEmail.mock.calls[0]?.[0];
+    expect(payload?.html).toContain("https://cdn.example.com/logo.png");
+    expect(payload?.html).toContain("#dc2626");
+    expect(payload?.html).toContain("Acme");
+  });
+
+  it("uses custom htmlTemplate and textTemplate when provided", async () => {
+    const findUserByEmail = vi.fn().mockResolvedValue({
+      userId: "user-1",
+      email: "user@example.com",
+    });
+    const sendEmail = vi.fn().mockResolvedValue(undefined);
+    const buildResetLink = (t: string) => `https://app.example.com/reset?t=${t}`;
+
+    await requestPasswordReset({
+      email: "user@example.com",
+      secret: SECRET,
+      findUserByEmail,
+      buildResetLink,
+      sendEmail,
+      htmlTemplate: "<p>Custom: {{resetLink}} ({{expiresInMinutes}} min)</p>",
+      textTemplate: "Custom: {{resetLink}} ({{expiresInMinutes}} min)",
+    });
+
+    expect(sendEmail).toHaveBeenCalledTimes(1);
+    const payload = sendEmail.mock.calls[0]?.[0];
+    expect(payload?.html).toContain("Custom:");
+    expect(payload?.html).toContain("https://app.example.com/reset?t=");
+    expect(payload?.html).not.toContain("{{resetLink}}");
+    expect(payload?.text).toContain("Custom:");
+    expect(payload?.text).not.toContain("{{resetLink}}");
+  });
 });
 
 describe("resetPasswordWithToken", () => {
