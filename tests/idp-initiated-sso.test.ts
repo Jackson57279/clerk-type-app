@@ -186,6 +186,40 @@ describe("createIdpInitiatedResponse", () => {
     expect(validated.nameId).toBe("encuser@example.com");
     expect(validated.sessionIndex).toBe("sess_enc2");
   });
+
+  it("encrypted assertion roundtrip preserves attributes after decrypt", async () => {
+    const result = await createIdpInitiatedResponse(
+      idpConfig(),
+      idpInitiatedSpConfig({ encryptionCertificate: TEST_CERT }),
+      {
+        nameId: "attruser@example.com",
+        sessionIndex: "sess_attr",
+        attributes: { email: ["attruser@example.com"], role: ["admin"] },
+      }
+    );
+    const validated = await validateIdpInitiatedPostResponse(
+      spConfigForValidation(),
+      idpConfigForValidation(),
+      { SAMLResponse: result.samlResponseBase64 }
+    );
+    expect(validated.nameId).toBe("attruser@example.com");
+    expect(validated.attributes.email).toEqual(["attruser@example.com"]);
+    expect(validated.attributes.role).toEqual(["admin"]);
+  });
+
+  it("rejects encrypted response when ciphertext is tampered", async () => {
+    const result = await createIdpInitiatedResponse(
+      idpConfig(),
+      idpInitiatedSpConfig({ encryptionCertificate: TEST_CERT }),
+      { nameId: "user@example.com", sessionIndex: "sess_x" }
+    );
+    const tamperedB64 = result.samlResponseBase64.slice(0, -4) + "XXXX";
+    await expect(
+      validateIdpInitiatedPostResponse(spConfigForValidation(), idpConfigForValidation(), {
+        SAMLResponse: tamperedB64,
+      })
+    ).rejects.toThrow();
+  });
 });
 
 describe("validateIdpInitiatedPostResponse", () => {
