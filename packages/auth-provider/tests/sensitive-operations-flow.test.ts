@@ -338,6 +338,24 @@ describe("executeSensitiveOperation", () => {
     expect(action).not.toHaveBeenCalled();
   });
 
+  it("single-use: confirmation token invalidated after use (second execute throws)", async () => {
+    const req = await requestSensitiveOperation({
+      operation: "change_email",
+      userId: context.userId,
+      email: context.email,
+      secret: SECRET,
+      buildConfirmLink: (t) => `https://app.example.com/confirm?token=${t}`,
+    });
+    if (!isRequestSensitiveOperationSuccess(req)) throw new Error("expected success");
+    const token = req.token;
+    const action = vi.fn().mockResolvedValue({ done: true });
+    await executeSensitiveOperation("change_email", token, context, SECRET, action);
+    expect(action).toHaveBeenCalledTimes(1);
+    await expect(
+      executeSensitiveOperation("change_email", token, context, SECRET, vi.fn())
+    ).rejects.toThrow(ConfirmationRequiredError);
+  });
+
   it("works for all sensitive operation types", async () => {
     for (const op of SENSITIVE_OPERATIONS) {
       const ctx = {
