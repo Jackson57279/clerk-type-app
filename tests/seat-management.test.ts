@@ -231,11 +231,12 @@ describe("getBillingSeatPayloads", () => {
     ];
     const payloads = getBillingSeatPayloads(organizations);
     expect(payloads).toHaveLength(1);
-    expect(payloads[0].organizationId).toBe("org_x");
-    expect(payloads[0].seatCount).toBe(1);
-    expect(payloads[0].at).toBeDefined();
-    expect(new Date(payloads[0].at).getTime()).toBeLessThanOrEqual(Date.now() + 1000);
-    expect(new Date(payloads[0].at).getTime()).toBeGreaterThanOrEqual(Date.now() - 1000);
+    const first = payloads[0]!;
+    expect(first.organizationId).toBe("org_x");
+    expect(first.seatCount).toBe(1);
+    expect(first.at).toBeDefined();
+    expect(new Date(first.at).getTime()).toBeLessThanOrEqual(Date.now() + 1000);
+    expect(new Date(first.at).getTime()).toBeGreaterThanOrEqual(Date.now() - 1000);
   });
 
   it("returns empty array when no organizations", () => {
