@@ -391,4 +391,82 @@ describe("processBulkRequest", () => {
     const locOp = response.Operations[0]!;
     expect(locOp.location).toMatch(/^https:\/\/api\.example\.com\/scim\/v2\/Users\/user_1$/);
   });
+
+  it("resolves bulkId reference in path for PATCH /Users/bulkId:u1", async () => {
+    const userStore = memoryUserStore();
+    const groupStore = memoryGroupStore();
+    const response = await processBulkRequest({
+      request: {
+        schemas: [BULK_REQUEST_SCHEMA],
+        Operations: [
+          { method: "POST", path: "Users", bulkId: "u1", data: { userName: "bulkref@example.com", name: { givenName: "Bulk" } } },
+          { method: "PATCH", path: "Users/bulkId:u1", data: { name: { givenName: "Updated" } } },
+        ],
+      },
+      userStore,
+      groupStore,
+      organizationId: orgId,
+    });
+    expect(response.Operations[0]!.status).toBe(201);
+    expect(response.Operations[1]!.status).toBe(200);
+    const user = await userStore.findByEmail("bulkref@example.com");
+    expect(user?.firstName).toBe("Updated");
+  });
+
+  it("resolves bulkId in group members when creating group after users", async () => {
+    const userStore = memoryUserStore();
+    const groupStore = memoryGroupStore();
+    const response = await processBulkRequest({
+      request: {
+        schemas: [BULK_REQUEST_SCHEMA],
+        Operations: [
+          { method: "POST", path: "Users", bulkId: "u1", data: { userName: "member1@example.com" } },
+          { method: "POST", path: "Users", bulkId: "u2", data: { userName: "member2@example.com" } },
+          {
+            method: "POST",
+            path: "Groups",
+            bulkId: "g1",
+            data: {
+              externalId: "team-alpha",
+              displayName: "Team Alpha",
+              members: [{ value: "bulkId:u1" }, { value: "bulkId:u2" }],
+            },
+          },
+        ],
+      },
+      userStore,
+      groupStore,
+      organizationId: orgId,
+    });
+    expect(response.Operations[0]!.status).toBe(201);
+    expect(response.Operations[1]!.status).toBe(201);
+    expect(response.Operations[2]!.status).toBe(201);
+    const group = await groupStore.findGroupByExternalId(orgId, "team-alpha");
+    expect(group).not.toBeNull();
+    const memberIds = await groupStore.listGroupMemberIds(group!.id);
+    expect(memberIds).toHaveLength(2);
+    const u1 = await userStore.findByEmail("member1@example.com");
+    const u2 = await userStore.findByEmail("member2@example.com");
+    expect(memberIds).toContain(u1!.id);
+    expect(memberIds).toContain(u2!.id);
+  });
+
+  it("returns 400 for unresolved bulkId reference in path", async () => {
+    const userStore = memoryUserStore();
+    const groupStore = memoryGroupStore();
+    const response = await processBulkRequest({
+      request: {
+        schemas: [BULK_REQUEST_SCHEMA],
+        Operations: [
+          { method: "PATCH", path: "Users/bulkId:nonexistent", data: { userName: "x@x.com" } },
+        ],
+      },
+      userStore,
+      groupStore,
+      organizationId: orgId,
+    });
+    const op = response.Operations[0]!;
+    expect(op.status).toBe(400);
+    expect(op.response).toMatchObject({ detail: "bulkId reference not found; create the resource in an earlier operation." });
+  });
 });

@@ -94,10 +94,21 @@ function userDataToProvision(d: ScimBulkUserData): { email: string; externalId?:
   };
 }
 
+function resolveBulkId(
+  resource: "Users" | "Groups",
+  id: string,
+  bulkIdMap: Map<string, string>
+): string | null {
+  if (!id.startsWith("bulkId:")) return id;
+  const resolved = bulkIdMap.get(`${resource}:${id}`);
+  return resolved ?? null;
+}
+
 export async function processBulkRequest(params: ProcessBulkParams): Promise<ScimBulkResponse> {
   const { request, userStore, groupStore, organizationId, baseUrl = "" } = params;
   const failOnErrors = request.failOnErrors ?? 0;
   const results: ScimBulkOperationResponse[] = [];
+  const bulkIdMap = new Map<string, string>();
   let errorCount = 0;
 
   for (const op of request.Operations) {
@@ -113,7 +124,19 @@ export async function processBulkRequest(params: ProcessBulkParams): Promise<Sci
     }
 
     try {
-      const { resource, id } = parsePath(op.path);
+      const { resource, id: rawId } = parsePath(op.path);
+      const id = rawId ? resolveBulkId(resource, rawId, bulkIdMap) : null;
+      if (rawId && rawId.startsWith("bulkId:") && !id) {
+        results.push({
+          bulkId: op.bulkId,
+          method: op.method,
+          path: op.path,
+          status: 400,
+          response: { detail: "bulkId reference not found; create the resource in an earlier operation." },
+        });
+        errorCount++;
+        continue;
+      }
 
       if (resource === "Users") {
         if (op.method === "POST" && !id) {
@@ -130,6 +153,7 @@ export async function processBulkRequest(params: ProcessBulkParams): Promise<Sci
             continue;
           }
           const result = await provisionUser(userStore, provisionData, { organizationId, reactivateIfDeactivated: true });
+          if (op.bulkId) bulkIdMap.set(`Users:bulkId:${op.bulkId}`, result.user.id);
           const location = baseUrl ? `${baseUrl.replace(/\/$/, "")}/Users/${result.user.id}` : undefined;
           results.push({
             bulkId: op.bulkId,
@@ -197,8 +221,13 @@ export async function processBulkRequest(params: ProcessBulkParams): Promise<Sci
           const memberIds: string[] = [];
           if (data.members?.length) {
             for (const m of data.members) {
-              const u = await userStore.findByExternalId(m.value) ?? await userStore.findById(m.value);
-              if (u?.active) memberIds.push(u.id);
+              const ref = m.value.startsWith("bulkId:") ? bulkIdMap.get(`Users:${m.value}`) : null;
+              if (ref) {
+                memberIds.push(ref);
+              } else {
+                const u = await userStore.findByExternalId(m.value) ?? await userStore.findById(m.value);
+                if (u?.active) memberIds.push(u.id);
+              }
             }
           }
           const result = await syncGroup(
@@ -206,6 +235,7 @@ export async function processBulkRequest(params: ProcessBulkParams): Promise<Sci
             { externalId: data.externalId ?? `bulk_${op.bulkId ?? "g"}`, displayName: data.displayName ?? "Group", memberIds },
             { organizationId }
           );
+          if (op.bulkId) bulkIdMap.set(`Groups:bulkId:${op.bulkId}`, result.group.id);
           const location = baseUrl ? `${baseUrl.replace(/\/$/, "")}/Groups/${result.group.id}` : undefined;
           results.push({
             bulkId: op.bulkId,
@@ -229,8 +259,13 @@ export async function processBulkRequest(params: ProcessBulkParams): Promise<Sci
           const memberIds: string[] = [];
           if (data?.members?.length) {
             for (const m of data.members) {
-              const u = await userStore.findByExternalId(m.value) ?? await userStore.findById(m.value);
-              if (u?.active) memberIds.push(u.id);
+              const ref = m.value.startsWith("bulkId:") ? bulkIdMap.get(`Users:${m.value}`) : null;
+              if (ref) {
+                memberIds.push(ref);
+              } else {
+                const u = await userStore.findByExternalId(m.value) ?? await userStore.findById(m.value);
+                if (u?.active) memberIds.push(u.id);
+              }
             }
           } else {
             const existing = await groupStore.listGroupMemberIds(group.id);
