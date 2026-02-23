@@ -6,6 +6,7 @@ import {
   validatePasswordWithPolicy,
   isPasswordPwned,
   getPasswordPolicyFromEnv,
+  getPasswordPolicyRequirements,
   defaultPasswordPolicy,
   type PasswordPolicy,
 } from "../src/password.js";
@@ -161,6 +162,38 @@ describe("getPasswordPolicyFromEnv", () => {
   it("falls back to default for invalid numeric env", () => {
     const policy = getPasswordPolicyFromEnv({ PASSWORD_MIN_LENGTH: "abc" });
     expect(policy.minLength).toBe(8);
+  });
+});
+
+describe("getPasswordPolicyRequirements", () => {
+  it("returns default policy requirements (min, max, lowercase, digit)", () => {
+    const reqs = getPasswordPolicyRequirements();
+    expect(reqs).toContain("Password must be at least 8 characters");
+    expect(reqs).toContain("Password must be at most 128 characters");
+    expect(reqs).toContain("Password must contain at least one lowercase letter");
+    expect(reqs).toContain("Password must contain at least one digit");
+    expect(reqs).not.toContain("Password must contain at least one uppercase letter");
+    expect(reqs).not.toContain("Password must contain at least one special character");
+    expect(reqs).toHaveLength(4);
+  });
+
+  it("includes uppercase and special when required by policy", () => {
+    const policy: PasswordPolicy = {
+      ...defaultPasswordPolicy,
+      requireUppercase: true,
+      requireSpecial: true,
+    };
+    const reqs = getPasswordPolicyRequirements(policy);
+    expect(reqs).toContain("Password must contain at least one uppercase letter");
+    expect(reqs).toContain("Password must contain at least one special character");
+    expect(reqs).toHaveLength(6);
+  });
+
+  it("uses custom min and max length in requirement text", () => {
+    const policy: PasswordPolicy = { ...defaultPasswordPolicy, minLength: 12, maxLength: 64 };
+    const reqs = getPasswordPolicyRequirements(policy);
+    expect(reqs).toContain("Password must be at least 12 characters");
+    expect(reqs).toContain("Password must be at most 64 characters");
   });
 });
 

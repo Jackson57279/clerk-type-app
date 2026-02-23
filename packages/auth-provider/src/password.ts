@@ -61,6 +61,29 @@ export function getPasswordPolicyFromEnv(
   };
 }
 
+export function getPasswordPolicyRequirements(
+  policy: PasswordPolicy = defaultPasswordPolicy
+): string[] {
+  const maxLen = policy.maxLength ?? 128;
+  const requirements: string[] = [
+    `Password must be at least ${policy.minLength} characters`,
+    `Password must be at most ${maxLen} characters`,
+  ];
+  if (policy.requireUppercase) {
+    requirements.push("Password must contain at least one uppercase letter");
+  }
+  if (policy.requireLowercase) {
+    requirements.push("Password must contain at least one lowercase letter");
+  }
+  if (policy.requireDigit) {
+    requirements.push("Password must contain at least one digit");
+  }
+  if (policy.requireSpecial) {
+    requirements.push("Password must contain at least one special character");
+  }
+  return requirements;
+}
+
 export interface PasswordValidationResult {
   valid: boolean;
   errors: string[];
