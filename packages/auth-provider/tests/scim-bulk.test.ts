@@ -575,6 +575,151 @@ describe("processBulkRequest", () => {
     expect(group).toBeNull();
   });
 
+  describe("GroupSync (full group synchronization)", () => {
+    it("syncs multiple groups and returns created/updated/removed counts", async () => {
+      const userStore = memoryUserStore([
+        { id: "user_1", email: "a@example.com", externalId: "ext-a", name: undefined, firstName: undefined, lastName: undefined, active: true },
+      ]);
+      const groupStore = memoryGroupStore();
+      const response = await processBulkRequest({
+        request: {
+          schemas: [BULK_REQUEST_SCHEMA],
+          Operations: [
+            {
+              method: "POST",
+              path: "GroupSync",
+              data: {
+                groups: [
+                  { externalId: "grp-1", displayName: "Engineering", members: [{ value: "ext-a" }] },
+                  { externalId: "grp-2", displayName: "Product", members: [] },
+                ],
+              },
+            },
+          ],
+        },
+        userStore,
+        groupStore,
+        organizationId: orgId,
+      });
+      const op = response.Operations[0]!;
+      expect(op.status).toBe(200);
+      expect(op.response).toMatchObject({ created: 2, updated: 0, removed: 0 });
+      const list = await groupStore.listGroupsByOrganization(orgId);
+      expect(list).toHaveLength(2);
+      const grp1 = await groupStore.findGroupByExternalId(orgId, "grp-1");
+      expect(grp1?.displayName).toBe("Engineering");
+      expect(await groupStore.listGroupMemberIds(grp1!.id)).toEqual(["user_1"]);
+    });
+
+    it("updates existing groups when externalId matches", async () => {
+      const userStore = memoryUserStore();
+      const groupStore = memoryGroupStore();
+      await groupStore.createGroup(orgId, { externalId: "grp-existing", displayName: "Old Name" });
+      const response = await processBulkRequest({
+        request: {
+          schemas: [BULK_REQUEST_SCHEMA],
+          Operations: [
+            {
+              method: "POST",
+              path: "GroupSync",
+              data: {
+                groups: [{ externalId: "grp-existing", displayName: "New Name", members: [] }],
+              },
+            },
+          ],
+        },
+        userStore,
+        groupStore,
+        organizationId: orgId,
+      });
+      const op = response.Operations[0]!;
+      expect(op.status).toBe(200);
+      expect(op.response).toMatchObject({ created: 0, updated: 1, removed: 0 });
+      const g = await groupStore.findGroupByExternalId(orgId, "grp-existing");
+      expect(g?.displayName).toBe("New Name");
+    });
+
+    it("soft-deletes groups not in source when removeGroupsNotInSource is true", async () => {
+      const userStore = memoryUserStore();
+      const groupStore = memoryGroupStore();
+      const created = await groupStore.createGroup(orgId, { externalId: "grp-old", displayName: "Old" });
+      const response = await processBulkRequest({
+        request: {
+          schemas: [BULK_REQUEST_SCHEMA],
+          Operations: [
+            {
+              method: "POST",
+              path: "GroupSync",
+              data: {
+                groups: [{ externalId: "grp-new", displayName: "New", members: [] }],
+                removeGroupsNotInSource: true,
+              },
+            },
+          ],
+        },
+        userStore,
+        groupStore,
+        organizationId: orgId,
+      });
+      const op = response.Operations[0]!;
+      expect(op.status).toBe(200);
+      expect(op.response).toMatchObject({ created: 1, updated: 0, removed: 1 });
+      const list = await groupStore.listGroupsByOrganization(orgId);
+      expect(list).toHaveLength(1);
+      expect(list[0]!.externalId).toBe("grp-new");
+      const deactivated = await groupStore.findGroupById(created.id);
+      expect(deactivated).not.toBeNull();
+      expect(deactivated!.active).toBe(false);
+    });
+
+    it("hard-deletes groups not in source when hardDeleteRemoved is true", async () => {
+      const userStore = memoryUserStore();
+      const groupStore = memoryGroupStore();
+      const created = await groupStore.createGroup(orgId, { externalId: "grp-old", displayName: "Old" });
+      const response = await processBulkRequest({
+        request: {
+          schemas: [BULK_REQUEST_SCHEMA],
+          Operations: [
+            {
+              method: "POST",
+              path: "GroupSync",
+              data: {
+                groups: [{ externalId: "grp-new", displayName: "New", members: [] }],
+                removeGroupsNotInSource: true,
+                hardDeleteRemoved: true,
+              },
+            },
+          ],
+        },
+        userStore,
+        groupStore,
+        organizationId: orgId,
+      });
+      const op = response.Operations[0]!;
+      expect(op.status).toBe(200);
+      expect(op.response).toMatchObject({ removed: 1 });
+      const deleted = await groupStore.findGroupById(created.id);
+      expect(deleted).toBeNull();
+    });
+
+    it("returns 400 when data.groups is missing", async () => {
+      const userStore = memoryUserStore();
+      const groupStore = memoryGroupStore();
+      const response = await processBulkRequest({
+        request: {
+          schemas: [BULK_REQUEST_SCHEMA],
+          Operations: [{ method: "POST", path: "GroupSync", data: {} }],
+        },
+        userStore,
+        groupStore,
+        organizationId: orgId,
+      });
+      const op = response.Operations[0]!;
+      expect(op.status).toBe(400);
+      expect(op.response).toMatchObject({ detail: "GroupSync requires data.groups array" });
+    });
+  });
+
   describe("realtime webhook delivery", () => {
     it("delivers user.created webhook when webhookStore provided and user created via bulk", async () => {
       const userStore = memoryUserStore();

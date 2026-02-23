@@ -1,7 +1,8 @@
 import type { UserProvisioningStore } from "./user-provisioning.js";
 import { provisionUser, deprovisionUser } from "./user-provisioning.js";
 import type { GroupSyncStore } from "./group-sync.js";
-import { syncGroup } from "./group-sync.js";
+import { syncGroup, syncGroups } from "./group-sync.js";
+import type { SyncGroupData } from "./group-sync.js";
 import { deliverRealtimeWebhook, createRealtimeSyncPayload } from "./realtime-webhook.js";
 import type { DeliverWebhookOptions, WebhookSubscriptionStore } from "./realtime-webhook.js";
 
@@ -14,7 +15,7 @@ export interface ScimBulkOperationRequest {
   method: BulkMethod;
   path: string;
   bulkId?: string;
-  data?: ScimBulkUserData | ScimBulkGroupData;
+  data?: ScimBulkUserData | ScimBulkGroupData | ScimGroupSyncData;
 }
 
 export interface ScimBulkUserData {
@@ -36,6 +37,16 @@ export interface ScimBulkGroupData {
   externalId?: string;
   displayName?: string;
   members?: ScimBulkGroupMember[];
+}
+
+export interface ScimGroupSyncData {
+  groups: Array<{
+    externalId: string;
+    displayName: string;
+    members?: ScimBulkGroupMember[];
+  }>;
+  removeGroupsNotInSource?: boolean;
+  hardDeleteRemoved?: boolean;
 }
 
 export interface ScimBulkRequest {
@@ -73,7 +84,7 @@ function normPath(path: string): string {
   return path.replace(/^\/+/, "").replace(/^v2\//, "");
 }
 
-function parsePath(path: string): { resource: "Users" | "Groups"; id: string | null } {
+function parsePath(path: string): { resource: "Users" | "Groups" | "GroupSync"; id: string | null } {
   const p = normPath(path);
   if (p.startsWith("Users/")) {
     return { resource: "Users", id: p.slice(6) || null };
@@ -83,6 +94,7 @@ function parsePath(path: string): { resource: "Users" | "Groups"; id: string | n
     return { resource: "Groups", id: p.slice(7) || null };
   }
   if (p === "Groups") return { resource: "Groups", id: null };
+  if (p === "GroupSync") return { resource: "GroupSync", id: null };
   throw new Error(`Unsupported bulk path: ${path}`);
 }
 
@@ -368,6 +380,60 @@ export async function processBulkRequest(params: ProcessBulkParams): Promise<Sci
             });
             await deliverRealtimeWebhook(webhookStore, organizationId, payload, webhookDeliveryOptions);
           }
+          continue;
+        }
+      }
+
+      if (resource === "GroupSync") {
+        if (op.method === "POST" && !id) {
+          const data = op.data as ScimGroupSyncData | undefined;
+          if (!data || !Array.isArray(data.groups)) {
+            results.push({
+              bulkId: op.bulkId,
+              method: op.method,
+              path: op.path,
+              status: 400,
+              response: { detail: "GroupSync requires data.groups array" },
+            });
+            errorCount++;
+            continue;
+          }
+          const syncData: SyncGroupData[] = [];
+          for (const g of data.groups) {
+            const memberIds: string[] = [];
+            if (g.members?.length) {
+              for (const m of g.members) {
+                const ref = m.value.startsWith("bulkId:") ? bulkIdMap.get(`Users:${m.value}`) : null;
+                if (ref) {
+                  memberIds.push(ref);
+                } else {
+                  const u = await userStore.findByExternalId(m.value) ?? await userStore.findById(m.value);
+                  if (u?.active) memberIds.push(u.id);
+                }
+              }
+            }
+            syncData.push({
+              externalId: g.externalId,
+              displayName: g.displayName,
+              memberIds,
+            });
+          }
+          const syncResult = await syncGroups(groupStore, syncData, {
+            organizationId,
+            removeGroupsNotInSource: data.removeGroupsNotInSource ?? false,
+            hardDeleteRemoved: data.hardDeleteRemoved ?? false,
+          });
+          results.push({
+            bulkId: op.bulkId,
+            method: op.method,
+            path: op.path,
+            status: 200,
+            response: {
+              created: syncResult.created,
+              updated: syncResult.updated,
+              removed: syncResult.removed,
+            },
+          });
           continue;
         }
       }
