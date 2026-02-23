@@ -36,6 +36,11 @@ export interface VerifyPasswordResetTokenResult extends PasswordResetPayload {
   jti: string;
 }
 
+export interface SingleUseTokenStore {
+  isUsed(jti: string): boolean;
+  markUsed(jti: string, expiresAtMs: number): void;
+}
+
 export function createPasswordResetToken(
   payload: PasswordResetPayload,
   secret: string,
@@ -60,9 +65,14 @@ export function createPasswordResetToken(
   return { token, expiresAt, jti };
 }
 
+export interface VerifyPasswordResetTokenOptions {
+  usedTokenStore?: SingleUseTokenStore;
+}
+
 export function verifyPasswordResetToken(
   token: string,
-  secret: string
+  secret: string,
+  options: VerifyPasswordResetTokenOptions = {}
 ): VerifyPasswordResetTokenResult | null {
   const dot = token.indexOf(".");
   if (dot === -1) return null;
@@ -97,9 +107,30 @@ export function verifyPasswordResetToken(
   ) {
     return null;
   }
+  const store = options.usedTokenStore;
+  if (store?.isUsed(data.jti)) return null;
+  if (store) store.markUsed(data.jti, data.exp * 1000);
   return {
     jti: data.jti,
     userId: data.userId,
     email: data.email,
+  };
+}
+
+export function createMemoryUsedTokenStore(): SingleUseTokenStore {
+  const used = new Map<string, number>();
+  return {
+    isUsed(jti: string): boolean {
+      const exp = used.get(jti);
+      if (exp === undefined) return false;
+      if (exp < Date.now()) {
+        used.delete(jti);
+        return false;
+      }
+      return true;
+    },
+    markUsed(jti: string, expiresAtMs: number): void {
+      used.set(jti, expiresAtMs);
+    },
   };
 }

@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import {
   createPasswordResetToken,
   verifyPasswordResetToken,
+  createMemoryUsedTokenStore,
 } from "../src/password-reset.js";
 
 const SECRET = "test-secret-key";
@@ -140,5 +141,41 @@ describe("single-use tracking (jti)", () => {
     );
     const verified = verifyPasswordResetToken(token, SECRET);
     expect(verified?.jti).toBe(jti);
+  });
+});
+
+describe("single-use: token invalidated after use", () => {
+  it("first verify succeeds, second verify returns null when store is used", () => {
+    const store = createMemoryUsedTokenStore();
+    const { token } = createPasswordResetToken(
+      { userId: "u1", email: "e@x.com" },
+      SECRET
+    );
+    const first = verifyPasswordResetToken(token, SECRET, { usedTokenStore: store });
+    expect(first).not.toBeNull();
+    expect(first?.userId).toBe("u1");
+
+    const second = verifyPasswordResetToken(token, SECRET, { usedTokenStore: store });
+    expect(second).toBeNull();
+  });
+
+  it("without store, token can be verified multiple times (backward compatible)", () => {
+    const { token } = createPasswordResetToken(
+      { userId: "u1", email: "e@x.com" },
+      SECRET
+    );
+    expect(verifyPasswordResetToken(token, SECRET)).not.toBeNull();
+    expect(verifyPasswordResetToken(token, SECRET)).not.toBeNull();
+  });
+
+  it("different tokens are independent with same store", () => {
+    const store = createMemoryUsedTokenStore();
+    const a = createPasswordResetToken({ userId: "u1", email: "a@x.com" }, SECRET);
+    const b = createPasswordResetToken({ userId: "u2", email: "b@x.com" }, SECRET);
+
+    expect(verifyPasswordResetToken(a.token, SECRET, { usedTokenStore: store })).not.toBeNull();
+    expect(verifyPasswordResetToken(b.token, SECRET, { usedTokenStore: store })).not.toBeNull();
+    expect(verifyPasswordResetToken(a.token, SECRET, { usedTokenStore: store })).toBeNull();
+    expect(verifyPasswordResetToken(b.token, SECRET, { usedTokenStore: store })).toBeNull();
   });
 });
