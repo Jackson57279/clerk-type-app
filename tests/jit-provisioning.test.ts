@@ -245,4 +245,30 @@ describe("getOrProvisionUser", () => {
       )
     ).rejects.toThrow("Cannot JIT provision");
   });
+
+  it("provisions separate user per organization for same email", async () => {
+    const store = memoryStore();
+    const first = await getOrProvisionUser(
+      assertion({
+        nameId: "user@example.com",
+        attributes: { [EMAIL_ATTR]: ["user@example.com"] },
+      }),
+      mapping(),
+      store,
+      { organizationId: "org1" }
+    );
+    expect(first.created).toBe(true);
+    const second = await getOrProvisionUser(
+      assertion({
+        nameId: "user@example.com",
+        attributes: { [EMAIL_ATTR]: ["user@example.com"] },
+      }),
+      mapping(),
+      store,
+      { organizationId: "org2" }
+    );
+    expect(second.created).toBe(true);
+    expect(second.user.id).not.toBe(first.user.id);
+    expect(second.user.email).toBe(first.user.email);
+  });
 });
