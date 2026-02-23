@@ -4,6 +4,10 @@ import {
   buildCsrfCookie,
   getCsrfTokenFromCookieHeader,
   verifyCsrfDoubleSubmit,
+  getSubmittedCsrfToken,
+  verifyCsrfRequest,
+  DEFAULT_CSRF_COOKIE_NAME,
+  DEFAULT_CSRF_HEADER_NAME,
 } from "../src/csrf-double-submit.js";
 
 describe("generateCsrfToken", () => {
@@ -121,5 +125,75 @@ describe("double-submit cookie round-trip", () => {
       "csrf"
     );
     expect(verifyCsrfDoubleSubmit(cookieValue, token)).toBe(true);
+  });
+});
+
+describe("defaults", () => {
+  it("DEFAULT_CSRF_COOKIE_NAME is csrf", () => {
+    expect(DEFAULT_CSRF_COOKIE_NAME).toBe("csrf");
+  });
+  it("DEFAULT_CSRF_HEADER_NAME is X-CSRF-Token", () => {
+    expect(DEFAULT_CSRF_HEADER_NAME).toBe("X-CSRF-Token");
+  });
+});
+
+describe("getSubmittedCsrfToken", () => {
+  it("returns header value when present", () => {
+    const getHeader = (name: string) =>
+      name === "X-CSRF-Token" ? " abc123 " : undefined;
+    expect(getSubmittedCsrfToken(getHeader)).toBe("abc123");
+  });
+  it("returns undefined when header missing", () => {
+    const getHeader = () => undefined;
+    expect(getSubmittedCsrfToken(getHeader)).toBeUndefined();
+  });
+  it("returns undefined when header empty", () => {
+    const getHeader = (name: string) =>
+      name === "X-CSRF-Token" ? "   " : undefined;
+    expect(getSubmittedCsrfToken(getHeader)).toBeUndefined();
+  });
+  it("uses custom header name when provided", () => {
+    const getHeader = (name: string) =>
+      name === "X-XSRF-TOKEN" ? "tok" : undefined;
+    expect(getSubmittedCsrfToken(getHeader, "X-XSRF-TOKEN")).toBe("tok");
+  });
+});
+
+describe("verifyCsrfRequest", () => {
+  it("returns true when cookie and header match", () => {
+    const token = generateCsrfToken();
+    const cookieHeader = `session=xyz; ${DEFAULT_CSRF_COOKIE_NAME}=${token}`;
+    const getHeader = (name: string) =>
+      name === DEFAULT_CSRF_HEADER_NAME ? token : undefined;
+    expect(verifyCsrfRequest(cookieHeader, getHeader)).toBe(true);
+  });
+  it("returns false when cookie missing", () => {
+    const getHeader = (name: string) =>
+      name === DEFAULT_CSRF_HEADER_NAME ? "token" : undefined;
+    expect(verifyCsrfRequest(undefined, getHeader)).toBe(false);
+  });
+  it("returns false when header missing", () => {
+    const token = generateCsrfToken();
+    const cookieHeader = `${DEFAULT_CSRF_COOKIE_NAME}=${token}`;
+    const getHeader = () => undefined;
+    expect(verifyCsrfRequest(cookieHeader, getHeader)).toBe(false);
+  });
+  it("returns false when tokens differ", () => {
+    const token = generateCsrfToken();
+    const cookieHeader = `${DEFAULT_CSRF_COOKIE_NAME}=${token}`;
+    const getHeader = (name: string) =>
+      name === DEFAULT_CSRF_HEADER_NAME ? "wrong-token" : undefined;
+    expect(verifyCsrfRequest(cookieHeader, getHeader)).toBe(false);
+  });
+  it("accepts custom cookie and header names", () => {
+    const token = generateCsrfToken();
+    const cookieHeader = `xsrf=${token}`;
+    const getHeader = (name: string) => (name === "X-XSRF-TOKEN" ? token : undefined);
+    expect(
+      verifyCsrfRequest(cookieHeader, getHeader, {
+        cookieName: "xsrf",
+        headerName: "X-XSRF-TOKEN",
+      })
+    ).toBe(true);
   });
 });

@@ -1,10 +1,20 @@
 import { timingSafeEqual } from "crypto";
 import { generateSecureToken } from "./secure-token.js";
 
+export const DEFAULT_CSRF_COOKIE_NAME = "csrf";
+export const DEFAULT_CSRF_HEADER_NAME = "X-CSRF-Token";
+
 export interface CsrfCookieOptions {
   maxAgeSeconds?: number;
   path?: string;
 }
+
+export interface CsrfRequestOptions {
+  cookieName?: string;
+  headerName?: string;
+}
+
+export type GetHeader = (name: string) => string | undefined;
 
 const CSRF_ATTRS = "Secure; SameSite=Strict";
 
@@ -69,4 +79,27 @@ export function verifyCsrfDoubleSubmit(
     return false;
   }
   return timingSafeEqual(a, b);
+}
+
+export function getSubmittedCsrfToken(
+  getHeader: GetHeader,
+  headerName: string = DEFAULT_CSRF_HEADER_NAME
+): string | undefined {
+  const value = getHeader(headerName);
+  if (value === undefined || value.trim().length === 0) {
+    return undefined;
+  }
+  return value.trim();
+}
+
+export function verifyCsrfRequest(
+  cookieHeader: string | undefined,
+  getHeader: GetHeader,
+  options: CsrfRequestOptions = {}
+): boolean {
+  const cookieName = options.cookieName ?? DEFAULT_CSRF_COOKIE_NAME;
+  const headerName = options.headerName ?? DEFAULT_CSRF_HEADER_NAME;
+  const cookieToken = getCsrfTokenFromCookieHeader(cookieHeader, cookieName);
+  const submittedToken = getSubmittedCsrfToken(getHeader, headerName);
+  return verifyCsrfDoubleSubmit(cookieToken, submittedToken);
 }
