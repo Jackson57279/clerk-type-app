@@ -28,3 +28,16 @@ export function getSeatUsage(
     seatCount: countActiveSeats(memberships),
   };
 }
+
+export interface OrganizationMembershipsInput {
+  organizationId: string;
+  memberships: OrganizationMembership[];
+}
+
+export function getBillingSeatReport(
+  organizations: OrganizationMembershipsInput[]
+): SeatUsage[] {
+  return organizations.map(({ organizationId, memberships }) =>
+    getSeatUsage(organizationId, memberships)
+  );
+}

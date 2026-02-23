@@ -3,6 +3,7 @@ import {
   countActiveSeats,
   canAddSeat,
   getSeatUsage,
+  getBillingSeatReport,
   type SeatUsage,
 } from "../src/seat-management.js";
 import type { OrganizationMembership } from "../src/member-approval.js";
@@ -90,5 +91,39 @@ describe("getSeatUsage", () => {
     ];
     const usage = getSeatUsage("org_x", memberships);
     expect(usage.seatCount).toBe(0);
+  });
+});
+
+describe("getBillingSeatReport", () => {
+  it("returns seat usage per organization for billing", () => {
+    const organizations = [
+      {
+        organizationId: "org_a",
+        memberships: [
+          membership({ organizationId: "org_a", status: "active" }),
+          membership({ organizationId: "org_a", status: "active" }),
+          membership({ organizationId: "org_a", status: "pending" }),
+        ],
+      },
+      {
+        organizationId: "org_b",
+        memberships: [
+          membership({ organizationId: "org_b", status: "active" }),
+        ],
+      },
+      {
+        organizationId: "org_c",
+        memberships: [],
+      },
+    ];
+    const report = getBillingSeatReport(organizations);
+    expect(report).toHaveLength(3);
+    expect(report[0]).toEqual({ organizationId: "org_a", seatCount: 2 });
+    expect(report[1]).toEqual({ organizationId: "org_b", seatCount: 1 });
+    expect(report[2]).toEqual({ organizationId: "org_c", seatCount: 0 });
+  });
+
+  it("returns empty array when no organizations", () => {
+    expect(getBillingSeatReport([])).toEqual([]);
   });
 });
