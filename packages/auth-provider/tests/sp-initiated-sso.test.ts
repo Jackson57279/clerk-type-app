@@ -5,6 +5,8 @@ import {
   createSpInitiatedLoginRequestUrl,
   validateSpInitiatedPostResponse,
   validateIdpInitiatedPostResponse,
+  validateSamlAssertPost,
+  isIdpInitiatedAssertion,
   createSpInitiatedLogoutRequestUrl,
   validateSpInitiatedLogoutResponse,
   type SpInitiatedSpConfig,
@@ -238,6 +240,65 @@ describe("validateIdpInitiatedPostResponse", () => {
     );
     expect(validated.nameId).toBe("idp-user@example.com");
     expect(validated.inResponseTo).toBe("");
+  });
+});
+
+describe("validateSamlAssertPost (IdP-initiated and SP-initiated on same endpoint)", () => {
+  it("accepts IdP-initiated POST and returns assertion with empty inResponseTo", async () => {
+    const idpInitiatedIdpConfig = {
+      entityId: "https://idp.example.com/metadata",
+      privateKey: TEST_SP_KEY,
+      certificate: TEST_CERT,
+    };
+    const idpInitiatedSpConfig = {
+      entityId: "https://sp.example.com/metadata.xml",
+      assertEndpoint: "https://sp.example.com/assert",
+    };
+    const idpResponse = await createIdpInitiatedResponse(
+      idpInitiatedIdpConfig,
+      idpInitiatedSpConfig,
+      { nameId: "idp-portal@example.com" }
+    );
+    const result = await validateSamlAssertPost(
+      spConfig({ allowUnencryptedAssertion: true }),
+      idpConfig(),
+      { SAMLResponse: idpResponse.samlResponseBase64 }
+    );
+    expect(result.nameId).toBe("idp-portal@example.com");
+    expect(result.inResponseTo).toBe("");
+    expect(isIdpInitiatedAssertion(result)).toBe(true);
+  });
+
+  it("accepts SP-initiated-style response when using same assert handler", async () => {
+    const idpInitiatedIdpConfig = {
+      entityId: "https://idp.example.com/metadata",
+      privateKey: TEST_SP_KEY,
+      certificate: TEST_CERT,
+    };
+    const idpInitiatedSpConfig = {
+      entityId: "https://sp.example.com/metadata.xml",
+      assertEndpoint: "https://sp.example.com/assert",
+    };
+    const idpResponse = await createIdpInitiatedResponse(
+      idpInitiatedIdpConfig,
+      idpInitiatedSpConfig,
+      { nameId: "user@example.com", sessionIndex: "sess_99" }
+    );
+    const result = await validateSamlAssertPost(
+      spConfig({ allowUnencryptedAssertion: true }),
+      idpConfig(),
+      { SAMLResponse: idpResponse.samlResponseBase64 }
+    );
+    expect(result.nameId).toBe("user@example.com");
+    expect(result.sessionIndex).toBe("sess_99");
+  });
+
+  it("rejects invalid SAMLResponse", async () => {
+    await expect(
+      validateSamlAssertPost(spConfig(), idpConfig(), {
+        SAMLResponse: "not-valid-base64!!!",
+      })
+    ).rejects.toThrow();
   });
 });
 

@@ -231,6 +231,21 @@ export function isIdpInitiatedAssertion(result: SpInitiatedAssertionResult): boo
   return result.inResponseTo === "";
 }
 
+export interface ValidateSamlAssertPostOptions {
+  requireSessionIndex?: boolean;
+}
+
+export function validateSamlAssertPost(
+  spConfig: SpInitiatedSpConfig,
+  idpConfig: SpInitiatedIdpConfig,
+  requestBody: { SAMLResponse: string; RelayState?: string },
+  options: ValidateSamlAssertPostOptions = {}
+): Promise<SpInitiatedAssertionResult> {
+  return validateSpInitiatedPostResponse(spConfig, idpConfig, requestBody, {
+    requireSessionIndex: options.requireSessionIndex ?? false,
+  });
+}
+
 export interface SpInitiatedLogoutRequestOptions {
   nameId: string;
   sessionIndex?: string;

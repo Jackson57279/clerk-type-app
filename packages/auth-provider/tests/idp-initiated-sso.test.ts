@@ -3,6 +3,7 @@ import { createIdpInitiatedResponse, type IdpInitiatedIdpConfig, type IdpInitiat
 import {
   validateSpInitiatedPostResponse,
   validateIdpInitiatedPostResponse,
+  validateSamlAssertPost,
   isIdpInitiatedAssertion,
   type SpInitiatedSpConfig,
   type SpInitiatedIdpConfig,
@@ -318,5 +319,21 @@ describe("validateIdpInitiatedPostResponse", () => {
     expect(isIdpInitiatedAssertion(validated)).toBe(true);
     const spInitiatedStyle = { ...validated, inResponseTo: "_req123" };
     expect(isIdpInitiatedAssertion(spInitiatedStyle)).toBe(false);
+  });
+
+  it("IdP-initiated SSO: assert endpoint receives POST from IdP, validateSamlAssertPost accepts it", async () => {
+    const result = await createIdpInitiatedResponse(
+      idpConfig(),
+      idpInitiatedSpConfig(),
+      { nameId: "sso-user@corp.com", attributes: { email: ["sso-user@corp.com"] } }
+    );
+    const assertion = await validateSamlAssertPost(
+      spConfigForValidation(),
+      idpConfigForValidation(),
+      { SAMLResponse: result.samlResponseBase64, RelayState: "/app" }
+    );
+    expect(assertion.nameId).toBe("sso-user@corp.com");
+    expect(assertion.relayState).toBe("/app");
+    expect(isIdpInitiatedAssertion(assertion)).toBe(true);
   });
 });
