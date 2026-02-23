@@ -10,6 +10,7 @@ describe("generateSecureToken", () => {
     const token = generateSecureToken();
     expect(token).toHaveLength(64);
     expect(token).toMatch(/^[a-f0-9]{64}$/);
+    expect(Buffer.from(token, "hex").length).toBe(32);
   });
 
   it("tokens are cryptographically random and unique", () => {
