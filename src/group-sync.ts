@@ -8,6 +8,7 @@ export interface SyncedGroup {
   id: string;
   externalId: string;
   displayName: string;
+  active: boolean;
 }
 
 export interface GroupSyncStore {
@@ -16,7 +17,8 @@ export interface GroupSyncStore {
   listGroupsByOrganization(organizationId: string): Promise<SyncedGroup[]>;
   createGroup(organizationId: string, data: { externalId: string; displayName: string }): Promise<SyncedGroup>;
   updateGroup(id: string, data: { displayName?: string }): Promise<SyncedGroup>;
-  deleteGroup(id: string): Promise<void>;
+  softDeleteGroup(id: string): Promise<void>;
+  hardDeleteGroup(id: string): Promise<void>;
   listGroupMemberIds(groupId: string): Promise<string[]>;
   setGroupMembers(groupId: string, userIds: string[]): Promise<void>;
 }
@@ -54,6 +56,7 @@ export async function syncGroup(
 
 export interface SyncGroupsOptions extends SyncGroupOptions {
   removeGroupsNotInSource?: boolean;
+  hardDeleteRemoved?: boolean;
 }
 
 export interface SyncGroupsResult {
@@ -81,9 +84,11 @@ export async function syncGroups(
   let removed = 0;
   if (removeGroupsNotInSource) {
     const existing = await store.listGroupsByOrganization(organizationId);
+    const hardDeleteRemoved = options.hardDeleteRemoved ?? false;
     for (const g of existing) {
       if (!externalIds.has(g.externalId)) {
-        await store.deleteGroup(g.id);
+        if (hardDeleteRemoved) await store.hardDeleteGroup(g.id);
+        else await store.softDeleteGroup(g.id);
         removed++;
       }
     }

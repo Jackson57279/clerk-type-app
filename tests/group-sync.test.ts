@@ -23,15 +23,18 @@ function memoryStore(): GroupSyncStore {
   return {
     async findGroupByExternalId(organizationId: string, externalId: string) {
       const id = byOrgExternal.get(organizationId)?.get(externalId);
-      return id ? groups.get(id) ?? null : null;
+      const g = id ? groups.get(id) : null;
+      return g?.active ? { id: g.id, externalId: g.externalId, displayName: g.displayName, active: g.active } : null;
     },
     async findGroupById(id: string) {
-      return groups.get(id) ?? null;
+      const g = groups.get(id);
+      return g ? { id: g.id, externalId: g.externalId, displayName: g.displayName, active: g.active } : null;
     },
     async listGroupsByOrganization(organizationId: string) {
       const list: SyncedGroup[] = [];
       for (const g of groups.values()) {
-        if (g.organizationId === organizationId) list.push({ id: g.id, externalId: g.externalId, displayName: g.displayName });
+        if (g.organizationId === organizationId && g.active)
+          list.push({ id: g.id, externalId: g.externalId, displayName: g.displayName, active: g.active });
       }
       return list;
     },
@@ -42,19 +45,27 @@ function memoryStore(): GroupSyncStore {
         organizationId,
         externalId: data.externalId,
         displayName: data.displayName,
+        active: true,
       };
       groups.set(id, group);
       orgMap(organizationId).set(data.externalId, id);
       members.set(id, []);
-      return { id: group.id, externalId: group.externalId, displayName: group.displayName };
+      return { id: group.id, externalId: group.externalId, displayName: group.displayName, active: group.active };
     },
     async updateGroup(id: string, data: { displayName?: string }) {
       const g = groups.get(id);
       if (!g) throw new Error("Group not found");
       if (data.displayName !== undefined) g.displayName = data.displayName;
-      return { id: g.id, externalId: g.externalId, displayName: g.displayName };
+      return { id: g.id, externalId: g.externalId, displayName: g.displayName, active: g.active };
     },
-    async deleteGroup(id: string) {
+    async softDeleteGroup(id: string) {
+      const g = groups.get(id);
+      if (!g) return;
+      const deactivated = { ...g, active: false };
+      groups.set(id, deactivated);
+      byOrgExternal.get(g.organizationId)?.delete(g.externalId);
+    },
+    async hardDeleteGroup(id: string) {
       const g = groups.get(id);
       if (g) byOrgExternal.get(g.organizationId)?.delete(g.externalId);
       groups.delete(id);
@@ -151,9 +162,9 @@ describe("syncGroups", () => {
     expect(list).toHaveLength(2);
   });
 
-  it("removes groups not in source when removeGroupsNotInSource is true", async () => {
+  it("soft-deletes (deactivates) groups not in source when removeGroupsNotInSource is true", async () => {
     const store = memoryStore();
-    await syncGroup(
+    const oldResult = await syncGroup(
       store,
       { externalId: "ext-old", displayName: "Old", memberIds: [] },
       { organizationId: "org_1" }
@@ -166,6 +177,28 @@ describe("syncGroups", () => {
     const list = await store.listGroupsByOrganization("org_1");
     expect(list).toHaveLength(1);
     expect(list[0]!.externalId).toBe("ext-new");
+    const deactivated = await store.findGroupById(oldResult.group.id);
+    expect(deactivated).not.toBeNull();
+    expect(deactivated!.active).toBe(false);
+  });
+
+  it("hard-deletes groups not in source when removeGroupsNotInSource and hardDeleteRemoved are true", async () => {
+    const store = memoryStore();
+    const oldResult = await syncGroup(
+      store,
+      { externalId: "ext-old", displayName: "Old", memberIds: [] },
+      { organizationId: "org_1" }
+    );
+    await syncGroups(
+      store,
+      [{ externalId: "ext-new", displayName: "New", memberIds: [] }],
+      { organizationId: "org_1", removeGroupsNotInSource: true, hardDeleteRemoved: true }
+    );
+    const list = await store.listGroupsByOrganization("org_1");
+    expect(list).toHaveLength(1);
+    expect(list[0]!.externalId).toBe("ext-new");
+    const deleted = await store.findGroupById(oldResult.group.id);
+    expect(deleted).toBeNull();
   });
 
   it("does not remove groups when removeGroupsNotInSource is false", async () => {
