@@ -1,5 +1,10 @@
 import { randomUUID } from "node:crypto";
-import type { RealtimeWebhookPayload } from "./realtime-webhook.js";
+import {
+  deliverRealtimeWebhook,
+  type DeliverWebhookOptions,
+  type RealtimeWebhookPayload,
+  type WebhookSubscriptionStore,
+} from "./realtime-webhook.js";
 import {
   getBillingSeatPayloads,
   type BillingSeatPayload,
@@ -36,4 +41,48 @@ export function createSeatUsageWebhookPayloads(
 ): RealtimeWebhookPayload[] {
   const payloads = getBillingSeatPayloads(organizations, at);
   return payloads.map((p) => createSeatUsageWebhookPayload(p));
+}
+
+export interface DeliverSeatUsageWebhooksParams {
+  organizations: OrganizationMembershipsInput[];
+  webhookStore: WebhookSubscriptionStore;
+  at?: Date;
+  webhookDeliveryOptions?: DeliverWebhookOptions;
+}
+
+export interface DeliverSeatUsageWebhooksResult {
+  payloadsCreated: number;
+  byOrganization: {
+    organizationId: string;
+    delivered: number;
+    failed: number;
+    results: { url: string; ok: boolean }[];
+  }[];
+}
+
+export async function deliverSeatUsageWebhooks(
+  params: DeliverSeatUsageWebhooksParams
+): Promise<DeliverSeatUsageWebhooksResult> {
+  const {
+    organizations,
+    webhookStore,
+    at = new Date(),
+    webhookDeliveryOptions,
+  } = params;
+  const payloads = createSeatUsageWebhookPayloads(organizations, at);
+  const byOrganization: DeliverSeatUsageWebhooksResult["byOrganization"] = [];
+  for (const payload of payloads) {
+    const orgId = (payload.data as { organizationId: string }).organizationId;
+    const result = await deliverRealtimeWebhook(
+      webhookStore,
+      orgId,
+      payload,
+      webhookDeliveryOptions
+    );
+    byOrganization.push({ organizationId: orgId, ...result });
+  }
+  return {
+    payloadsCreated: payloads.length,
+    byOrganization,
+  };
 }
