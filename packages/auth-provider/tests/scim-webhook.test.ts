@@ -471,6 +471,55 @@ describe("processScimWebhook", () => {
       const memberIds = await groupStore.listGroupMemberIds(group!.id);
       expect(memberIds).toEqual(["user_1"]);
     });
+
+    it("group.created resolves members by user id when value is id", async () => {
+      const userStore = memoryUserStore([
+        {
+          id: "user_1",
+          email: "u1@example.com",
+          externalId: "ext-u1",
+          name: undefined,
+          firstName: undefined,
+          lastName: undefined,
+          active: true,
+        },
+        {
+          id: "user_2",
+          email: "u2@example.com",
+          externalId: undefined,
+          name: undefined,
+          firstName: undefined,
+          lastName: undefined,
+          active: true,
+        },
+      ]);
+      const groupStore = memoryGroupStore();
+      const payload: ScimWebhookGroupPayload = {
+        type: "group.created",
+        id: "evt_g5",
+        timestamp: new Date().toISOString(),
+        data: {
+          externalId: "grp-by-id",
+          displayName: "By Id",
+          members: [
+            { value: "ext-u1" },
+            { value: "user_2" },
+          ],
+        },
+      };
+      const result = await processScimWebhook({
+        payload,
+        userStore,
+        groupStore,
+        organizationId: orgId,
+        isAllowedEmail: () => true,
+      });
+      expect(result.ok).toBe(true);
+      const group = await groupStore.findGroupByExternalId(orgId, "grp-by-id");
+      expect(group?.displayName).toBe("By Id");
+      const memberIds = await groupStore.listGroupMemberIds(group!.id);
+      expect(memberIds.sort()).toEqual(["user_1", "user_2"]);
+    });
   });
 
   describe("realtime webhook delivery", () => {

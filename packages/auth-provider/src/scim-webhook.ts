@@ -162,7 +162,8 @@ export async function processScimWebhook(
     const memberIds: string[] = [];
     if (data.members?.length) {
       for (const m of data.members) {
-        const user = await userStore.findByExternalId(m.value);
+        const user =
+          (await userStore.findByExternalId(m.value)) ?? (await userStore.findById(m.value));
         if (user?.active) memberIds.push(user.id);
       }
     }
