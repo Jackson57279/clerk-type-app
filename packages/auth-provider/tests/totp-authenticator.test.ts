@@ -33,11 +33,12 @@ describe("generateTotpSecret", () => {
 });
 
 describe("buildOtpauthUri", () => {
-  it("includes issuer and account in label and secret in query", () => {
+  it("includes issuer, account, secret and algorithm for authenticator apps", () => {
     const uri = buildOtpauthUri("MyApp", "user@example.com", "JBSWY3DPEHPK3PXP");
     expect(uri).toMatch(/^otpauth:\/\/totp\//);
     expect(uri).toContain("secret=JBSWY3DPEHPK3PXP");
     expect(uri).toContain("issuer=MyApp");
+    expect(uri).toContain("algorithm=SHA1");
     expect(uri).toContain("period=30");
     expect(uri).toContain("digits=6");
   });

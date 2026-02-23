@@ -38,6 +38,7 @@ export function buildOtpauthUri(
   const params = new URLSearchParams({
     secret: secretBase32,
     issuer,
+    algorithm: "SHA1",
     period: String(TOTP_PERIOD),
     digits: String(TOTP_DIGITS),
   });
