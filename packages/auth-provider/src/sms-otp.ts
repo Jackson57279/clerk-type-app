@@ -53,6 +53,10 @@ function inMemoryStore(): SmsOtpStore {
   };
 }
 
+export function createMemorySmsOtpStore(): SmsOtpStore {
+  return inMemoryStore();
+}
+
 const defaultStore = inMemoryStore();
 const smsRateLimiter = createRateLimiter(
   SMS_RATE_LIMIT_WINDOW_MS,

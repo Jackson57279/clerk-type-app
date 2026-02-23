@@ -3,6 +3,7 @@ import {
   generateSmsOtpCode,
   sendSmsOtp,
   verifySmsOtp,
+  createMemorySmsOtpStore,
   type SmsOtpStore,
   type SmsSender,
 } from "../src/sms-otp.js";
@@ -48,6 +49,18 @@ describe("generateSmsOtpCode", () => {
   it("returns custom digits when specified", () => {
     const code = generateSmsOtpCode(8);
     expect(code).toMatch(/^\d{8}$/);
+  });
+});
+
+describe("createMemorySmsOtpStore", () => {
+  it("returns a store that persists OTP for verification", async () => {
+    const store = createMemorySmsOtpStore();
+    const sender = capturingSender();
+    const phone = "+15551234000";
+    await sendSmsOtp(phone, { store, sender, template: "Code: {{code}}" });
+    const code = /Code: (\d{6})/.exec(sender.lastBody)?.[1];
+    expect(code).toBeDefined();
+    expect(await verifySmsOtp(phone, code!, { store })).toBe(true);
   });
 });
 
