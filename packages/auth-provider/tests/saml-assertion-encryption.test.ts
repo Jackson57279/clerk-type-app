@@ -89,4 +89,11 @@ describe("saml-assertion-encryption", () => {
   it("rejects invalid certificate", async () => {
     await expect(encryptAssertion(SAMPLE_ASSERTION, "not-a-valid-cert")).rejects.toThrow();
   });
+
+  it("accepts certificate without PEM headers (normalized by formatPem)", async () => {
+    const rawCert = TEST_CERT.replace(/-----BEGIN CERTIFICATE-----|-----END CERTIFICATE-----|\s/g, "");
+    const result = await encryptAssertion(SAMPLE_ASSERTION, rawCert);
+    expect(result).toContain("EncryptedAssertion");
+    expect(result).toContain("EncryptedData");
+  });
 });
