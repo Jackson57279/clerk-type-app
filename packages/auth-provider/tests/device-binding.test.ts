@@ -110,4 +110,14 @@ describe("validateDeviceBinding", () => {
       })
     ).toBe(true);
   });
+
+  it("returns false when stored hash length differs from current hash (no timing leak)", () => {
+    const stored = hashDeviceFingerprint("device1").slice(0, 32);
+    expect(
+      validateDeviceBinding({
+        storedFingerprintHash: stored,
+        currentFingerprint: "other",
+      })
+    ).toBe(false);
+  });
 });
