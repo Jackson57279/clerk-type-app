@@ -55,6 +55,23 @@ describe("recordAuditCompleted", () => {
     expect(result.auditor).toBeUndefined();
     expect(result.result).toBe("qualified");
   });
+
+  it("accepts failed result", async () => {
+    const store = createMemoryAuditStore();
+    const input = {
+      id: "audit-3",
+      completedAt: "2025-03-01T00:00:00.000Z",
+      periodStart: "2024-01-01",
+      periodEnd: "2024-12-31",
+      auditor: "Strict Auditors",
+      result: "failed" as const,
+    };
+    const result = await recordAuditCompleted(input, store);
+    expect(result.result).toBe("failed");
+    expect(store.save).toHaveBeenCalledWith(
+      expect.objectContaining({ id: "audit-3", result: "failed" })
+    );
+  });
 });
 
 describe("getLastAudit", () => {
