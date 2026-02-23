@@ -9,6 +9,7 @@ import {
   getPasswordPolicyFromEnv,
   getPasswordPolicyRequirements,
   getPasswordPolicyConfig,
+  getPasswordPolicyForClient,
   defaultPasswordPolicy,
   type PasswordPolicy,
 } from "../src/password.js";
@@ -259,6 +260,51 @@ describe("getPasswordPolicyConfig", () => {
     const config = getPasswordPolicyConfig({ PASSWORD_MIN_LENGTH: "10" });
     expect(validatePassword("short1a", config.policy).valid).toBe(false);
     expect(validatePassword("longenough1a", config.policy).valid).toBe(true);
+  });
+});
+
+describe("getPasswordPolicyForClient", () => {
+  it("returns default policy and requirements when env is empty", () => {
+    const client = getPasswordPolicyForClient({});
+    expect(client.minLength).toBe(8);
+    expect(client.maxLength).toBe(128);
+    expect(client.requireUppercase).toBe(false);
+    expect(client.requireLowercase).toBe(true);
+    expect(client.requireDigit).toBe(true);
+    expect(client.requireSpecial).toBe(false);
+    expect(client.checkBreach).toBe(false);
+    expect(client.requirements).toContain("Password must be at least 8 characters");
+    expect(client.requirements).toContain("Password must be at most 128 characters");
+    expect(client.requirements).toContain("Password must contain at least one lowercase letter");
+    expect(client.requirements).toContain("Password must contain at least one digit");
+  });
+
+  it("returns policy from env and checkBreach flag", () => {
+    const client = getPasswordPolicyForClient({
+      PASSWORD_MIN_LENGTH: "12",
+      PASSWORD_MAX_LENGTH: "64",
+      PASSWORD_REQUIRE_UPPERCASE: "true",
+      PASSWORD_REQUIRE_SPECIAL: "true",
+      PASSWORD_CHECK_BREACH: "true",
+    });
+    expect(client.minLength).toBe(12);
+    expect(client.maxLength).toBe(64);
+    expect(client.requireUppercase).toBe(true);
+    expect(client.requireSpecial).toBe(true);
+    expect(client.checkBreach).toBe(true);
+    expect(client.requirements).toContain("Password must be at least 12 characters");
+    expect(client.requirements).toContain("Password must be at most 64 characters");
+    expect(client.requirements).toContain("Password must contain at least one uppercase letter");
+    expect(client.requirements).toContain("Password must contain at least one special character");
+  });
+
+  it("returns serializable shape suitable for JSON", () => {
+    const client = getPasswordPolicyForClient({});
+    const json = JSON.stringify(client);
+    const parsed = JSON.parse(json) as typeof client;
+    expect(parsed.minLength).toBe(client.minLength);
+    expect(parsed.maxLength).toBe(client.maxLength);
+    expect(parsed.requirements).toEqual(client.requirements);
   });
 });
 

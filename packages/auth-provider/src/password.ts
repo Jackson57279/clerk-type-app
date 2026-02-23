@@ -92,6 +92,34 @@ export interface PasswordPolicyConfig {
   checkBreach: boolean;
 }
 
+export interface PasswordPolicyForClient {
+  minLength: number;
+  maxLength: number;
+  requireUppercase: boolean;
+  requireLowercase: boolean;
+  requireDigit: boolean;
+  requireSpecial: boolean;
+  requirements: string[];
+  checkBreach: boolean;
+}
+
+export function getPasswordPolicyForClient(
+  env: NodeJS.ProcessEnv = process.env
+): PasswordPolicyForClient {
+  const config = getPasswordPolicyConfig(env);
+  const maxLen = config.policy.maxLength ?? 128;
+  return {
+    minLength: config.policy.minLength,
+    maxLength: maxLen,
+    requireUppercase: config.policy.requireUppercase,
+    requireLowercase: config.policy.requireLowercase,
+    requireDigit: config.policy.requireDigit,
+    requireSpecial: config.policy.requireSpecial,
+    requirements: config.requirements,
+    checkBreach: config.checkBreach,
+  };
+}
+
 export function getPasswordPolicyConfig(
   env: NodeJS.ProcessEnv = process.env
 ): PasswordPolicyConfig {
