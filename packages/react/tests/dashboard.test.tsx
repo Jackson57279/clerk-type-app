@@ -74,4 +74,76 @@ describe("Dashboard", () => {
     expect(screen.getByTestId("dashboard-settings")).toBeTruthy();
     expect(screen.queryByTestId("dashboard-overview")).toBeNull();
   });
+
+  it("shows user list when userManagement is provided", () => {
+    render(
+      <Dashboard
+        activeSection="users"
+        userManagement={{
+          users: [
+            { id: "u1", email: "a@example.com", firstName: "Alice", lastName: "A", active: true },
+            { id: "u2", email: "b@example.com", name: "Bob", active: false },
+          ],
+        }}
+      />
+    );
+    expect(screen.getByTestId("dashboard-users-list")).toBeTruthy();
+    expect(screen.getByTestId("dashboard-user-row-u1")).toBeTruthy();
+    expect(screen.getByTestId("dashboard-user-row-u2")).toBeTruthy();
+    expect(screen.getByText("a@example.com")).toBeTruthy();
+    expect(screen.getByText("Alice A")).toBeTruthy();
+    expect(screen.getByText("Bob")).toBeTruthy();
+    expect(screen.getByText("Inactive")).toBeTruthy();
+  });
+
+  it("shows search input when onSearchChange is provided", () => {
+    render(
+      <Dashboard
+        activeSection="users"
+        userManagement={{
+          users: [],
+          search: "",
+          onSearchChange: () => {},
+        }}
+      />
+    );
+    const search = screen.getByTestId("dashboard-users-search");
+    expect(search).toBeTruthy();
+    expect((search as HTMLInputElement).placeholder).toBe("Search by email or name");
+  });
+
+  it("shows loading state when userManagement.loading is true", () => {
+    render(
+      <Dashboard
+        activeSection="users"
+        userManagement={{ users: [], loading: true }}
+      />
+    );
+    expect(screen.getByTestId("dashboard-users-loading").textContent).toContain("Loading");
+  });
+
+  it("shows empty state when users array is empty and not loading", () => {
+    render(
+      <Dashboard
+        activeSection="users"
+        userManagement={{ users: [] }}
+      />
+    );
+    expect(screen.getByTestId("dashboard-users-empty").textContent).toBe("No users found.");
+  });
+
+  it("calls onUserDelete when Delete is clicked", () => {
+    const onUserDelete = vi.fn();
+    render(
+      <Dashboard
+        activeSection="users"
+        userManagement={{
+          users: [{ id: "u1", email: "a@example.com", active: true }],
+          onUserDelete,
+        }}
+      />
+    );
+    fireEvent.click(screen.getByTestId("dashboard-user-delete-u1"));
+    expect(onUserDelete).toHaveBeenCalledWith("u1");
+  });
 });

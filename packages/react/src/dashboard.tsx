@@ -46,6 +46,21 @@ const GRID_STYLE: React.CSSProperties = {
   gap: "1rem",
 };
 
+const TABLE_HEAD_STYLE: React.CSSProperties = {
+  textAlign: "left",
+  padding: "0.5rem 0.75rem",
+  borderBottom: "2px solid #e5e7eb",
+  fontSize: "0.75rem",
+  fontWeight: 600,
+  color: "#6b7280",
+};
+
+const TABLE_CELL_STYLE: React.CSSProperties = {
+  padding: "0.5rem 0.75rem",
+  borderBottom: "1px solid #e5e7eb",
+  fontSize: "0.875rem",
+};
+
 export type DashboardSection = "overview" | "users" | "organizations" | "settings";
 
 export interface DashboardOverviewMetrics {
@@ -55,10 +70,28 @@ export interface DashboardOverviewMetrics {
   organizationCount?: number;
 }
 
+export interface DashboardUserSummary {
+  id: string;
+  email: string;
+  name?: string;
+  firstName?: string;
+  lastName?: string;
+  active?: boolean;
+}
+
+export interface DashboardUserManagementProps {
+  users: DashboardUserSummary[];
+  loading?: boolean;
+  search?: string;
+  onSearchChange?: (value: string) => void;
+  onUserDelete?: (userId: string) => void;
+}
+
 export interface DashboardProps {
   overviewMetrics?: DashboardOverviewMetrics;
   activeSection?: DashboardSection;
   onSectionChange?: (section: DashboardSection) => void;
+  userManagement?: DashboardUserManagementProps;
 }
 
 const DEFAULT_METRICS: DashboardOverviewMetrics = {
@@ -73,6 +106,7 @@ export function Dashboard(props: DashboardProps) {
     overviewMetrics = DEFAULT_METRICS,
     activeSection: controlledSection,
     onSectionChange,
+    userManagement,
   } = props;
   const [internalSection, setInternalSection] = useState<DashboardSection>("overview");
   const activeSection = controlledSection ?? internalSection;
@@ -166,7 +200,80 @@ export function Dashboard(props: DashboardProps) {
             <h1 data-testid="dashboard-users-title" style={{ marginTop: 0, fontSize: "1.25rem" }}>
               User Management
             </h1>
-            <p data-testid="dashboard-users-placeholder">Search, filter, and manage users.</p>
+            {userManagement ? (
+              <>
+                {userManagement.onSearchChange && (
+                  <input
+                    type="search"
+                    data-testid="dashboard-users-search"
+                    placeholder="Search by email or name"
+                    value={userManagement.search ?? ""}
+                    onChange={(e) => userManagement.onSearchChange?.(e.target.value)}
+                    style={{
+                      marginBottom: "1rem",
+                      padding: "0.5rem 0.75rem",
+                      width: "100%",
+                      maxWidth: "320px",
+                      border: "1px solid #e5e7eb",
+                      borderRadius: "6px",
+                    }}
+                  />
+                )}
+                {userManagement.loading ? (
+                  <p data-testid="dashboard-users-loading">Loading users…</p>
+                ) : userManagement.users.length === 0 ? (
+                  <p data-testid="dashboard-users-empty">No users found.</p>
+                ) : (
+                  <div data-testid="dashboard-users-list" style={{ overflowX: "auto" }}>
+                    <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                      <thead>
+                        <tr>
+                          <th style={TABLE_HEAD_STYLE}>Email</th>
+                          <th style={TABLE_HEAD_STYLE}>Name</th>
+                          <th style={TABLE_HEAD_STYLE}>Status</th>
+                          {userManagement.onUserDelete ? (
+                            <th style={TABLE_HEAD_STYLE} aria-label="Actions" />
+                          ) : null}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {userManagement.users.map((u) => (
+                          <tr key={u.id} data-testid={`dashboard-user-row-${u.id}`}>
+                            <td style={TABLE_CELL_STYLE}>{u.email}</td>
+                            <td style={TABLE_CELL_STYLE}>
+                              {(u.name ?? [u.firstName, u.lastName].filter(Boolean).join(" ")) || "—"}
+                            </td>
+                            <td style={TABLE_CELL_STYLE}>{u.active !== false ? "Active" : "Inactive"}</td>
+                            {userManagement.onUserDelete ? (
+                              <td style={TABLE_CELL_STYLE}>
+                                <button
+                                  type="button"
+                                  data-testid={`dashboard-user-delete-${u.id}`}
+                                  onClick={() => userManagement.onUserDelete?.(u.id)}
+                                  style={{
+                                    padding: "0.25rem 0.5rem",
+                                    fontSize: "0.8125rem",
+                                    color: "#b91c1c",
+                                    border: "1px solid #fecaca",
+                                    borderRadius: "4px",
+                                    background: "#fef2f2",
+                                    cursor: "pointer",
+                                  }}
+                                >
+                                  Delete
+                                </button>
+                              </td>
+                            ) : null}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </>
+            ) : (
+              <p data-testid="dashboard-users-placeholder">Search, filter, and manage users.</p>
+            )}
           </section>
         )}
         {activeSection === "organizations" && (
