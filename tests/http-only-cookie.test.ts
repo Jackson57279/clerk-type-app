@@ -12,6 +12,11 @@ describe("buildSessionCookie", () => {
     expect(header).toContain("SameSite=Strict");
   });
 
+  it("uses exact attribute string HttpOnly; Secure; SameSite=Strict", () => {
+    const header = buildSessionCookie("sid", "v");
+    expect(header).toContain("HttpOnly; Secure; SameSite=Strict");
+  });
+
   it("starts with name=value", () => {
     const header = buildSessionCookie("sessionId", "abc");
     expect(header).toMatch(/^sessionId=abc/);
