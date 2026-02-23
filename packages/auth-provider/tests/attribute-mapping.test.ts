@@ -264,6 +264,22 @@ describe("mapScimUserToProvisionData", () => {
     expect(result.active).toBe(false);
   });
 
+  it("uses custom externalIdPath", () => {
+    const scimUser = { userName: "u@example.com", customId: "corp-123" };
+    const result = mapScimUserToProvisionData(scimUser as Parameters<typeof mapScimUserToProvisionData>[0], {
+      externalIdPath: "customId",
+    });
+    expect(result.externalId).toBe("corp-123");
+  });
+
+  it("uses custom activePath", () => {
+    const scimUser = { userName: "u@example.com", meta: { enabled: false } };
+    const result = mapScimUserToProvisionData(scimUser as Parameters<typeof mapScimUserToProvisionData>[0], {
+      activePath: "meta.enabled",
+    });
+    expect(result.active).toBe(false);
+  });
+
   it("DEFAULT_SCIM_USER_ATTRIBUTE_MAPPING has expected paths", () => {
     expect(DEFAULT_SCIM_USER_ATTRIBUTE_MAPPING.emailPath).toBe("emails");
     expect(DEFAULT_SCIM_USER_ATTRIBUTE_MAPPING.namePath).toBe("name.formatted");
