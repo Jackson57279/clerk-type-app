@@ -219,3 +219,69 @@ describe("createConcurrentSessionLimit (custom defaults)", () => {
     expect(limiter.getActiveCountByUser("u2")).toBe(1);
   });
 });
+
+describe("createConcurrentSessionLimit (getLimits per user/org)", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("uses per-user limit from getLimits", () => {
+    const limiter = createConcurrentSessionLimit({
+      defaultUserLimit: 5,
+      getLimits: (userId) =>
+        userId === "premium" ? { user: 10 } : { user: 2 },
+    });
+    limiter.register("s0", "free", null);
+    limiter.register("s1", "free", null);
+    const rFree = limiter.check("free", null);
+    expect(rFree.allowed).toBe(true);
+    expect(rFree.evictSessionIds).toHaveLength(1);
+
+    for (let i = 0; i < 10; i++) limiter.register(`p${i}`, "premium", null);
+    const rPremium = limiter.check("premium", null);
+    expect(rPremium.allowed).toBe(true);
+    expect(rPremium.evictSessionIds).toHaveLength(1);
+  });
+
+  it("uses per-org limit from getLimits", () => {
+    const limiter = createConcurrentSessionLimit({
+      defaultUserLimit: 10,
+      defaultOrgLimit: 5,
+      getLimits: (_userId, orgId) =>
+        orgId === "enterprise" ? { user: 10, org: 20 } : { user: 10, org: 2 },
+    });
+    limiter.register("s0", "u1", "small");
+    limiter.register("s1", "u2", "small");
+    const rSmall = limiter.check("u3", "small");
+    expect(rSmall.allowed).toBe(true);
+    expect(rSmall.evictSessionIds).toHaveLength(1);
+
+    limiter.register("e0", "u1", "enterprise");
+    limiter.register("e1", "u2", "enterprise");
+    const rEnt = limiter.check("u3", "enterprise");
+    expect(rEnt.allowed).toBe(true);
+    expect(rEnt.evictSessionIds).toEqual([]);
+  });
+
+  it("call-site limits override getLimits", () => {
+    const limiter = createConcurrentSessionLimit({
+      defaultUserLimit: 5,
+      getLimits: () => ({ user: 2 }),
+    });
+    limiter.register("s0", "u1", null);
+    const r = limiter.check("u1", null, { user: 10 });
+    expect(r.evictSessionIds).toEqual([]);
+  });
+
+  it("works without getLimits (limits optional)", () => {
+    const limiter = createConcurrentSessionLimit({ defaultUserLimit: 2 });
+    limiter.register("s0", "u1", null);
+    limiter.register("s1", "u1", null);
+    const r = limiter.check("u1", null);
+    expect(r.allowed).toBe(true);
+    expect(r.evictSessionIds).toHaveLength(1);
+  });
+});

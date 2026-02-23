@@ -124,9 +124,15 @@ export function invalidateAllSessionsForUser(userId: string): string[] {
   return ids;
 }
 
+export type SessionLimitsResolver = (
+  userId: string,
+  orgId: string | null
+) => { user?: number; org?: number };
+
 export interface ConcurrentSessionLimitOptions {
   defaultUserLimit?: number;
   defaultOrgLimit?: number;
+  getLimits?: SessionLimitsResolver;
 }
 
 export function createConcurrentSessionLimit(
@@ -134,6 +140,7 @@ export function createConcurrentSessionLimit(
 ) {
   const defaultUserLimit = options.defaultUserLimit ?? DEFAULT_USER_LIMIT;
   const defaultOrgLimit = options.defaultOrgLimit;
+  const getLimits = options.getLimits;
   const store = new Map<string, SessionRecord>();
 
   function getByUser(userId: string): string[] {
@@ -178,10 +185,14 @@ export function createConcurrentSessionLimit(
     check(
       userId: string,
       orgId: string | null,
-      limits: { user?: number; org?: number }
+      limits?: { user?: number; org?: number }
     ): CheckResult {
-      const userLimit = limits.user ?? defaultUserLimit;
-      const orgLimit = limits.org ?? defaultOrgLimit;
+      const resolved =
+        getLimits != null ? getLimits(userId, orgId) : ({} as { user?: number; org?: number });
+      const userLimit =
+        limits?.user ?? resolved.user ?? defaultUserLimit;
+      const orgLimit =
+        limits?.org ?? resolved.org ?? defaultOrgLimit;
       if (userLimit < 1) return { allowed: false, evictSessionIds: [] };
       if (orgId != null && orgLimit !== undefined && orgLimit < 1) {
         return { allowed: false, evictSessionIds: [] };
