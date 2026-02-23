@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import {
   createMemoryPasskeyStore,
   createMemoryPasskeyChallengeStore,
@@ -10,6 +10,27 @@ import {
   type StoredPasskey,
   type PasskeyRpConfig,
 } from "../src/passkeys.js";
+
+vi.mock("@simplewebauthn/server", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("@simplewebauthn/server")>();
+  return {
+    ...actual,
+    verifyRegistrationResponse: async () => ({
+      verified: true,
+      registrationInfo: {
+        credential: {
+          id: "mock-cred-id",
+          publicKey: new Uint8Array(32),
+          counter: 0,
+          transports: [],
+        },
+        credentialDeviceType: "singleDevice" as const,
+        credentialBackedUp: false,
+      },
+    }),
+  };
+});
 
 const rpConfig: PasskeyRpConfig = {
   rpName: "Test RP",
@@ -440,6 +461,80 @@ describe("finishRegistration", () => {
       rpConfig,
     });
     expect(result.verified).toBe(false);
+  });
+
+  it("returns requiresMfaOrBackup and does not save passkey when mfaBackupProvider returns false", async () => {
+    const credentialStore = createMemoryPasskeyStore();
+    const challengeStore = createMemoryPasskeyChallengeStore();
+    await startRegistration({
+      userId: "u1",
+      userName: "alice",
+      credentialStore,
+      challengeStore,
+      rpConfig,
+    });
+    const mfaBackupProvider = {
+      hasMfaOrBackupCodes: vi.fn().mockResolvedValue(false),
+    };
+    const result = await finishRegistration({
+      userId: "u1",
+      response: {
+        id: "mock-cred-id",
+        rawId: "mock-cred-id",
+        type: "public-key",
+        response: {
+          clientDataJSON: "e30",
+          attestationObject: "o2NmbXRkbm9uZWdhdHRTdG10oGhhdXRoRGF0YVikSZYN5YgOjGh0NBcPZHZgW4_krrmihjLHmVzzuoMdl2NFAAAAAK3OAAI1vMYKZIsLJfHwVQMAIER5YWx1eSBMYXB0b3 ClB1YmxpYyBLZXnALg",
+        },
+        clientExtensionResults: {},
+      },
+      credentialStore,
+      challengeStore,
+      rpConfig,
+      mfaBackupProvider,
+    });
+    expect(result.verified).toBe(false);
+    expect(result.requiresMfaOrBackup).toBe(true);
+    const list = await credentialStore.listByUserId("u1");
+    expect(list).toHaveLength(0);
+  });
+
+  it("saves passkey when mfaBackupProvider returns true after verification", async () => {
+    const credentialStore = createMemoryPasskeyStore();
+    const challengeStore = createMemoryPasskeyChallengeStore();
+    await startRegistration({
+      userId: "u1",
+      userName: "alice",
+      credentialStore,
+      challengeStore,
+      rpConfig,
+    });
+    const mfaBackupProvider = {
+      hasMfaOrBackupCodes: vi.fn().mockResolvedValue(true),
+    };
+    const result = await finishRegistration({
+      userId: "u1",
+      response: {
+        id: "mock-cred-id",
+        rawId: "mock-cred-id",
+        type: "public-key",
+        response: {
+          clientDataJSON: "e30",
+          attestationObject: "o2NmbXRkbm9uZWdhdHRTdG10oGhhdXRoRGF0YVikSZYN5YgOjGh0NBcPZHZgW4_krrmihjLHmVzzuoMdl2NFAAAAAK3OAAI1vMYKZIsLJfHwVQMAIER5YWx1eSBMYXB0b3 ClB1YmxpYyBLZXnALg",
+        },
+        clientExtensionResults: {},
+      },
+      credentialStore,
+      challengeStore,
+      rpConfig,
+      mfaBackupProvider,
+    });
+    expect(result.verified).toBe(true);
+    expect(result.credentialId).toBe("mock-cred-id");
+    expect(result.requiresMfaOrBackup).toBeUndefined();
+    const list = await credentialStore.listByUserId("u1");
+    expect(list).toHaveLength(1);
+    expect(list[0]!.credentialId).toBe("mock-cred-id");
   });
 });
 

@@ -80,6 +80,10 @@ export async function startRegistration(
   return regOptions;
 }
 
+export interface MfaBackupProvider {
+  hasMfaOrBackupCodes(userId: string): Promise<boolean>;
+}
+
 export interface FinishRegistrationOptions {
   userId: string;
   response: RegistrationResponseJSON;
@@ -88,17 +92,20 @@ export interface FinishRegistrationOptions {
   rpConfig: PasskeyRpConfig;
   name?: string;
   deviceInfo?: string;
+  mfaBackupProvider?: MfaBackupProvider;
 }
 
 export interface FinishRegistrationResult {
   verified: boolean;
   credentialId?: string;
+  requiresMfaOrBackup?: boolean;
 }
 
 export async function finishRegistration(
   options: FinishRegistrationOptions
 ): Promise<FinishRegistrationResult> {
-  const { userId, response, credentialStore, challengeStore, rpConfig } = options;
+  const { userId, response, credentialStore, challengeStore, rpConfig, mfaBackupProvider } =
+    options;
   const expectedOptions = challengeStore.getRegistrationOptions(userId);
   if (!expectedOptions) {
     return { verified: false };
@@ -116,6 +123,15 @@ export async function finishRegistration(
   }
   if (!verification.verified || !verification.registrationInfo) {
     return { verified: false };
+  }
+  if (mfaBackupProvider) {
+    const hasBackup = await mfaBackupProvider.hasMfaOrBackupCodes(userId);
+    if (!hasBackup) {
+      return {
+        verified: false,
+        requiresMfaOrBackup: true,
+      };
+    }
   }
   const { credential, credentialDeviceType, credentialBackedUp } = verification.registrationInfo;
   const webauthnUserID = expectedOptions.user.id;
