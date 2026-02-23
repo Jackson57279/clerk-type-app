@@ -92,6 +92,7 @@ export function createMagicLinkToken(
 export interface VerifyMagicLinkTokenOptions {
   usedTokenStore?: SingleUseTokenStore;
   deviceFingerprint?: string | null;
+  skipDeviceBinding?: boolean;
 }
 
 const defaultUsedTokenStore = createMemoryUsedTokenStore();
@@ -135,6 +136,7 @@ export function verifyMagicLinkToken(
   const store = options.usedTokenStore ?? defaultUsedTokenStore;
   if (store.isUsed(data.jti)) return null;
   if (
+    !options.skipDeviceBinding &&
     data.deviceFingerprintHash != null &&
     !validateDeviceBinding({
       storedFingerprintHash: data.deviceFingerprintHash,

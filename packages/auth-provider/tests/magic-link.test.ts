@@ -208,6 +208,37 @@ describe("magic link device binding", () => {
     expect(verifyMagicLinkToken(token, SECRET, { usedTokenStore: noop })).not.toBeNull();
     expect(verifyMagicLinkToken(token, SECRET, { usedTokenStore: noop, deviceFingerprint: null })).not.toBeNull();
   });
+
+  it("verify succeeds with skipDeviceBinding when token has fingerprint but current is missing", () => {
+    const noop = createNoOpUsedTokenStore();
+    const { token } = createMagicLinkToken(
+      { email: "u@x.com", deviceFingerprint: "device-A" },
+      SECRET
+    );
+    expect(verifyMagicLinkToken(token, SECRET, { usedTokenStore: noop, deviceFingerprint: null })).toBeNull();
+    const payload = verifyMagicLinkToken(token, SECRET, {
+      usedTokenStore: noop,
+      skipDeviceBinding: true,
+    });
+    expect(payload).not.toBeNull();
+    expect(payload!.email).toBe("u@x.com");
+  });
+
+  it("verify succeeds with skipDeviceBinding when token has fingerprint and current does not match", () => {
+    const noop = createNoOpUsedTokenStore();
+    const { token } = createMagicLinkToken(
+      { email: "u@x.com", deviceFingerprint: "device-A" },
+      SECRET
+    );
+    expect(verifyMagicLinkToken(token, SECRET, { usedTokenStore: noop, deviceFingerprint: "device-B" })).toBeNull();
+    const payload = verifyMagicLinkToken(token, SECRET, {
+      usedTokenStore: noop,
+      skipDeviceBinding: true,
+      deviceFingerprint: "device-B",
+    });
+    expect(payload).not.toBeNull();
+    expect(payload!.email).toBe("u@x.com");
+  });
 });
 
 describe("DEFAULT_MAGIC_LINK_TTL_MS", () => {
