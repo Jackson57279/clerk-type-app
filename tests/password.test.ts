@@ -47,6 +47,11 @@ describe("Argon2id password hashing", () => {
     expect(await verifyPassword(hash, pwd)).toBe(true);
     expect(await verifyPassword(hash, "other")).toBe(false);
   });
+
+  it("rejects malformed or non-Argon2 hash", async () => {
+    expect(await verifyPassword("not-a-valid-hash", "any")).toBe(false);
+    expect(await verifyPassword("$argon2i$v=19$m=64,t=1,p=1$c29tZXNhbHQ$invalid", "any")).toBe(false);
+  });
 });
 
 describe("Password policy", () => {

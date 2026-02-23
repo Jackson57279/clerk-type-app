@@ -109,5 +109,9 @@ export async function verifyPassword(
   hash: string,
   plainPassword: string
 ): Promise<boolean> {
-  return argon2.verify(hash, plainPassword);
+  try {
+    return await argon2.verify(hash, plainPassword);
+  } catch {
+    return false;
+  }
 }
