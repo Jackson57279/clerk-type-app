@@ -50,6 +50,10 @@ export interface PasskeyRpConfig {
   origin: string;
 }
 
+export type UserVerification = "required" | "preferred" | "discouraged";
+
+export type PreferredAuthenticatorType = "securityKey" | "localDevice" | "remoteDevice";
+
 export interface StartRegistrationOptions {
   userId: string;
   userName: string;
@@ -59,6 +63,8 @@ export interface StartRegistrationOptions {
   rpConfig: PasskeyRpConfig;
   residentKeyRequirement?: "discouraged" | "preferred" | "required";
   authenticatorAttachment?: "platform" | "cross-platform";
+  userVerification?: UserVerification;
+  preferredAuthenticatorType?: PreferredAuthenticatorType;
 }
 
 export async function startRegistration(
@@ -73,19 +79,25 @@ export async function startRegistration(
     rpConfig,
     residentKeyRequirement,
     authenticatorAttachment,
+    userVerification,
+    preferredAuthenticatorType,
   } = options;
   const existing = await credentialStore.listByUserId(userId);
   const excludeCredentials = existing.map((p) => ({
     id: p.credentialId,
     transports: p.transports,
   }));
-  const authenticatorSelection =
-    residentKeyRequirement || authenticatorAttachment
-      ? {
-          residentKey: residentKeyRequirement,
-          authenticatorAttachment,
-        }
-      : undefined;
+  const hasAuthenticatorSelection =
+    residentKeyRequirement ||
+    authenticatorAttachment ||
+    userVerification;
+  const authenticatorSelection = hasAuthenticatorSelection
+    ? {
+        residentKey: residentKeyRequirement,
+        authenticatorAttachment,
+        userVerification,
+      }
+    : undefined;
   const regOptions = await generateRegistrationOptions({
     rpName: rpConfig.rpName,
     rpID: rpConfig.rpID,
@@ -94,6 +106,7 @@ export async function startRegistration(
     attestationType: "none",
     excludeCredentials,
     authenticatorSelection,
+    preferredAuthenticatorType,
   });
   challengeStore.setRegistrationOptions(userId, regOptions);
   return regOptions;
@@ -176,12 +189,13 @@ export interface StartAuthenticationOptions {
   credentialStore: PasskeyStore;
   challengeStore: PasskeyChallengeStore;
   rpConfig: PasskeyRpConfig;
+  userVerification?: UserVerification;
 }
 
 export async function startAuthentication(
   options: StartAuthenticationOptions
 ): Promise<PublicKeyCredentialRequestOptionsJSON> {
-  const { userId, credentialStore, challengeStore, rpConfig } = options;
+  const { userId, credentialStore, challengeStore, rpConfig, userVerification } = options;
   const passkeys = await credentialStore.listByUserId(userId);
   const allowCredentials = passkeys.map((p) => ({
     id: p.credentialId,
@@ -190,6 +204,7 @@ export async function startAuthentication(
   const authOptions = await generateAuthenticationOptions({
     rpID: rpConfig.rpID,
     allowCredentials: allowCredentials.length > 0 ? allowCredentials : undefined,
+    userVerification,
   });
   challengeStore.setAuthenticationOptions(userId, authOptions);
   return authOptions;

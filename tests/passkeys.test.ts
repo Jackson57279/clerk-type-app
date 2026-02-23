@@ -545,6 +545,113 @@ describe("startRegistration", () => {
   });
 });
 
+describe("WebAuthn hardware keys (cross-platform authenticators)", () => {
+  it("requests cross-platform attachment and optional userVerification for hardware keys", async () => {
+    const credentialStore = createMemoryPasskeyStore();
+    const challengeStore = createMemoryPasskeyChallengeStore();
+    const options = await startRegistration({
+      userId: "u-yubikey",
+      userName: "alice",
+      credentialStore,
+      challengeStore,
+      rpConfig,
+      authenticatorAttachment: "cross-platform",
+      userVerification: "required",
+      preferredAuthenticatorType: "securityKey",
+    });
+    expect(options.authenticatorSelection?.authenticatorAttachment).toBe("cross-platform");
+    expect(options.authenticatorSelection?.userVerification).toBe("required");
+  });
+
+  it("startAuthentication with userVerification required forwards to options", async () => {
+    const credentialStore = createMemoryPasskeyStore();
+    const challengeStore = createMemoryPasskeyChallengeStore();
+    await credentialStore.save({
+      userId: "u1",
+      credentialId: "hw-cred",
+      publicKey: new Uint8Array(1),
+      counter: 0,
+      deviceType: "singleDevice",
+      backedUp: false,
+      webauthnUserID: "w",
+    });
+    const options = await startAuthentication({
+      userId: "u1",
+      credentialStore,
+      challengeStore,
+      rpConfig,
+      userVerification: "required",
+    });
+    expect(options.userVerification).toBe("required");
+  });
+});
+
+describe("WebAuthn platform authenticators", () => {
+  it("requests platform attachment for Touch ID / Windows Hello", async () => {
+    const credentialStore = createMemoryPasskeyStore();
+    const challengeStore = createMemoryPasskeyChallengeStore();
+    const options = await startRegistration({
+      userId: "u-platform",
+      userName: "bob",
+      credentialStore,
+      challengeStore,
+      rpConfig,
+      authenticatorAttachment: "platform",
+      userVerification: "preferred",
+      preferredAuthenticatorType: "localDevice",
+    });
+    expect(options.authenticatorSelection?.authenticatorAttachment).toBe("platform");
+    expect(options.authenticatorSelection?.userVerification).toBe("preferred");
+  });
+
+  it("stores deviceType and transports from verification (platform vs cross-platform)", async () => {
+    const credentialStore = createMemoryPasskeyStore();
+    const challengeStore = createMemoryPasskeyChallengeStore();
+    await startRegistration({
+      userId: "u-device-type",
+      userName: "alice",
+      credentialStore,
+      challengeStore,
+      rpConfig,
+      authenticatorAttachment: "platform",
+    });
+    vi.mocked(simplewebauthn.verifyRegistrationResponse).mockImplementationOnce(async () => ({
+      verified: true,
+      registrationInfo: {
+        credential: {
+          id: "platform-cred",
+          publicKey: new Uint8Array(32),
+          counter: 0,
+          transports: ["internal"],
+        },
+        credentialDeviceType: "singleDevice",
+        credentialBackedUp: false,
+      },
+    }));
+    await finishRegistration({
+      userId: "u-device-type",
+      response: {
+        id: "platform-cred",
+        rawId: "platform-cred",
+        type: "public-key",
+        response: {
+          clientDataJSON: "e30",
+          attestationObject: "o2NmbXRkbm9uZWdhdHRTdG10oGhhdXRoRGF0YVikSZYN5YgOjGh0NBcPZHZgW4_krrmihjLHmVzzuoMdl2NFAAAAAK3OAAI1vMYKZIsLJfHwVQMAIER5YWx1eSBMYXB0b3ClB1YmxpYyBLZXnALg",
+        },
+        clientExtensionResults: {},
+      },
+      credentialStore,
+      challengeStore,
+      rpConfig,
+      mfaBackupProvider: allowMfaBackupProvider,
+    });
+    const list = await credentialStore.listByUserId("u-device-type");
+    expect(list).toHaveLength(1);
+    expect(list[0]!.deviceType).toBe("singleDevice");
+    expect(list[0]!.transports).toEqual(["internal"]);
+  });
+});
+
 describe("finishRegistration", () => {
   it("returns verified false when no registration challenge was stored", async () => {
     const credentialStore = createMemoryPasskeyStore();
