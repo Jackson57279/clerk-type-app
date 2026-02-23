@@ -1,5 +1,18 @@
 import { isActiveMember, type OrganizationMembership } from "./member-approval.js";
 
+export class SeatLimitReachedError extends Error {
+  constructor(
+    public readonly organizationId: string,
+    public readonly seatCount: number,
+    public readonly seatLimit: number
+  ) {
+    super(
+      `Seat limit reached for organization ${organizationId}: ${seatCount}/${seatLimit}`
+    );
+    this.name = "SeatLimitReachedError";
+  }
+}
+
 export interface SeatUsage {
   organizationId: string;
   seatCount: number;
@@ -43,6 +56,19 @@ export interface OrganizationSeatInfo {
 export function canOrganizationAddMember(info: OrganizationSeatInfo): boolean {
   const seatsInUse = countActiveSeats(info.memberships);
   return canAddSeat(seatsInUse, info.seatLimit);
+}
+
+export function assertOrganizationCanAddMember(
+  info: OrganizationSeatInfo
+): void {
+  const seatsInUse = countActiveSeats(info.memberships);
+  if (!canAddSeat(seatsInUse, info.seatLimit) && info.seatLimit !== null) {
+    throw new SeatLimitReachedError(
+      info.organizationId,
+      seatsInUse,
+      info.seatLimit
+    );
+  }
 }
 
 export function getBillingSeatReport(

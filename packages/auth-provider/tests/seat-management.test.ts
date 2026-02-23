@@ -5,7 +5,9 @@ import {
   getSeatUsage,
   getBillingSeatReport,
   canOrganizationAddMember,
+  assertOrganizationCanAddMember,
   getBillingSeatPayloads,
+  SeatLimitReachedError,
   type SeatUsage,
 } from "../src/seat-management.js";
 import type { OrganizationMembership } from "../src/member-approval.js";
@@ -192,6 +194,75 @@ describe("canOrganizationAddMember", () => {
       seatLimit: 2,
     };
     expect(canOrganizationAddMember(info)).toBe(false);
+  });
+});
+
+describe("assertOrganizationCanAddMember", () => {
+  it("does not throw when seatLimit is null", () => {
+    const info = {
+      organizationId: "org_1",
+      memberships: [
+        membership({ status: "active" }),
+        membership({ userId: "u2", status: "active" }),
+      ],
+      seatLimit: null,
+    };
+    expect(() => assertOrganizationCanAddMember(info)).not.toThrow();
+  });
+
+  it("does not throw when below seat limit", () => {
+    const info = {
+      organizationId: "org_1",
+      memberships: [
+        membership({ status: "active" }),
+        membership({ userId: "u2", status: "active" }),
+      ],
+      seatLimit: 5,
+    };
+    expect(() => assertOrganizationCanAddMember(info)).not.toThrow();
+  });
+
+  it("throws SeatLimitReachedError when at seat limit", () => {
+    const info = {
+      organizationId: "org_1",
+      memberships: [
+        membership({ status: "active" }),
+        membership({ userId: "u2", status: "active" }),
+        membership({ userId: "u3", status: "active" }),
+      ],
+      seatLimit: 3,
+    };
+    expect(() => assertOrganizationCanAddMember(info)).toThrow(SeatLimitReachedError);
+    try {
+      assertOrganizationCanAddMember(info);
+    } catch (e) {
+      const err = e as SeatLimitReachedError;
+      expect(err.organizationId).toBe("org_1");
+      expect(err.seatCount).toBe(3);
+      expect(err.seatLimit).toBe(3);
+      expect(err.message).toContain("org_1");
+      expect(err.message).toContain("3/3");
+    }
+  });
+
+  it("throws SeatLimitReachedError when over seat limit", () => {
+    const info = {
+      organizationId: "org_2",
+      memberships: [
+        membership({ status: "active" }),
+        membership({ userId: "u2", status: "active" }),
+      ],
+      seatLimit: 1,
+    };
+    expect(() => assertOrganizationCanAddMember(info)).toThrow(SeatLimitReachedError);
+    try {
+      assertOrganizationCanAddMember(info);
+    } catch (e) {
+      const err = e as SeatLimitReachedError;
+      expect(err.organizationId).toBe("org_2");
+      expect(err.seatCount).toBe(2);
+      expect(err.seatLimit).toBe(1);
+    }
   });
 });
 
