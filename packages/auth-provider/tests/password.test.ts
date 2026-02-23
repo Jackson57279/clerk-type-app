@@ -143,6 +143,22 @@ describe("Password policy", () => {
     expect(r.valid).toBe(false);
     expect(r.errors.some((e) => e.includes("at most 16"))).toBe(true);
   });
+
+  it("returns all validation errors when multiple policy rules fail", () => {
+    const policy: PasswordPolicy = {
+      ...defaultPasswordPolicy,
+      minLength: 10,
+      requireUppercase: true,
+      requireSpecial: true,
+    };
+    const r = validatePassword("short", policy);
+    expect(r.valid).toBe(false);
+    expect(r.errors.some((e) => e.includes("at least 10"))).toBe(true);
+    expect(r.errors.some((e) => e.includes("uppercase"))).toBe(true);
+    expect(r.errors.some((e) => e.includes("digit"))).toBe(true);
+    expect(r.errors.some((e) => e.includes("special"))).toBe(true);
+    expect(r.errors.length).toBeGreaterThanOrEqual(4);
+  });
 });
 
 describe("Password Policy (PRD 3.1.1)", () => {
