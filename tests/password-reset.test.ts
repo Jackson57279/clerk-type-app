@@ -3,6 +3,7 @@ import {
   createPasswordResetToken,
   verifyPasswordResetToken,
   createMemoryUsedTokenStore,
+  DEFAULT_PASSWORD_RESET_TTL_MS,
 } from "../src/password-reset.js";
 
 const SECRET = "test-secret-key";
@@ -15,22 +16,38 @@ describe("createPasswordResetToken", () => {
     );
     expect(result.token).toBeDefined();
     expect(typeof result.token).toBe("string");
-    expect(result.token).toContain(".");
+    expect(result.token.split(".")).toHaveLength(3);
     expect(result.expiresAt).toBeGreaterThan(Date.now());
     expect(result.jti).toBeDefined();
     expect(result.jti).toMatch(/^[a-f0-9]{32}$/);
   });
 
-  it("uses default TTL of 1 hour", () => {
+  it("emits JWT format (header.payload.signature) with short expiry", () => {
+    const result = createPasswordResetToken(
+      { userId: "u1", email: "u@example.com" },
+      SECRET
+    );
+    const [headerB64, payloadB64, sigB64] = result.token.split(".");
+    expect(headerB64).toBeDefined();
+    expect(payloadB64).toBeDefined();
+    expect(sigB64).toBeDefined();
+    const payload = verifyPasswordResetToken(result.token, SECRET);
+    expect(payload).not.toBeNull();
+    const ttlMs = result.expiresAt - Date.now();
+    expect(ttlMs).toBeLessThanOrEqual(DEFAULT_PASSWORD_RESET_TTL_MS + 1000);
+    expect(ttlMs).toBeGreaterThanOrEqual(DEFAULT_PASSWORD_RESET_TTL_MS - 1000);
+  });
+
+  it("uses default TTL of 15 minutes", () => {
     const before = Date.now();
     const result = createPasswordResetToken(
       { userId: "u1", email: "u@example.com" },
       SECRET
     );
     const after = Date.now();
-    const oneHour = 60 * 60 * 1000;
-    expect(result.expiresAt).toBeGreaterThanOrEqual(before + oneHour - 1000);
-    expect(result.expiresAt).toBeLessThanOrEqual(after + oneHour + 1000);
+    const fifteenMin = 15 * 60 * 1000;
+    expect(result.expiresAt).toBeGreaterThanOrEqual(before + fifteenMin - 1000);
+    expect(result.expiresAt).toBeLessThanOrEqual(after + fifteenMin + 1000);
   });
 
   it("accepts custom ttlMs", () => {
@@ -85,17 +102,22 @@ describe("verifyPasswordResetToken", () => {
       SECRET
     );
     const parts = token.split(".");
-    const payloadB64 = parts[0] ?? "";
-    const sig = parts[1] ?? "";
+    const headerB64 = parts[0] ?? "";
+    const payloadB64 = parts[1] ?? "";
+    const sig = parts[2] ?? "";
     const tamperedPayload =
       payloadB64.slice(0, -1) + (payloadB64.slice(-1) === "a" ? "b" : "a");
     expect(
-      verifyPasswordResetToken(`${tamperedPayload}.${sig}`, SECRET)
+      verifyPasswordResetToken(`${headerB64}.${tamperedPayload}.${sig}`, SECRET)
     ).toBeNull();
   });
 
   it("returns null for malformed token (no dot)", () => {
     expect(verifyPasswordResetToken("notadot", SECRET)).toBeNull();
+  });
+
+  it("returns null for two-part token (legacy format)", () => {
+    expect(verifyPasswordResetToken("a.b", SECRET)).toBeNull();
   });
 
   it("returns null for invalid base64 payload", () => {

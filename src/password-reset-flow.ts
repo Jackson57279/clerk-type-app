@@ -9,11 +9,10 @@ import {
 } from "./password.js";
 import {
   createPasswordResetToken,
+  DEFAULT_PASSWORD_RESET_TTL_MS,
   type SingleUseTokenStore,
   verifyPasswordResetToken,
 } from "./password-reset.js";
-
-const DEFAULT_TTL_MS = 60 * 60 * 1000;
 
 export interface UserByEmail {
   userId: string;
@@ -45,7 +44,7 @@ export async function requestPasswordReset(
     buildResetLink,
     sendEmail,
     branding,
-    ttlMs = DEFAULT_TTL_MS,
+    ttlMs = DEFAULT_PASSWORD_RESET_TTL_MS,
   } = options;
 
   const user = await findUserByEmail(email);

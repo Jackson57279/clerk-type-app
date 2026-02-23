@@ -13,10 +13,23 @@ describe("createMagicLinkToken", () => {
     const result = createMagicLinkToken({ email: "u@example.com" }, SECRET);
     expect(result.token).toBeDefined();
     expect(typeof result.token).toBe("string");
-    expect(result.token).toContain(".");
+    expect(result.token.split(".")).toHaveLength(3);
     expect(result.expiresAt).toBeGreaterThan(Date.now());
     expect(result.jti).toBeDefined();
     expect(result.jti).toMatch(/^[a-f0-9]{32}$/);
+  });
+
+  it("emits JWT format (header.payload.signature) with short expiry", () => {
+    const result = createMagicLinkToken({ email: "u@example.com" }, SECRET);
+    const [headerB64, payloadB64, sigB64] = result.token.split(".");
+    expect(headerB64).toBeDefined();
+    expect(payloadB64).toBeDefined();
+    expect(sigB64).toBeDefined();
+    const payload = verifyMagicLinkToken(result.token, SECRET);
+    expect(payload).not.toBeNull();
+    const ttlMs = result.expiresAt - Date.now();
+    expect(ttlMs).toBeLessThanOrEqual(DEFAULT_MAGIC_LINK_TTL_MS + 1000);
+    expect(ttlMs).toBeGreaterThanOrEqual(DEFAULT_MAGIC_LINK_TTL_MS - 1000);
   });
 
   it("uses default TTL of 15 minutes", () => {
@@ -77,6 +90,10 @@ describe("verifyMagicLinkToken", () => {
   it("returns null for malformed token", () => {
     expect(verifyMagicLinkToken("not-a-valid-token", SECRET)).toBeNull();
     expect(verifyMagicLinkToken("no-dot", SECRET)).toBeNull();
+  });
+
+  it("returns null for two-part token (legacy format)", () => {
+    expect(verifyMagicLinkToken("a.b", SECRET)).toBeNull();
   });
 
   it("single-use: second verify returns null when usedTokenStore provided", () => {

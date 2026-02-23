@@ -1,6 +1,8 @@
 import { createHmac, randomBytes } from "crypto";
 
-const DEFAULT_TTL_MS = 60 * 60 * 1000;
+export const DEFAULT_PASSWORD_RESET_TTL_MS = 15 * 60 * 1000;
+
+const JWT_HEADER = { alg: "HS256", typ: "JWT" } as const;
 
 function base64url(buf: Buffer): string {
   return buf
@@ -46,7 +48,7 @@ export function createPasswordResetToken(
   secret: string,
   options: CreatePasswordResetTokenOptions = {}
 ): CreatePasswordResetTokenResult {
-  const ttlMs = options.ttlMs ?? DEFAULT_TTL_MS;
+  const ttlMs = options.ttlMs ?? DEFAULT_PASSWORD_RESET_TTL_MS;
   const expiresAt = Date.now() + ttlMs;
   const expSec = Math.floor(expiresAt / 1000);
   const jti = randomBytes(16).toString("hex");
@@ -56,12 +58,13 @@ export function createPasswordResetToken(
     userId: payload.userId,
     email: payload.email,
   };
-  const payloadStr = JSON.stringify(data);
-  const payloadB64 = base64url(Buffer.from(payloadStr, "utf8"));
-  const sig = createHmac("sha256", secret)
-    .update(payloadB64)
-    .digest();
-  const token = `${payloadB64}.${base64url(sig)}`;
+  const headerB64 = base64url(
+    Buffer.from(JSON.stringify(JWT_HEADER), "utf8")
+  );
+  const payloadB64 = base64url(Buffer.from(JSON.stringify(data), "utf8"));
+  const signingInput = `${headerB64}.${payloadB64}`;
+  const sig = createHmac("sha256", secret).update(signingInput).digest();
+  const token = `${signingInput}.${base64url(sig)}`;
   return { token, expiresAt, jti };
 }
 
@@ -74,19 +77,20 @@ export function verifyPasswordResetToken(
   secret: string,
   options: VerifyPasswordResetTokenOptions = {}
 ): VerifyPasswordResetTokenResult | null {
-  const dot = token.indexOf(".");
-  if (dot === -1) return null;
-  const payloadB64 = token.slice(0, dot);
-  const sigB64 = token.slice(dot + 1);
+  const parts = token.split(".");
+  if (parts.length !== 3) return null;
+  const [headerB64, payloadB64, sigB64] = parts;
+  if (!headerB64 || !payloadB64 || !sigB64) return null;
+  const signingInput = `${headerB64}.${payloadB64}`;
+  const expectedSig = createHmac("sha256", secret).update(signingInput).digest();
+  const expectedB64 = base64url(expectedSig);
+  if (sigB64 !== expectedB64) return null;
   let payloadBuf: Buffer;
   try {
     payloadBuf = decodeBase64url(payloadB64);
   } catch {
     return null;
   }
-  const expectedSig = createHmac("sha256", secret).update(payloadB64).digest();
-  const expectedB64 = base64url(expectedSig);
-  if (sigB64 !== expectedB64) return null;
   let data: { exp: number; jti: string; userId: string; email: string };
   try {
     data = JSON.parse(payloadBuf.toString("utf8")) as {

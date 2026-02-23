@@ -3,6 +3,8 @@ import { hashDeviceFingerprint, validateDeviceBinding } from "./device-binding.j
 
 export const DEFAULT_MAGIC_LINK_TTL_MS = 15 * 60 * 1000;
 
+const JWT_HEADER = { alg: "HS256", typ: "JWT" } as const;
+
 function base64url(buf: Buffer): string {
   return buf
     .toString("base64")
@@ -63,12 +65,13 @@ export function createMagicLinkToken(
     ...(payload.userId !== undefined && { userId: payload.userId }),
     ...(deviceFingerprintHash !== undefined && { deviceFingerprintHash }),
   };
-  const payloadStr = JSON.stringify(data);
-  const payloadB64 = base64url(Buffer.from(payloadStr, "utf8"));
-  const sig = createHmac("sha256", secret)
-    .update(payloadB64)
-    .digest();
-  const token = `${payloadB64}.${base64url(sig)}`;
+  const headerB64 = base64url(
+    Buffer.from(JSON.stringify(JWT_HEADER), "utf8")
+  );
+  const payloadB64 = base64url(Buffer.from(JSON.stringify(data), "utf8"));
+  const signingInput = `${headerB64}.${payloadB64}`;
+  const sig = createHmac("sha256", secret).update(signingInput).digest();
+  const token = `${signingInput}.${base64url(sig)}`;
   return { token, expiresAt, jti };
 }
 
@@ -82,19 +85,20 @@ export function verifyMagicLinkToken(
   secret: string,
   options: VerifyMagicLinkTokenOptions = {}
 ): VerifyMagicLinkTokenResult | null {
-  const dot = token.indexOf(".");
-  if (dot === -1) return null;
-  const payloadB64 = token.slice(0, dot);
-  const sigB64 = token.slice(dot + 1);
+  const parts = token.split(".");
+  if (parts.length !== 3) return null;
+  const [headerB64, payloadB64, sigB64] = parts;
+  if (!headerB64 || !payloadB64 || !sigB64) return null;
+  const signingInput = `${headerB64}.${payloadB64}`;
+  const expectedSig = createHmac("sha256", secret).update(signingInput).digest();
+  const expectedB64 = base64url(expectedSig);
+  if (sigB64 !== expectedB64) return null;
   let payloadBuf: Buffer;
   try {
     payloadBuf = decodeBase64url(payloadB64);
   } catch {
     return null;
   }
-  const expectedSig = createHmac("sha256", secret).update(payloadB64).digest();
-  const expectedB64 = base64url(expectedSig);
-  if (sigB64 !== expectedB64) return null;
   let data: {
     exp: number;
     jti: string;
