@@ -4,6 +4,7 @@ import {
   recordFailedAttempt,
   clearFailedAttempts,
   createBruteForceProtection,
+  delayMsForFailureCount,
 } from "../src/brute-force.js";
 
 describe("brute force protection (progressive delays)", () => {
@@ -83,6 +84,19 @@ describe("brute force protection (progressive delays)", () => {
     expect(r.allowed).toBe(false);
     expect(r.retryAfterSeconds).toBeDefined();
     expect(r.retryAfterSeconds).toBeGreaterThanOrEqual(1);
+  });
+
+  it("uses progressive delay formula: 1s, 2s, 4s, 8s... capped at max", () => {
+    const base = 1000;
+    const max = 5 * 60 * 1000;
+    expect(delayMsForFailureCount(1, base, max)).toBe(1000);
+    expect(delayMsForFailureCount(2, base, max)).toBe(2000);
+    expect(delayMsForFailureCount(3, base, max)).toBe(4000);
+    expect(delayMsForFailureCount(4, base, max)).toBe(8000);
+    expect(delayMsForFailureCount(5, base, max)).toBe(16000);
+    expect(delayMsForFailureCount(10, base, max)).toBe(max);
+    expect(delayMsForFailureCount(20, base, max)).toBe(max);
+    expect(delayMsForFailureCount(0, base, max)).toBe(0);
   });
 
   it("caps delay at maxDelayMs", () => {

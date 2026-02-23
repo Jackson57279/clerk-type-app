@@ -4,7 +4,7 @@ const MAX_DELAY_MS = 5 * 60 * 1000;
 
 const attemptsByKey = new Map<string, number[]>();
 
-function delayMsForFailureCount(
+export function delayMsForFailureCount(
   count: number,
   baseMs: number,
   maxMs: number
