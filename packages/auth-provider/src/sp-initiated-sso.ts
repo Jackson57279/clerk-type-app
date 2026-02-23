@@ -366,6 +366,7 @@ export interface SpInitiatedAssertEndpointOptions {
   spConfig: SpInitiatedSpConfig;
   idpConfig: SpInitiatedIdpConfig;
   requireSessionIndex?: boolean;
+  allowIdpInitiated?: boolean;
 }
 
 export interface SpInitiatedAssertEndpointSuccess {
@@ -395,12 +396,15 @@ export async function handleSpInitiatedAssertEndpoint(
       errorDescription: "SAMLResponse is required",
     };
   }
+  const requireSessionIndex = options.allowIdpInitiated
+    ? false
+    : (options.requireSessionIndex ?? true);
   try {
     const assertion = await validateSpInitiatedPostResponse(
       options.spConfig,
       options.idpConfig,
       { SAMLResponse: samlResponse, RelayState: params.RelayState },
-      { requireSessionIndex: options.requireSessionIndex ?? true }
+      { requireSessionIndex }
     );
     return { status: 200, assertion };
   } catch (err) {

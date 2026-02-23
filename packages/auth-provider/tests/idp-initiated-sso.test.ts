@@ -5,6 +5,7 @@ import {
   validateIdpInitiatedPostResponse,
   validateSamlAssertPost,
   isIdpInitiatedAssertion,
+  handleSpInitiatedAssertEndpoint,
   type SpInitiatedSpConfig,
   type SpInitiatedIdpConfig,
 } from "../src/sp-initiated-sso.js";
@@ -335,5 +336,28 @@ describe("validateIdpInitiatedPostResponse", () => {
     expect(assertion.nameId).toBe("sso-user@corp.com");
     expect(assertion.relayState).toBe("/app");
     expect(isIdpInitiatedAssertion(assertion)).toBe(true);
+  });
+
+  it("handleSpInitiatedAssertEndpoint with allowIdpInitiated accepts IdP-initiated POST", async () => {
+    const result = await createIdpInitiatedResponse(
+      idpConfig(),
+      idpInitiatedSpConfig(),
+      { nameId: "idp-portal@example.com" },
+      { relayState: "/dashboard" }
+    );
+    const endpointResult = await handleSpInitiatedAssertEndpoint(
+      { SAMLResponse: result.samlResponseBase64, RelayState: "/dashboard" },
+      {
+        spConfig: spConfigForValidation(),
+        idpConfig: idpConfigForValidation(),
+        allowIdpInitiated: true,
+      }
+    );
+    expect(endpointResult.status).toBe(200);
+    if (endpointResult.status === 200) {
+      expect(endpointResult.assertion.nameId).toBe("idp-portal@example.com");
+      expect(endpointResult.assertion.relayState).toBe("/dashboard");
+      expect(isIdpInitiatedAssertion(endpointResult.assertion)).toBe(true);
+    }
   });
 });
