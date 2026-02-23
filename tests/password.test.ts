@@ -255,4 +255,15 @@ describe("HaveIBeenPwned breach detection", () => {
     const pwned = await isPasswordPwned("anything");
     expect(pwned).toBe(false);
   });
+
+  it("uses HIBP_RANGE_URL from env when set", async () => {
+    const customBase = "https://custom-hibp.example.com/range";
+    const fetchMock = vi.fn((url: string) => {
+      expect(url.startsWith(customBase)).toBe(true);
+      return Promise.resolve({ ok: true, text: () => Promise.resolve("") } as Response);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    await isPasswordPwned("anypassword", { HIBP_RANGE_URL: customBase });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
 });

@@ -98,6 +98,7 @@ export function validatePassword(
 
 export interface ValidatePasswordWithPolicyOptions {
   checkBreach?: boolean;
+  env?: NodeJS.ProcessEnv;
 }
 
 export async function validatePasswordWithPolicy(
@@ -108,7 +109,7 @@ export async function validatePasswordWithPolicy(
   const result = validatePassword(plainPassword, policy);
   if (!options.checkBreach) return result;
   if (!result.valid) return result;
-  const pwned = await isPasswordPwned(plainPassword);
+  const pwned = await isPasswordPwned(plainPassword, options.env ?? process.env);
   if (pwned) {
     return {
       valid: false,
@@ -118,13 +119,22 @@ export async function validatePasswordWithPolicy(
   return result;
 }
 
-const HIBP_RANGE_URL = "https://api.pwnedpasswords.com/range/";
+const DEFAULT_HIBP_RANGE_URL = "https://api.pwnedpasswords.com/range/";
 
-export async function isPasswordPwned(plainPassword: string): Promise<boolean> {
+function getHibpRangeUrl(env: NodeJS.ProcessEnv = process.env): string {
+  const url = env.HIBP_RANGE_URL?.trim();
+  return url && url.length > 0 ? url.replace(/\/?$/, "") + "/" : DEFAULT_HIBP_RANGE_URL;
+}
+
+export async function isPasswordPwned(
+  plainPassword: string,
+  env: NodeJS.ProcessEnv = process.env
+): Promise<boolean> {
   const sha1 = createHash("sha1").update(plainPassword, "utf8").digest("hex").toUpperCase();
   const prefix = sha1.slice(0, 5);
   const suffix = sha1.slice(5);
-  const res = await fetch(`${HIBP_RANGE_URL}${prefix}`);
+  const baseUrl = getHibpRangeUrl(env);
+  const res = await fetch(`${baseUrl}${prefix}`);
   if (!res.ok) return false;
   const text = await res.text();
   const lines = text.split("\r\n");
