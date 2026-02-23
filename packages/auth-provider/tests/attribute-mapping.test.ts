@@ -163,6 +163,24 @@ describe("applyAttributeMapping", () => {
     expect(claims.groups).toEqual(["g1", "g2"]);
     expect(claims.roles).toEqual(["r1"]);
   });
+
+  it("MappedClaims shape: email, name, groups, roles", () => {
+    const attrs: Record<string, string[]> = {
+      email: ["u@ex.com"],
+      name: ["Display Name"],
+      groups: ["g1"],
+      roles: ["r1", "r2"],
+    };
+    const claims = applyAttributeMapping(attrs, DEFAULT_ATTRIBUTE_MAPPING);
+    expect(claims).toMatchObject({
+      email: "u@ex.com",
+      name: "Display Name",
+      groups: ["g1"],
+      roles: ["r1", "r2"],
+    });
+    expect(claims.firstName).toBeUndefined();
+    expect(claims.lastName).toBeUndefined();
+  });
 });
 
 describe("mapScimUserToProvisionData", () => {
