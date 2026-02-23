@@ -8,7 +8,8 @@ export type RealtimeWebhookEventType =
   | "session.revoked"
   | "organization.created"
   | "organization_membership.created"
-  | "organization_invitation.accepted";
+  | "organization_invitation.accepted"
+  | "billing.seat_usage";
 
 export interface RealtimeWebhookPayload {
   type: RealtimeWebhookEventType;
