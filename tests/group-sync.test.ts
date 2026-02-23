@@ -216,4 +216,44 @@ describe("syncGroups", () => {
     const list = await store.listGroupsByOrganization("org_1");
     expect(list).toHaveLength(2);
   });
+
+  it("only removes groups within the specified organization", async () => {
+    const store = memoryStore();
+    const oldOrg1 = await syncGroup(
+      store,
+      { externalId: "ext-old", displayName: "Old Org1", memberIds: [] },
+      { organizationId: "org_1" }
+    );
+    await syncGroup(
+      store,
+      { externalId: "ext-keep", displayName: "Keep Org1", memberIds: [] },
+      { organizationId: "org_1" }
+    );
+    await syncGroup(
+      store,
+      { externalId: "ext-other-org", displayName: "Other Org2", memberIds: [] },
+      { organizationId: "org_2" }
+    );
+
+    await syncGroups(
+      store,
+      [{ externalId: "ext-keep", displayName: "Keep Org1 Updated", memberIds: [] }],
+      { organizationId: "org_1", removeGroupsNotInSource: true }
+    );
+
+    const org1Groups = await store.listGroupsByOrganization("org_1");
+    const org2Groups = await store.listGroupsByOrganization("org_2");
+
+    expect(org1Groups).toHaveLength(1);
+    expect(org1Groups[0]!.externalId).toBe("ext-keep");
+    expect(org1Groups[0]!.displayName).toBe("Keep Org1 Updated");
+
+    const oldOrg1Record = await store.findGroupById(oldOrg1.group.id);
+    expect(oldOrg1Record).not.toBeNull();
+    expect(oldOrg1Record!.active).toBe(false);
+
+    expect(org2Groups).toHaveLength(1);
+    expect(org2Groups[0]!.externalId).toBe("ext-other-org");
+    expect(org2Groups[0]!.displayName).toBe("Other Org2");
+  });
 });
