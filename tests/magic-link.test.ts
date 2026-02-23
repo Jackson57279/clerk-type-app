@@ -3,6 +3,7 @@ import {
   createMagicLinkToken,
   verifyMagicLinkToken,
   createMemoryUsedTokenStore,
+  createNoOpUsedTokenStore,
   DEFAULT_MAGIC_LINK_TTL_MS,
   getMagicLinkTtlMs,
 } from "../src/magic-link.js";
@@ -110,12 +111,12 @@ describe("verifyMagicLinkToken", () => {
     expect(second).toBeNull();
   });
 
-  it("without usedTokenStore allows multiple verifies", () => {
-    const { token } = createMagicLinkToken({ email: "multi@x.com" }, SECRET);
-    const a = verifyMagicLinkToken(token, SECRET);
-    const b = verifyMagicLinkToken(token, SECRET);
-    expect(a?.email).toBe("multi@x.com");
-    expect(b?.email).toBe("multi@x.com");
+  it("token is invalidated after use by default (second verify returns null)", () => {
+    const { token } = createMagicLinkToken({ email: "once@x.com" }, SECRET);
+    const first = verifyMagicLinkToken(token, SECRET);
+    expect(first?.email).toBe("once@x.com");
+    const second = verifyMagicLinkToken(token, SECRET);
+    expect(second).toBeNull();
   });
 });
 
@@ -153,10 +154,11 @@ describe("magic link token expiry", () => {
 
 describe("magic link device binding", () => {
   it("verify succeeds when no fingerprint was stored (optional)", () => {
+    const noop = createNoOpUsedTokenStore();
     const { token } = createMagicLinkToken({ email: "u@x.com" }, SECRET);
-    expect(verifyMagicLinkToken(token, SECRET)).not.toBeNull();
-    expect(verifyMagicLinkToken(token, SECRET, { deviceFingerprint: null })).not.toBeNull();
-    expect(verifyMagicLinkToken(token, SECRET, { deviceFingerprint: "any" })).not.toBeNull();
+    expect(verifyMagicLinkToken(token, SECRET, { usedTokenStore: noop })).not.toBeNull();
+    expect(verifyMagicLinkToken(token, SECRET, { usedTokenStore: noop, deviceFingerprint: null })).not.toBeNull();
+    expect(verifyMagicLinkToken(token, SECRET, { usedTokenStore: noop, deviceFingerprint: "any" })).not.toBeNull();
   });
 
   it("verify succeeds when token has fingerprint and current fingerprint matches", () => {
@@ -170,12 +172,13 @@ describe("magic link device binding", () => {
   });
 
   it("verify succeeds when fingerprint matches after trim", () => {
+    const noop = createNoOpUsedTokenStore();
     const { token } = createMagicLinkToken(
       { email: "u@x.com", deviceFingerprint: " device-A " },
       SECRET
     );
-    expect(verifyMagicLinkToken(token, SECRET, { deviceFingerprint: "device-A" })).not.toBeNull();
-    expect(verifyMagicLinkToken(token, SECRET, { deviceFingerprint: "  device-A  " })).not.toBeNull();
+    expect(verifyMagicLinkToken(token, SECRET, { usedTokenStore: noop, deviceFingerprint: "device-A" })).not.toBeNull();
+    expect(verifyMagicLinkToken(token, SECRET, { usedTokenStore: noop, deviceFingerprint: "  device-A  " })).not.toBeNull();
   });
 
   it("verify returns null when token has fingerprint but current is missing", () => {
@@ -197,12 +200,13 @@ describe("magic link device binding", () => {
   });
 
   it("create ignores empty string deviceFingerprint (no binding)", () => {
+    const noop = createNoOpUsedTokenStore();
     const { token } = createMagicLinkToken(
       { email: "u@x.com", deviceFingerprint: "" },
       SECRET
     );
-    expect(verifyMagicLinkToken(token, SECRET)).not.toBeNull();
-    expect(verifyMagicLinkToken(token, SECRET, { deviceFingerprint: null })).not.toBeNull();
+    expect(verifyMagicLinkToken(token, SECRET, { usedTokenStore: noop })).not.toBeNull();
+    expect(verifyMagicLinkToken(token, SECRET, { usedTokenStore: noop, deviceFingerprint: null })).not.toBeNull();
   });
 });
 

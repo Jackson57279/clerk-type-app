@@ -93,6 +93,8 @@ export interface VerifyMagicLinkTokenOptions {
   deviceFingerprint?: string | null;
 }
 
+const defaultUsedTokenStore = createMemoryUsedTokenStore();
+
 export function verifyMagicLinkToken(
   token: string,
   secret: string,
@@ -129,8 +131,8 @@ export function verifyMagicLinkToken(
   if (typeof data.jti !== "string" || typeof data.email !== "string") {
     return null;
   }
-  const store = options.usedTokenStore;
-  if (store?.isUsed(data.jti)) return null;
+  const store = options.usedTokenStore ?? defaultUsedTokenStore;
+  if (store.isUsed(data.jti)) return null;
   if (
     data.deviceFingerprintHash != null &&
     !validateDeviceBinding({
@@ -140,7 +142,7 @@ export function verifyMagicLinkToken(
   ) {
     return null;
   }
-  if (store) store.markUsed(data.jti, data.exp * 1000);
+  store.markUsed(data.jti, data.exp * 1000);
   return {
     jti: data.jti,
     email: data.email,
@@ -163,5 +165,12 @@ export function createMemoryUsedTokenStore(): SingleUseTokenStore {
     markUsed(jti: string, expiresAtMs: number): void {
       used.set(jti, expiresAtMs);
     },
+  };
+}
+
+export function createNoOpUsedTokenStore(): SingleUseTokenStore {
+  return {
+    isUsed: () => false,
+    markUsed: () => {},
   };
 }
