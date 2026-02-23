@@ -63,4 +63,18 @@ describe("deprovisionEntity", () => {
     expect(found).not.toBeNull();
     expect(found?.active).toBe(false);
   });
+
+  it("deactivate vs delete: deactivate marks inactive, delete removes", async () => {
+    const store = memoryStore([
+      { id: "e1", name: "One", active: true },
+      { id: "e2", name: "Two", active: true },
+    ]);
+    await deprovisionEntity(store, "e1");
+    await deprovisionEntity(store, "e2", { hard: true });
+    const afterDeactivate = (await store.findById("e1")) as Entity | null;
+    const afterDelete = await store.findById("e2");
+    expect(afterDeactivate).not.toBeNull();
+    expect(afterDeactivate?.active).toBe(false);
+    expect(afterDelete).toBeNull();
+  });
 });
