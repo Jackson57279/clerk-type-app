@@ -160,6 +160,60 @@ export interface RefreshTokenErrorResponse {
   error_description: string;
 }
 
+export interface RefreshTokenFlowParams {
+  grant_type: string;
+  refresh_token: string | undefined;
+  client_id?: string;
+}
+
+export type RefreshTokenFlowErrorResponse =
+  | { error: "unsupported_grant_type"; error_description: string }
+  | { error: "invalid_request"; error_description: string }
+  | RefreshTokenErrorResponse;
+
+export type RefreshTokenFlowResponse =
+  | RefreshTokenSuccessResponse
+  | RefreshTokenFlowErrorResponse;
+
+export type RefreshTokenFlowOptions = ExchangeRefreshTokenOptions;
+
+export function handleRefreshTokenFlow(
+  params: RefreshTokenFlowParams,
+  options: RefreshTokenFlowOptions
+): RefreshTokenFlowResponse {
+  if (params.grant_type !== "refresh_token") {
+    return {
+      error: "unsupported_grant_type",
+      error_description: "grant_type must be refresh_token",
+    };
+  }
+  const refreshToken = params.refresh_token?.trim();
+  if (!refreshToken) {
+    return {
+      error: "invalid_request",
+      error_description: "refresh_token is required",
+    };
+  }
+  const payload = verifyRefreshToken(refreshToken, options.secret);
+  if (!payload) {
+    return {
+      error: "invalid_grant",
+      error_description: "Invalid or expired refresh_token",
+    };
+  }
+  if (
+    params.client_id != null &&
+    params.client_id.trim() !== "" &&
+    payload.client_id !== params.client_id.trim()
+  ) {
+    return {
+      error: "invalid_grant",
+      error_description: "client_id does not match refresh token",
+    };
+  }
+  return exchangeRefreshToken(refreshToken, options);
+}
+
 export interface ExchangeRefreshTokenOptions {
   secret: string;
   usedTokenStore?: UsedRefreshTokenStore;
