@@ -8,6 +8,24 @@ export interface SoftDeletableStore {
   hardDelete(id: string): Promise<void>;
 }
 
+export async function deactivateEntity(
+  store: SoftDeletableStore,
+  id: string
+): Promise<void> {
+  const entity = await store.findById(id);
+  if (!entity) return;
+  await store.softDelete(id);
+}
+
+export async function deleteEntity(
+  store: SoftDeletableStore,
+  id: string
+): Promise<void> {
+  const entity = await store.findById(id);
+  if (!entity) return;
+  await store.hardDelete(id);
+}
+
 export async function deprovisionEntity(
   store: SoftDeletableStore,
   id: string,

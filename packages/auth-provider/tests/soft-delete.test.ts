@@ -1,5 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
+  deactivateEntity,
+  deleteEntity,
   deprovisionEntity,
   type DeprovisionOptions,
   type SoftDeletableStore,
@@ -76,5 +78,34 @@ describe("deprovisionEntity", () => {
     expect(afterDeactivate).not.toBeNull();
     expect(afterDeactivate?.active).toBe(false);
     expect(afterDelete).toBeNull();
+  });
+});
+
+describe("deactivateEntity", () => {
+  it("marks entity inactive (soft delete)", async () => {
+    const store = memoryStore([{ id: "e1", name: "Entity 1", active: true }]);
+    await deactivateEntity(store, "e1");
+    const found = (await store.findById("e1")) as Entity | null;
+    expect(found).not.toBeNull();
+    expect(found?.active).toBe(false);
+  });
+
+  it("is no-op when entity does not exist", async () => {
+    const store = memoryStore();
+    await expect(deactivateEntity(store, "nonexistent")).resolves.toBeUndefined();
+  });
+});
+
+describe("deleteEntity", () => {
+  it("removes entity (hard delete)", async () => {
+    const store = memoryStore([{ id: "e1", name: "Entity 1", active: true }]);
+    await deleteEntity(store, "e1");
+    const found = await store.findById("e1");
+    expect(found).toBeNull();
+  });
+
+  it("is no-op when entity does not exist", async () => {
+    const store = memoryStore();
+    await expect(deleteEntity(store, "nonexistent")).resolves.toBeUndefined();
   });
 });
