@@ -24,6 +24,12 @@ import {
 } from "./backup-codes.js";
 import type { BruteForceResult } from "./brute-force.js";
 import type { AccountLockoutResult } from "./account-lockout.js";
+import type { LoginContext, SuspiciousActivityResult } from "./suspicious-activity.js";
+import {
+  createAuditEvent,
+  AUDIT_EVENT_TYPES,
+  type AuditLogStore,
+} from "./audit-log.js";
 
 export interface CredentialUser {
   userId: string;
@@ -135,6 +141,8 @@ export interface LoginInput {
   totpCode?: string;
   smsOtpCode?: string;
   backupCode?: string;
+  deviceFingerprint?: string | null;
+  location?: { lat: number; lng: number } | null;
 }
 
 export interface SmsMfaLoginOptions {
@@ -154,6 +162,10 @@ export interface AccountLockoutProtection {
   clearFailedAttempts(key: string): void;
 }
 
+export interface SuspiciousActivityDetector {
+  evaluateLogin(context: LoginContext): SuspiciousActivityResult;
+}
+
 export interface LoginOptions {
   totpStore?: TotpStore;
   smsMfa?: SmsMfaLoginOptions;
@@ -161,11 +173,15 @@ export interface LoginOptions {
   getBruteForceKey?: (input: LoginInput) => string;
   bruteForceProtection?: BruteForceProtection;
   accountLockout?: AccountLockoutProtection;
+  suspiciousActivityDetector?: SuspiciousActivityDetector;
+  auditLogStore?: AuditLogStore;
 }
 
 export interface LoginSuccess {
   success: true;
   userId: string;
+  suspicious?: boolean;
+  suspiciousReasons?: string[];
 }
 
 export interface LoginRequiresTotp {
@@ -332,5 +348,30 @@ export async function login(
   if (options.accountLockout) {
     options.accountLockout.clearFailedAttempts(email);
   }
-  return { success: true, userId: user.userId };
+
+  const success: LoginSuccess = { success: true, userId: user.userId };
+  const detector = options.suspiciousActivityDetector;
+  if (detector) {
+    const context: LoginContext = {
+      userId: user.userId,
+      deviceFingerprint: input.deviceFingerprint ?? null,
+      location: input.location ?? null,
+    };
+    const result = detector.evaluateLogin(context);
+    if (result.suspicious) {
+      success.suspicious = true;
+      success.suspiciousReasons = result.reasons;
+      if (options.auditLogStore) {
+        await createAuditEvent(options.auditLogStore, {
+          eventType: AUDIT_EVENT_TYPES.SECURITY_SUSPICIOUS_LOGIN,
+          actorType: "user",
+          actorId: user.userId,
+          targetType: "user",
+          targetId: user.userId,
+          metadata: { reasons: result.reasons },
+        });
+      }
+    }
+  }
+  return success;
 }

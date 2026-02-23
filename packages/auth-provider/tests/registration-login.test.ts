@@ -26,6 +26,8 @@ import {
   addBackupCodesForUser,
   getRemainingBackupCodeCount,
 } from "../src/backup-codes.js";
+import { createSuspiciousActivityDetector } from "../src/suspicious-activity.js";
+import { AUDIT_EVENT_TYPES, type AuditLogStore } from "../src/audit-log.js";
 
 function secretToBuffer(secretBase32: string): Buffer {
   return Buffer.from(base32Decode.asBytes(secretBase32));
@@ -281,6 +283,78 @@ describe("login", () => {
     expect("reason" in result ? result.reason : undefined).toBe(
       "invalid_credentials"
     );
+  });
+});
+
+describe("login with suspicious activity detection", () => {
+  it("returns success without suspicious when no detector provided", async () => {
+    const store = memoryStore();
+    await register(store, { email: "u@example.com", password: "PassWord1" });
+    const result = await login(store, {
+      email: "u@example.com",
+      password: "PassWord1",
+      deviceFingerprint: "new-device",
+    });
+    expect(result.success).toBe(true);
+    if (!result.success) return;
+    expect(result.suspicious).toBeUndefined();
+    expect(result.suspiciousReasons).toBeUndefined();
+  });
+
+  it("flags new device and sets suspicious + reasons when detector provided", async () => {
+    const store = memoryStore();
+    await register(store, { email: "u@example.com", password: "PassWord1" });
+    const detector = createSuspiciousActivityDetector();
+    const result = await login(store, {
+      email: "u@example.com",
+      password: "PassWord1",
+      deviceFingerprint: "device-A",
+    }, { suspiciousActivityDetector: detector });
+    expect(result.success).toBe(true);
+    if (!result.success) return;
+    expect(result.suspicious).toBe(true);
+    expect(result.suspiciousReasons).toContain("new_device");
+  });
+
+  it("does not set suspicious on second login from same device", async () => {
+    const store = memoryStore();
+    await register(store, { email: "u@example.com", password: "PassWord1" });
+    const detector = createSuspiciousActivityDetector();
+    await login(store, {
+      email: "u@example.com",
+      password: "PassWord1",
+      deviceFingerprint: "device-A",
+    }, { suspiciousActivityDetector: detector });
+    const result = await login(store, {
+      email: "u@example.com",
+      password: "PassWord1",
+      deviceFingerprint: "device-A",
+    }, { suspiciousActivityDetector: detector });
+    expect(result.success).toBe(true);
+    if (!result.success) return;
+    expect(result.suspicious).not.toBe(true);
+    expect(result.suspiciousReasons ?? []).not.toContain("new_device");
+  });
+
+  it("emits SECURITY_SUSPICIOUS_LOGIN audit event when suspicious and auditLogStore provided", async () => {
+    const store = memoryStore();
+    await register(store, { email: "u@example.com", password: "PassWord1" });
+    const detector = createSuspiciousActivityDetector();
+    const events: { eventType: string; metadata?: Record<string, unknown> }[] = [];
+    const auditLogStore: AuditLogStore = {
+      append: async (evt) => { events.push(evt); },
+    };
+    const result = await login(store, {
+      email: "u@example.com",
+      password: "PassWord1",
+      deviceFingerprint: "new-device",
+    }, { suspiciousActivityDetector: detector, auditLogStore });
+    expect(result.success).toBe(true);
+    if (!result.success) return;
+    expect(result.suspicious).toBe(true);
+    expect(events).toHaveLength(1);
+    expect(events[0].eventType).toBe(AUDIT_EVENT_TYPES.SECURITY_SUSPICIOUS_LOGIN);
+    expect(events[0].metadata).toEqual({ reasons: ["new_device"] });
   });
 });
 
