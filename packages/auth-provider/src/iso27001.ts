@@ -65,3 +65,32 @@ export function isReviewDue(
   const nextDue = getNextReviewDueDate(lastAudit, intervalMonths);
   return asOf >= nextDue;
 }
+
+export interface Iso27001ComplianceStatus {
+  compliant: boolean;
+  lastAudit: Iso27001AuditRecord | null;
+  reviewDue: boolean;
+  nextReviewDue: Date | null;
+}
+
+export async function getComplianceStatus(
+  store: Iso27001AuditStore,
+  asOf: Date = new Date(),
+  intervalMonths: number = DEFAULT_REVIEW_INTERVAL_MONTHS
+): Promise<Iso27001ComplianceStatus> {
+  const lastAudit = await getLastInternalAudit(store);
+  const reviewDue = isReviewDue(lastAudit, asOf, intervalMonths);
+  const nextReviewDue = lastAudit
+    ? getNextReviewDueDate(lastAudit, intervalMonths)
+    : null;
+  const compliant =
+    lastAudit !== null &&
+    lastAudit.result === "passed" &&
+    !reviewDue;
+  return {
+    compliant,
+    lastAudit,
+    reviewDue,
+    nextReviewDue,
+  };
+}

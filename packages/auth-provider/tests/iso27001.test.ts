@@ -4,6 +4,7 @@ import {
   getLastInternalAudit,
   getNextReviewDueDate,
   isReviewDue,
+  getComplianceStatus,
   type Iso27001AuditRecord,
   type Iso27001AuditStore,
 } from "../src/iso27001.js";
@@ -180,5 +181,76 @@ describe("isReviewDue", () => {
     };
     const asOf = new Date("2025-06-01T00:00:00.000Z");
     expect(isReviewDue(lastAudit, asOf)).toBe(true);
+  });
+});
+
+describe("getComplianceStatus", () => {
+  it("returns not compliant when no audit recorded", async () => {
+    const store = createMemoryAuditStore();
+    const status = await getComplianceStatus(store);
+    expect(status.compliant).toBe(false);
+    expect(status.lastAudit).toBeNull();
+    expect(status.reviewDue).toBe(true);
+    expect(status.nextReviewDue).toBeNull();
+  });
+
+  it("returns compliant when last audit passed and review not due", async () => {
+    const store = createMemoryAuditStore();
+    await recordInternalAuditCompleted(
+      {
+        id: "iso-audit-1",
+        completedAt: "2025-01-15T00:00:00.000Z",
+        scope: "ISMS Annex A",
+        periodStart: "2024-01-01",
+        periodEnd: "2024-12-31",
+        result: "passed",
+      },
+      store
+    );
+    const asOf = new Date("2025-06-01T00:00:00.000Z");
+    const status = await getComplianceStatus(store, asOf);
+    expect(status.compliant).toBe(true);
+    expect(status.lastAudit).not.toBeNull();
+    expect(status.reviewDue).toBe(false);
+    expect(status.nextReviewDue).not.toBeNull();
+    expect(status.nextReviewDue!.getUTCFullYear()).toBe(2026);
+  });
+
+  it("returns not compliant when last audit was nonconformity", async () => {
+    const store = createMemoryAuditStore();
+    await recordInternalAuditCompleted(
+      {
+        id: "iso-audit-1",
+        completedAt: "2025-01-15T00:00:00.000Z",
+        scope: "ISMS",
+        periodStart: "2024-01-01",
+        periodEnd: "2024-12-31",
+        result: "nonconformity",
+      },
+      store
+    );
+    const asOf = new Date("2025-02-01T00:00:00.000Z");
+    const status = await getComplianceStatus(store, asOf);
+    expect(status.compliant).toBe(false);
+    expect(status.reviewDue).toBe(false);
+  });
+
+  it("returns not compliant when review is due", async () => {
+    const store = createMemoryAuditStore();
+    await recordInternalAuditCompleted(
+      {
+        id: "iso-audit-1",
+        completedAt: "2024-01-15T00:00:00.000Z",
+        scope: "ISMS",
+        periodStart: "2023-01-01",
+        periodEnd: "2023-12-31",
+        result: "passed",
+      },
+      store
+    );
+    const asOf = new Date("2025-06-01T00:00:00.000Z");
+    const status = await getComplianceStatus(store, asOf);
+    expect(status.compliant).toBe(false);
+    expect(status.reviewDue).toBe(true);
   });
 });
