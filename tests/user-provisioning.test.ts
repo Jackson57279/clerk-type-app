@@ -189,6 +189,37 @@ describe("provisionUser", () => {
     expect(result.created).toBe(true);
     expect(result.user.active).toBe(false);
   });
+
+  it("prefers externalId match over email when both exist", async () => {
+    const store = memoryStore([
+      {
+        id: "user_1",
+        email: "first@example.com",
+        externalId: "ext-1",
+        name: undefined,
+        firstName: undefined,
+        lastName: undefined,
+        active: true,
+      },
+      {
+        id: "user_2",
+        email: "second@example.com",
+        externalId: undefined,
+        name: undefined,
+        firstName: undefined,
+        lastName: undefined,
+        active: true,
+      },
+    ]);
+    const result = await provisionUser(store, {
+      email: "second@example.com",
+      externalId: "ext-1",
+      name: "Matched by externalId",
+    });
+    expect(result.created).toBe(false);
+    expect(result.user.id).toBe("user_1");
+    expect(result.user.name).toBe("Matched by externalId");
+  });
 });
 
 describe("deprovisionUser", () => {
@@ -230,5 +261,22 @@ describe("deprovisionUser", () => {
   it("is no-op when user does not exist", async () => {
     const store = memoryStore();
     await expect(deprovisionUser(store, "nonexistent")).resolves.toBeUndefined();
+  });
+
+  it("soft-deleted user is not findable by email", async () => {
+    const store = memoryStore([
+      {
+        id: "user_1",
+        email: "gone@example.com",
+        externalId: undefined,
+        name: undefined,
+        firstName: undefined,
+        lastName: undefined,
+        active: true,
+      },
+    ]);
+    await deprovisionUser(store, "user_1");
+    const byEmail = await store.findByEmail("gone@example.com");
+    expect(byEmail).toBeNull();
   });
 });
