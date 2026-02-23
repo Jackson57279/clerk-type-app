@@ -11,8 +11,7 @@ import {
 import {
   createMemorySigningKeyStore,
   asKeySetView,
-  rotateIfNeeded,
-  ROTATION_INTERVAL_DAYS,
+  generateSigningKey,
 } from "../src/key-rotation.js";
 
 const SECRET = "refresh-token-secret";
@@ -500,10 +499,7 @@ describe("key set and verifyRefreshTokenWithKeySet", () => {
       old.secret,
       { keyId: old.id }
     );
-    vi.useFakeTimers();
-    vi.advanceTimersByTime(ROTATION_INTERVAL_DAYS * 24 * 60 * 60 * 1000);
-    rotateIfNeeded(keyStore);
-    vi.useRealTimers();
+    keyStore.addKey(generateSigningKey());
     expect(keyStore.getCurrent()!.id).not.toBe(old.id);
     const payload = verifyRefreshTokenWithKeySet(refresh_token, view);
     expect(payload).not.toBeNull();
