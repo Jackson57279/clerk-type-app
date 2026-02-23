@@ -245,9 +245,12 @@ export async function fetchSocialLoginProfile(
   return { id, email, name, picture };
 }
 
+export type AccountLinkingStrategy = "automatic" | "prompt_user" | "disabled";
+
 export interface SocialLoginUser {
   id: string;
   email: string;
+  emailVerified?: boolean;
 }
 
 export interface OAuthAccountRow {
@@ -284,26 +287,56 @@ export interface SocialLoginStore {
       profileData?: Record<string, unknown> | null;
     }
   ): Promise<void>;
+  savePendingLink?(
+    token: string,
+    data: PendingLinkData,
+    expiresAt: Date
+  ): Promise<void>;
+  getAndDeletePendingLink?(token: string): Promise<PendingLinkData | null>;
+}
+
+export interface PendingLinkData {
+  userId: string;
+  provider: string;
+  providerAccountId: string;
+  accessToken: string;
+  refreshToken?: string | null;
+  expiresAt?: Date | null;
+  profileData?: Record<string, unknown> | null;
 }
 
 export interface HandleSocialLoginCallbackOptions {
   secret: string;
   store: SocialLoginStore;
   isAllowedEmail?: (email: string) => boolean;
+  accountLinkingStrategy?: AccountLinkingStrategy;
+  pendingLinkTtlMs?: number;
 }
 
 export type HandleSocialLoginCallbackSuccess = { ok: true; userId: string };
+export type HandleSocialLoginCallbackLinkRequired = {
+  ok: false;
+  error: "link_confirmation_required";
+  linkToken: string;
+  userId: string;
+  email: string;
+  provider: SocialLoginProvider;
+};
 export type HandleSocialLoginCallbackError =
   | { ok: false; error: "provider_disabled" }
   | { ok: false; error: "invalid_state" }
   | { ok: false; error: "token_exchange_failed" }
   | { ok: false; error: "profile_fetch_failed" }
   | { ok: false; error: "email_not_allowed" }
-  | { ok: false; error: "email_required" };
+  | { ok: false; error: "email_required" }
+  | { ok: false; error: "account_exists_with_email" };
 
 export type HandleSocialLoginCallbackResult =
   | HandleSocialLoginCallbackSuccess
+  | HandleSocialLoginCallbackLinkRequired
   | HandleSocialLoginCallbackError;
+
+const DEFAULT_PENDING_LINK_TTL_MS = 600_000;
 
 export async function handleSocialLoginCallback(
   provider: SocialLoginProvider,
@@ -312,7 +345,13 @@ export async function handleSocialLoginCallback(
   state: string,
   options: HandleSocialLoginCallbackOptions
 ): Promise<HandleSocialLoginCallbackResult> {
-  const { secret, store, isAllowedEmail } = options;
+  const {
+    secret,
+    store,
+    isAllowedEmail,
+    accountLinkingStrategy = "automatic",
+    pendingLinkTtlMs = DEFAULT_PENDING_LINK_TTL_MS,
+  } = options;
   if (!getProviderConfig(provider)) {
     return { ok: false, error: "provider_disabled" };
   }
@@ -339,18 +378,65 @@ export async function handleSocialLoginCallback(
     });
     return { ok: true, userId: existingLink.userId };
   }
-  let user = await store.findUserByEmail(email);
-  if (!user) {
-    const nameParts = profile.name?.trim().split(/\s+/) ?? [];
-    const firstName = nameParts[0] ?? null;
-    const lastName = nameParts.length > 1 ? nameParts.slice(1).join(" ") : null;
-    user = await store.createUser({
-      email,
-      name: profile.name ?? undefined,
-      firstName: firstName ?? undefined,
-      lastName: lastName ?? undefined,
+  const existingUser = await store.findUserByEmail(email);
+  if (existingUser) {
+    if (accountLinkingStrategy === "disabled") {
+      return { ok: false, error: "account_exists_with_email" };
+    }
+    const oauthEmailVerified = true;
+    const userEmailVerified = existingUser.emailVerified !== false;
+    const shouldAutoLink =
+      accountLinkingStrategy === "automatic" && oauthEmailVerified && userEmailVerified;
+    if (!shouldAutoLink) {
+      const savePending = store.savePendingLink;
+      const getAndDelete = store.getAndDeletePendingLink;
+      if (!savePending || !getAndDelete) {
+        return { ok: false, error: "account_exists_with_email" };
+      }
+      const linkToken = randomBytes(32).toString("hex");
+      const expiresAt = new Date(Date.now() + pendingLinkTtlMs);
+      await savePending(
+        linkToken,
+        {
+          userId: existingUser.id,
+          provider,
+          providerAccountId: profile.id,
+          accessToken: tokens.access_token,
+          refreshToken: tokens.refresh_token ?? null,
+          expiresAt: tokens.expires_in ? new Date(Date.now() + tokens.expires_in * 1000) : null,
+          profileData: { name: profile.name, picture: profile.picture },
+        },
+        expiresAt
+      );
+      return {
+        ok: false,
+        error: "link_confirmation_required",
+        linkToken,
+        userId: existingUser.id,
+        email,
+        provider,
+      };
+    }
+    await store.createOAuthAccount({
+      userId: existingUser.id,
+      provider,
+      providerAccountId: profile.id,
+      accessToken: tokens.access_token,
+      refreshToken: tokens.refresh_token ?? null,
+      expiresAt: tokens.expires_in ? new Date(Date.now() + tokens.expires_in * 1000) : null,
+      profileData: { name: profile.name, picture: profile.picture },
     });
+    return { ok: true, userId: existingUser.id };
   }
+  const nameParts = profile.name?.trim().split(/\s+/) ?? [];
+  const firstName = nameParts[0] ?? null;
+  const lastName = nameParts.length > 1 ? nameParts.slice(1).join(" ") : null;
+  const user = await store.createUser({
+    email,
+    name: profile.name ?? undefined,
+    firstName: firstName ?? undefined,
+    lastName: lastName ?? undefined,
+  });
   await store.createOAuthAccount({
     userId: user.id,
     provider,
@@ -361,4 +447,40 @@ export async function handleSocialLoginCallback(
     profileData: { name: profile.name, picture: profile.picture },
   });
   return { ok: true, userId: user.id };
+}
+
+export type ConfirmAccountLinkSuccess = { ok: true; userId: string };
+export type ConfirmAccountLinkError =
+  | { ok: false; error: "invalid_link_token" }
+  | { ok: false; error: "already_linked" };
+
+export type ConfirmAccountLinkResult = ConfirmAccountLinkSuccess | ConfirmAccountLinkError;
+
+export interface ConfirmAccountLinkOptions {
+  store: SocialLoginStore;
+}
+
+export async function confirmAccountLink(
+  linkToken: string,
+  options: ConfirmAccountLinkOptions
+): Promise<ConfirmAccountLinkResult> {
+  const { store } = options;
+  const getAndDelete = store.getAndDeletePendingLink;
+  if (!getAndDelete) {
+    return { ok: false, error: "invalid_link_token" };
+  }
+  const pending = await getAndDelete(linkToken);
+  if (!pending) return { ok: false, error: "invalid_link_token" };
+  const existing = await store.findOAuthAccount(pending.provider, pending.providerAccountId);
+  if (existing) return { ok: false, error: "already_linked" };
+  await store.createOAuthAccount({
+    userId: pending.userId,
+    provider: pending.provider,
+    providerAccountId: pending.providerAccountId,
+    accessToken: pending.accessToken,
+    refreshToken: pending.refreshToken ?? null,
+    expiresAt: pending.expiresAt ?? null,
+    profileData: pending.profileData ?? null,
+  });
+  return { ok: true, userId: pending.userId };
 }

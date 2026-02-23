@@ -7,8 +7,10 @@ import {
   exchangeSocialLoginCode,
   fetchSocialLoginProfile,
   handleSocialLoginCallback,
+  confirmAccountLink,
   type SocialLoginStore,
   type OAuthAccountRow,
+  type PendingLinkData,
 } from "../src/social-login.js";
 
 const SECRET = "social-login-secret";
@@ -272,22 +274,41 @@ describe("fetchSocialLoginProfile", () => {
   });
 });
 
-function memorySocialStore(): SocialLoginStore {
-  const users = new Map<string, { id: string; email: string }>();
+function memorySocialStore(opts?: {
+  emailVerified?: boolean;
+  withPendingLink?: boolean;
+}): SocialLoginStore {
+  const users = new Map<string, { id: string; email: string; emailVerified?: boolean }>();
   const byEmail = new Map<string, string>();
   const oauthAccounts = new Map<string, OAuthAccountRow & { accessToken?: string }>();
+  const pendingLinks = new Map<
+    string,
+    { data: PendingLinkData; expiresAt: Date }
+  >();
   const key = (p: string, id: string) => `${p}:${id}`;
   return {
     async findUserByEmail(email: string) {
       const id = byEmail.get(email.toLowerCase());
-      return id ? users.get(id) ?? null : null;
+      if (!id) return null;
+      const u = users.get(id);
+      if (!u) return null;
+      return {
+        id: u.id,
+        email: u.email,
+        emailVerified: u.emailVerified,
+      };
     },
     async createUser(data) {
       const id = `user_${users.size + 1}`;
-      const user = { id, email: data.email.toLowerCase() };
+      const email = data.email.toLowerCase();
+      const user = {
+        id,
+        email,
+        emailVerified: opts?.emailVerified,
+      };
       users.set(id, user);
-      byEmail.set(user.email, id);
-      return user;
+      byEmail.set(email, id);
+      return { id, email };
     },
     async findOAuthAccount(provider: string, providerAccountId: string) {
       return oauthAccounts.get(key(provider, providerAccountId)) ?? null;
@@ -300,6 +321,23 @@ function memorySocialStore(): SocialLoginStore {
       });
     },
     async updateOAuthAccount() {},
+    ...(opts?.withPendingLink
+      ? {
+          async savePendingLink(
+            token: string,
+            data: PendingLinkData,
+            expiresAt: Date
+          ) {
+            pendingLinks.set(token, { data, expiresAt });
+          },
+          async getAndDeletePendingLink(token: string) {
+            const entry = pendingLinks.get(token);
+            pendingLinks.delete(token);
+            if (!entry || entry.expiresAt.getTime() < Date.now()) return null;
+            return entry.data;
+          },
+        }
+      : {}),
   };
 }
 
@@ -495,5 +533,199 @@ describe("handleSocialLoginCallback", () => {
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.userId).toBe(user.id);
+  });
+
+  it("returns account_exists_with_email when strategy is disabled and user exists by email", async () => {
+    const store = memorySocialStore();
+    await store.createUser({ email: "existing@example.com", name: "Existing" });
+    vi.stubGlobal("fetch", vi.fn().mockImplementation(async (url: string) => {
+      if (url.includes("token")) {
+        return {
+          ok: true,
+          json: async () => ({ access_token: "at", expires_in: 3600 }),
+        };
+      }
+      return {
+        ok: true,
+        json: async () => ({
+          id: "google-456",
+          email: "existing@example.com",
+          name: "Existing User",
+        }),
+      };
+    }));
+    const state = createSocialLoginState(SECRET, "google");
+    const result = await handleSocialLoginCallback(
+      "google",
+      "code",
+      "https://app/cb",
+      state,
+      { secret: SECRET, store, accountLinkingStrategy: "disabled" }
+    );
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error).toBe("account_exists_with_email");
+  });
+
+  it("returns link_confirmation_required when strategy is prompt_user and user exists by email", async () => {
+    const store = memorySocialStore({ withPendingLink: true });
+    await store.createUser({ email: "existing@example.com", name: "Existing" });
+    vi.stubGlobal("fetch", vi.fn().mockImplementation(async (url: string) => {
+      if (url.includes("token")) {
+        return {
+          ok: true,
+          json: async () => ({ access_token: "at", expires_in: 3600 }),
+        };
+      }
+      return {
+        ok: true,
+        json: async () => ({
+          id: "google-456",
+          email: "existing@example.com",
+          name: "Existing User",
+        }),
+      };
+    }));
+    const state = createSocialLoginState(SECRET, "google");
+    const result = await handleSocialLoginCallback(
+      "google",
+      "code",
+      "https://app/cb",
+      state,
+      { secret: SECRET, store, accountLinkingStrategy: "prompt_user" }
+    );
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error).toBe("link_confirmation_required");
+    expect("linkToken" in result && result.linkToken).toBeDefined();
+    expect("userId" in result && result.userId).toBeDefined();
+    expect("email" in result && result.email).toBe("existing@example.com");
+    expect("provider" in result && result.provider).toBe("google");
+  });
+
+  it("returns link_confirmation_required when strategy is automatic but user email not verified", async () => {
+    const store = memorySocialStore({
+      emailVerified: false,
+      withPendingLink: true,
+    });
+    await store.createUser({ email: "unverified@example.com", name: "Unverified" });
+    vi.stubGlobal("fetch", vi.fn().mockImplementation(async (url: string) => {
+      if (url.includes("token")) {
+        return {
+          ok: true,
+          json: async () => ({ access_token: "at", expires_in: 3600 }),
+        };
+      }
+      return {
+        ok: true,
+        json: async () => ({
+          id: "google-111",
+          email: "unverified@example.com",
+          name: "Unverified",
+        }),
+      };
+    }));
+    const state = createSocialLoginState(SECRET, "google");
+    const result = await handleSocialLoginCallback(
+      "google",
+      "code",
+      "https://app/cb",
+      state,
+      { secret: SECRET, store, accountLinkingStrategy: "automatic" }
+    );
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error).toBe("link_confirmation_required");
+    expect("linkToken" in result && result.linkToken).toBeDefined();
+  });
+});
+
+describe("confirmAccountLink", () => {
+  beforeEach(() => {
+    process.env.GOOGLE_CLIENT_ID = "g-id";
+    process.env.GOOGLE_CLIENT_SECRET = "g-secret";
+    vi.stubGlobal("fetch", vi.fn().mockImplementation(async (url: string) => {
+      if (url.includes("token")) {
+        return {
+          ok: true,
+          json: async () => ({ access_token: "at", expires_in: 3600 }),
+        };
+      }
+      return {
+        ok: true,
+        json: async () => ({
+          id: "google-456",
+          email: "existing@example.com",
+          name: "Existing User",
+        }),
+      };
+    }));
+  });
+  afterEach(() => {
+    delete process.env.GOOGLE_CLIENT_ID;
+    delete process.env.GOOGLE_CLIENT_SECRET;
+    vi.restoreAllMocks();
+  });
+  it("links OAuth account to user when valid link token", async () => {
+    const store = memorySocialStore({ withPendingLink: true });
+    const user = await store.createUser({
+      email: "existing@example.com",
+      name: "Existing",
+    });
+    const state = createSocialLoginState(SECRET, "google");
+    const callbackResult = await handleSocialLoginCallback(
+      "google",
+      "code",
+      "https://app/cb",
+      state,
+      { secret: SECRET, store, accountLinkingStrategy: "prompt_user" }
+    );
+    expect(callbackResult.ok).toBe(false);
+    if (callbackResult.ok) return;
+    expect(callbackResult.error).toBe("link_confirmation_required");
+    const linkToken = callbackResult.linkToken;
+    const confirmResult = await confirmAccountLink(linkToken, { store });
+    expect(confirmResult.ok).toBe(true);
+    if (!confirmResult.ok) return;
+    expect(confirmResult.userId).toBe(user.id);
+    const account = await store.findOAuthAccount("google", "google-456");
+    expect(account).not.toBeNull();
+    expect(account?.userId).toBe(user.id);
+  });
+
+  it("returns invalid_link_token for unknown or reused token", async () => {
+    const store = memorySocialStore({ withPendingLink: true });
+    expect(await confirmAccountLink("unknown-token", { store })).toEqual({
+      ok: false,
+      error: "invalid_link_token",
+    });
+  });
+
+  it("returns already_linked when provider account was linked after pending created", async () => {
+    const store = memorySocialStore({ withPendingLink: true });
+    const user = await store.createUser({
+      email: "existing@example.com",
+      name: "Existing",
+    });
+    await store.createOAuthAccount({
+      userId: user.id,
+      provider: "google",
+      providerAccountId: "google-456",
+    });
+    const expiresAt = new Date(Date.now() + 600_000);
+    await store.savePendingLink!(
+      "reused-token",
+      {
+        userId: user.id,
+        provider: "google",
+        providerAccountId: "google-456",
+        accessToken: "at",
+      },
+      expiresAt
+    );
+    const result = await confirmAccountLink("reused-token", { store });
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error).toBe("already_linked");
   });
 });
