@@ -75,4 +75,19 @@ describe("regenerateSessionId (session fixation prevention)", () => {
     expect(store.has(oldId)).toBe(false);
     expect(store.get(newId)).toEqual({ userId: "user1", orgId: null });
   });
+
+  it("produces unique new session IDs on each call", () => {
+    const store = new Map<string, { userId: string; orgId: string | null }>();
+    const sessionStore = {
+      remove(id: string) {
+        store.delete(id);
+      },
+      register(id: string, userId: string, orgId: string | null) {
+        store.set(id, { userId, orgId });
+      },
+    };
+    const id1 = regenerateSessionId("pre1", "user1", null, sessionStore);
+    const id2 = regenerateSessionId("pre2", "user1", null, sessionStore);
+    expect(id1).not.toBe(id2);
+  });
 });
