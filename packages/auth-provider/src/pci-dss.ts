@@ -49,3 +49,21 @@ export function validateNoCardData(
   }
   return { ok: true };
 }
+
+export function validateNoCardDataInRecord(
+  record: Record<string, string | string[] | undefined>
+): { ok: true } | { ok: false; reason: string } {
+  for (const v of Object.values(record)) {
+    if (v === undefined) continue;
+    if (typeof v === "string") {
+      const r = validateNoCardData(v);
+      if (!r.ok) return r;
+    } else {
+      for (const s of v) {
+        const r = validateNoCardData(s);
+        if (!r.ok) return r;
+      }
+    }
+  }
+  return { ok: true };
+}

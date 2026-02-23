@@ -40,6 +40,7 @@ export interface ProvisionResult {
 }
 
 import { createDefaultEmailDomainChecker } from "./email-domain-restriction.js";
+import { validateNoCardDataInRecord } from "./pci-dss.js";
 import {
   deactivateEntity,
   deleteEntity,
@@ -72,12 +73,25 @@ function userToSyncData(user: ProvisionedUser): Record<string, unknown> {
   };
 }
 
+function ensureNoCardDataInProvisionData(data: ProvisionUserData | Partial<ProvisionUserData>): void {
+  const r = validateNoCardDataInRecord({
+    email: data.email,
+    externalId: data.externalId,
+    name: data.name,
+    firstName: data.firstName,
+    lastName: data.lastName,
+  });
+  if (!r.ok) throw new Error(r.reason);
+}
+
 export async function provisionUser(
   store: UserProvisioningStore,
   data: ProvisionUserData,
   options: ProvisionOptions = {}
 ): Promise<ProvisionResult> {
   const { reactivateIfDeactivated = true, isAllowedEmail: isAllowedEmailOpt, realtimeWebhook } = options;
+
+  ensureNoCardDataInProvisionData(data);
 
   if (data.externalId) {
     const byExternal = await store.findByExternalId(data.externalId);

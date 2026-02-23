@@ -271,6 +271,20 @@ describe("provisionUser", () => {
     expect(result.user.email).toBe("user@company.com");
   });
 
+  it("throws when provision data contains card data (PCI DSS no card storage)", async () => {
+    const store = memoryStore();
+    await expect(
+      provisionUser(
+        store,
+        {
+          email: "user@company.com",
+          name: "4111111111111111",
+        },
+        { isAllowedEmail: () => true }
+      )
+    ).rejects.toThrow(/card data/);
+  });
+
   it("updates deactivated user but keeps active false when data.active is false", async () => {
     const store = memoryStore([
       {

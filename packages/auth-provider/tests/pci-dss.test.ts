@@ -3,6 +3,7 @@ import {
   getPciDssCardDataPolicy,
   containsCardData,
   validateNoCardData,
+  validateNoCardDataInRecord,
 } from "../src/pci-dss.js";
 
 describe("getPciDssCardDataPolicy", () => {
@@ -54,5 +55,44 @@ describe("validateNoCardData", () => {
     if (!result.ok) {
       expect(result.reason).toContain("card data");
     }
+  });
+});
+
+describe("validateNoCardDataInRecord", () => {
+  it("returns ok true for record with no card data", () => {
+    expect(
+      validateNoCardDataInRecord({
+        email: "u@example.com",
+        name: "User",
+        externalId: "ext-1",
+      })
+    ).toEqual({ ok: true });
+    expect(validateNoCardDataInRecord({})).toEqual({ ok: true });
+  });
+
+  it("returns ok false when a string value contains PAN", () => {
+    const r = validateNoCardDataInRecord({
+      email: "u@example.com",
+      name: "4111111111111111",
+    });
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.reason).toContain("card data");
+  });
+
+  it("returns ok false when an array element contains PAN", () => {
+    const r = validateNoCardDataInRecord({
+      groups: ["admins", "4111111111111111"],
+    });
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.reason).toContain("card data");
+  });
+
+  it("skips undefined values", () => {
+    expect(
+      validateNoCardDataInRecord({
+        email: "u@example.com",
+        name: undefined,
+      })
+    ).toEqual({ ok: true });
   });
 });

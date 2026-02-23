@@ -372,6 +372,24 @@ describe("getOrProvisionUser", () => {
     expect(result.created).toBe(true);
     expect(result.user.email).toBe("user@company.com");
   });
+
+  it("throws when mapped claims contain card data (PCI DSS no card storage)", async () => {
+    const store = memoryStore();
+    await expect(
+      getOrProvisionUser(
+        assertion({
+          nameId: "user@company.com",
+          attributes: {
+            [EMAIL_ATTR]: ["user@company.com"],
+            [NAME_ATTR]: ["4111111111111111"],
+          },
+        }),
+        mapping(),
+        store,
+        { organizationId: "org1" }
+      )
+    ).rejects.toThrow(/card data/);
+  });
 });
 
 describe("handleSpInitiatedAssertWithJit", () => {

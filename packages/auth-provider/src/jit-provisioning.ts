@@ -4,6 +4,7 @@ import {
   type MappedClaims,
 } from "./attribute-mapping.js";
 import { createDefaultEmailDomainChecker } from "./email-domain-restriction.js";
+import { validateNoCardDataInRecord } from "./pci-dss.js";
 import {
   validateSpInitiatedPostResponse,
   type SpInitiatedAssertionResult,
@@ -92,7 +93,7 @@ export async function getOrProvisionUser(
     throw new Error("Email domain not allowed");
   }
 
-  user = await store.createUser(organizationId, {
+  const createData = {
     samlNameId: assertion.nameId,
     email,
     name: claims.name,
@@ -100,7 +101,21 @@ export async function getOrProvisionUser(
     lastName: claims.lastName,
     groups: claims.groups.length > 0 ? claims.groups : undefined,
     roles: claims.roles.length > 0 ? claims.roles : undefined,
+  };
+  const cardCheck = validateNoCardDataInRecord({
+    samlNameId: createData.samlNameId,
+    email: createData.email,
+    name: createData.name,
+    firstName: createData.firstName,
+    lastName: createData.lastName,
+    groups: createData.groups,
+    roles: createData.roles,
   });
+  if (!cardCheck.ok) {
+    throw new Error(cardCheck.reason);
+  }
+
+  user = await store.createUser(organizationId, createData);
   return { user, created: true };
 }
 
