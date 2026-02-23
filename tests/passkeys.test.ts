@@ -1,4 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
+import * as simplewebauthn from "@simplewebauthn/server";
 import {
   createMemoryPasskeyStore,
   createMemoryPasskeyChallengeStore,
@@ -14,21 +15,22 @@ import {
 vi.mock("@simplewebauthn/server", async (importOriginal) => {
   const actual =
     await importOriginal<typeof import("@simplewebauthn/server")>();
+  const defaultRegMock = async () => ({
+    verified: true,
+    registrationInfo: {
+      credential: {
+        id: "mock-cred-id",
+        publicKey: new Uint8Array(32),
+        counter: 0,
+        transports: [],
+      },
+      credentialDeviceType: "singleDevice" as const,
+      credentialBackedUp: false,
+    },
+  });
   return {
     ...actual,
-    verifyRegistrationResponse: async () => ({
-      verified: true,
-      registrationInfo: {
-        credential: {
-          id: "mock-cred-id",
-          publicKey: new Uint8Array(32),
-          counter: 0,
-          transports: [],
-        },
-        credentialDeviceType: "singleDevice" as const,
-        credentialBackedUp: false,
-      },
-    }),
+    verifyRegistrationResponse: vi.fn().mockImplementation(defaultRegMock),
   };
 });
 
@@ -551,6 +553,84 @@ describe("finishRegistration", () => {
     const list = await credentialStore.listByUserId("u1");
     expect(list).toHaveLength(1);
     expect(list[0]!.credentialId).toBe("mock-cred-id");
+  });
+
+  it("allows registering multiple passkeys via repeated registration flow", async () => {
+    const credentialStore = createMemoryPasskeyStore();
+    const challengeStore = createMemoryPasskeyChallengeStore();
+    const userId = "user-multi";
+    const baseResponse = {
+      rawId: "mock",
+      type: "public-key" as const,
+      response: {
+        clientDataJSON: "e30",
+        attestationObject: "o2NmbXRkbm9uZWdhdHRTdG10oGhhdXRoRGF0YVikSZYN5YgOjGh0NBcPZHZgW4_krrmihjLHmVzzuoMdl2NFAAAAAK3OAAI1vMYKZIsLJfHwVQMAIER5YWx1eSBMYXB0b3ClB1YmxpYyBLZXnALg",
+      },
+      clientExtensionResults: {},
+    };
+    const mockCred = (id: string) => ({
+      verified: true as const,
+      registrationInfo: {
+        credential: {
+          id,
+          publicKey: new Uint8Array(32),
+          counter: 0,
+          transports: [] as const,
+        },
+        credentialDeviceType: "singleDevice" as const,
+        credentialBackedUp: false,
+      },
+    });
+    vi.mocked(simplewebauthn.verifyRegistrationResponse)
+      .mockImplementationOnce(async () => mockCred("cred-first"))
+      .mockImplementationOnce(async () => mockCred("cred-second"));
+
+    await startRegistration({
+      userId,
+      userName: "alice",
+      credentialStore,
+      challengeStore,
+      rpConfig,
+    });
+    const r1 = await finishRegistration({
+      userId,
+      response: { ...baseResponse, id: "cred-first" },
+      credentialStore,
+      challengeStore,
+      rpConfig,
+    });
+    expect(r1.verified).toBe(true);
+    expect(r1.credentialId).toBe("cred-first");
+
+    await startRegistration({
+      userId,
+      userName: "alice",
+      credentialStore,
+      challengeStore,
+      rpConfig,
+    });
+    const r2 = await finishRegistration({
+      userId,
+      response: { ...baseResponse, id: "cred-second" },
+      credentialStore,
+      challengeStore,
+      rpConfig,
+    });
+    expect(r2.verified).toBe(true);
+    expect(r2.credentialId).toBe("cred-second");
+
+    const list = await credentialStore.listByUserId(userId);
+    expect(list).toHaveLength(2);
+    expect(list.map((p) => p.credentialId).sort()).toEqual(["cred-first", "cred-second"]);
+
+    const authOptions = await startAuthentication({
+      userId,
+      credentialStore,
+      challengeStore,
+      rpConfig,
+    });
+    expect(authOptions.allowCredentials).toHaveLength(2);
+    expect(authOptions.allowCredentials!.map((c) => c.id).sort()).toEqual(["cred-first", "cred-second"]);
   });
 });
 
