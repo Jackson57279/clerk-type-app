@@ -97,6 +97,23 @@ describe("checkResend", () => {
     expect(checkResend("a@x.com", store).allowed).toBe(false);
     expect(checkResend("b@x.com", store)).toEqual({ allowed: true });
   });
+
+  it("uses exponential backoff: delay = base * 2^(count-1) capped at max", () => {
+    vi.useFakeTimers();
+    const store = createMemoryResendStore();
+    const baseMs = 1000;
+    const maxMs = 20_000;
+    for (let n = 1; n <= 4; n++) {
+      recordResend("key", store);
+      const result = checkResend("key", store, { baseDelayMs: baseMs, maxDelayMs: maxMs });
+      expect(result.allowed).toBe(false);
+      const expectedMs = Math.min(baseMs * Math.pow(2, n - 1), maxMs);
+      expect((result.retryAfterSeconds ?? 0) * 1000).toBeGreaterThanOrEqual(expectedMs - 1);
+      expect((result.retryAfterSeconds ?? 0) * 1000).toBeLessThanOrEqual(expectedMs + 1000);
+      vi.advanceTimersByTime(expectedMs + 100);
+    }
+    vi.useRealTimers();
+  });
 });
 
 describe("recordResend", () => {
