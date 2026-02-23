@@ -38,16 +38,16 @@ describe("createPasswordResetToken", () => {
     expect(ttlMs).toBeGreaterThanOrEqual(DEFAULT_PASSWORD_RESET_TTL_MS - 1000);
   });
 
-  it("uses default TTL of 15 minutes", () => {
+  it("uses default TTL of 1 hour", () => {
     const before = Date.now();
     const result = createPasswordResetToken(
       { userId: "u1", email: "u@example.com" },
       SECRET
     );
     const after = Date.now();
-    const fifteenMin = 15 * 60 * 1000;
-    expect(result.expiresAt).toBeGreaterThanOrEqual(before + fifteenMin - 1000);
-    expect(result.expiresAt).toBeLessThanOrEqual(after + fifteenMin + 1000);
+    const oneHour = 60 * 60 * 1000;
+    expect(result.expiresAt).toBeGreaterThanOrEqual(before + oneHour - 1000);
+    expect(result.expiresAt).toBeLessThanOrEqual(after + oneHour + 1000);
   });
 
   it("accepts custom ttlMs", () => {
