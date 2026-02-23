@@ -1,0 +1,65 @@
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import {
+  invalidateAllSessions,
+  createDefaultRemoteLogoutStore,
+  type RemoteLogoutStore,
+} from "../src/remote-logout.js";
+import {
+  registerSession,
+  clearAllSessions,
+  getActiveCountByUser,
+} from "../src/concurrent-session-limit.js";
+
+describe("invalidateAllSessions", () => {
+  it("calls store and returns invalidated session ids and count", () => {
+    const store: RemoteLogoutStore = {
+      invalidateAllSessionsForUser(userId: string) {
+        return userId === "u1" ? ["s1", "s2", "s3"] : [];
+      },
+    };
+    const result = invalidateAllSessions("u1", store);
+    expect(result.invalidatedSessionIds).toEqual(["s1", "s2", "s3"]);
+    expect(result.invalidatedCount).toBe(3);
+  });
+
+  it("returns empty list when store returns no sessions", () => {
+    const store: RemoteLogoutStore = {
+      invalidateAllSessionsForUser() {
+        return [];
+      },
+    };
+    const result = invalidateAllSessions("u1", store);
+    expect(result.invalidatedSessionIds).toEqual([]);
+    expect(result.invalidatedCount).toBe(0);
+  });
+});
+
+describe("createDefaultRemoteLogoutStore", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    clearAllSessions();
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("invalidates all in-memory sessions for the user", () => {
+    registerSession("s0", "u1", null);
+    registerSession("s1", "u1", null);
+    registerSession("s2", "u2", null);
+    const store = createDefaultRemoteLogoutStore();
+    const result = invalidateAllSessions("u1", store);
+    expect(result.invalidatedCount).toBe(2);
+    expect(result.invalidatedSessionIds).toContain("s0");
+    expect(result.invalidatedSessionIds).toContain("s1");
+    expect(getActiveCountByUser("u1")).toBe(0);
+    expect(getActiveCountByUser("u2")).toBe(1);
+  });
+
+  it("returns empty when user has no sessions", () => {
+    const store = createDefaultRemoteLogoutStore();
+    const result = invalidateAllSessions("u1", store);
+    expect(result.invalidatedSessionIds).toEqual([]);
+    expect(result.invalidatedCount).toBe(0);
+  });
+});
