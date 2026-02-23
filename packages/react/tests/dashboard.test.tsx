@@ -10,6 +10,7 @@ describe("Dashboard", () => {
     expect(screen.getByTestId("dashboard-nav-overview")).toBeTruthy();
     expect(screen.getByTestId("dashboard-nav-users")).toBeTruthy();
     expect(screen.getByTestId("dashboard-nav-organizations")).toBeTruthy();
+    expect(screen.getByTestId("dashboard-nav-analytics")).toBeTruthy();
     expect(screen.getByTestId("dashboard-nav-settings")).toBeTruthy();
   });
 
@@ -250,5 +251,79 @@ describe("Dashboard", () => {
     );
     fireEvent.click(screen.getByTestId("dashboard-organization-transfer-org1"));
     expect(onTransferOwnership).toHaveBeenCalledWith("org1");
+  });
+
+  it("switches to Analytics section when Analytics nav is clicked", () => {
+    render(<Dashboard />);
+    fireEvent.click(screen.getByTestId("dashboard-nav-analytics"));
+    expect(screen.getByTestId("dashboard-analytics")).toBeTruthy();
+    expect(screen.getByTestId("dashboard-analytics-title").textContent).toBe("Analytics");
+    expect(screen.getByTestId("dashboard-analytics-placeholder")).toBeTruthy();
+  });
+
+  it("shows analytics metrics when analytics.metrics is provided", () => {
+    render(
+      <Dashboard
+        activeSection="analytics"
+        analytics={{
+          metrics: {
+            dau: 10,
+            mau: 100,
+            signUps: 5,
+            loginSuccessCount: 200,
+            loginFailureCount: 2,
+            mfaAdoptionRate: 0.4,
+            passwordResetRequests: 3,
+            avgSessionDurationMs: 3600000,
+            deviceBrowserBreakdown: [
+              { label: "Chrome", count: 80 },
+              { label: "Firefox", count: 20 },
+            ],
+          },
+        }}
+      />
+    );
+    expect(screen.getByTestId("dashboard-analytics-dau").textContent).toContain("10");
+    expect(screen.getByTestId("dashboard-analytics-mau").textContent).toContain("100");
+    expect(screen.getByTestId("dashboard-analytics-signups").textContent).toContain("5");
+    expect(screen.getByTestId("dashboard-analytics-login-success").textContent).toContain("200");
+    expect(screen.getByTestId("dashboard-analytics-login-failure").textContent).toContain("2");
+    expect(screen.getByTestId("dashboard-analytics-mfa-adoption").textContent).toContain("40%");
+    expect(screen.getByTestId("dashboard-analytics-password-resets").textContent).toContain("3");
+    expect(screen.getByTestId("dashboard-analytics-session-duration").textContent).toContain("60m");
+    expect(screen.getByTestId("dashboard-analytics-device-browser")).toBeTruthy();
+    expect(screen.getByText("Chrome")).toBeTruthy();
+    expect(screen.getByText("80")).toBeTruthy();
+  });
+
+  it("shows loading state when analytics.loading is true", () => {
+    render(
+      <Dashboard activeSection="analytics" analytics={{ loading: true }} />
+    );
+    expect(screen.getByTestId("dashboard-analytics-loading").textContent).toContain("Loading");
+  });
+
+  it("calls onExportCsv when Export CSV is clicked", () => {
+    const onExportCsv = vi.fn();
+    render(
+      <Dashboard
+        activeSection="analytics"
+        analytics={{ metrics: { dau: 1 }, onExportCsv }}
+      />
+    );
+    fireEvent.click(screen.getByTestId("dashboard-analytics-export-csv"));
+    expect(onExportCsv).toHaveBeenCalled();
+  });
+
+  it("calls onExportJson when Export JSON is clicked", () => {
+    const onExportJson = vi.fn();
+    render(
+      <Dashboard
+        activeSection="analytics"
+        analytics={{ metrics: { dau: 1 }, onExportJson }}
+      />
+    );
+    fireEvent.click(screen.getByTestId("dashboard-analytics-export-json"));
+    expect(onExportJson).toHaveBeenCalled();
   });
 });

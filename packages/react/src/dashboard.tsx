@@ -61,7 +61,26 @@ const TABLE_CELL_STYLE: React.CSSProperties = {
   fontSize: "0.875rem",
 };
 
-export type DashboardSection = "overview" | "users" | "organizations" | "settings";
+export type DashboardSection = "overview" | "users" | "organizations" | "analytics" | "settings";
+
+export interface DashboardAnalyticsMetrics {
+  dau?: number;
+  mau?: number;
+  signUps?: number;
+  loginSuccessCount?: number;
+  loginFailureCount?: number;
+  mfaAdoptionRate?: number;
+  passwordResetRequests?: number;
+  avgSessionDurationMs?: number | null;
+  deviceBrowserBreakdown?: { label: string; count: number }[];
+}
+
+export interface DashboardAnalyticsProps {
+  metrics?: DashboardAnalyticsMetrics;
+  loading?: boolean;
+  onExportCsv?: () => void;
+  onExportJson?: () => void;
+}
 
 export interface DashboardOverviewMetrics {
   activeUsers?: number;
@@ -111,6 +130,7 @@ export interface DashboardProps {
   onSectionChange?: (section: DashboardSection) => void;
   userManagement?: DashboardUserManagementProps;
   organizationManagement?: DashboardOrganizationManagementProps;
+  analytics?: DashboardAnalyticsProps;
 }
 
 const DEFAULT_METRICS: DashboardOverviewMetrics = {
@@ -127,6 +147,7 @@ export function Dashboard(props: DashboardProps) {
     onSectionChange,
     userManagement,
     organizationManagement,
+    analytics,
   } = props;
   const [internalSection, setInternalSection] = useState<DashboardSection>("overview");
   const activeSection = controlledSection ?? internalSection;
@@ -163,6 +184,14 @@ export function Dashboard(props: DashboardProps) {
           onClick={() => setSection("organizations")}
         >
           Organizations
+        </button>
+        <button
+          type="button"
+          data-testid="dashboard-nav-analytics"
+          style={activeSection === "analytics" ? NAV_ITEM_ACTIVE_STYLE : NAV_ITEM_STYLE}
+          onClick={() => setSection("analytics")}
+        >
+          Analytics
         </button>
         <button
           type="button"
@@ -418,6 +447,122 @@ export function Dashboard(props: DashboardProps) {
               </>
             ) : (
               <p data-testid="dashboard-organizations-placeholder">View and manage organizations.</p>
+            )}
+          </section>
+        )}
+        {activeSection === "analytics" && (
+          <section data-testid="dashboard-analytics">
+            <h1 data-testid="dashboard-analytics-title" style={{ marginTop: 0, fontSize: "1.25rem" }}>
+              Analytics
+            </h1>
+            {analytics?.loading ? (
+              <p data-testid="dashboard-analytics-loading">Loading analytics…</p>
+            ) : analytics?.metrics ? (
+              <>
+                <div data-testid="dashboard-analytics-metrics" style={GRID_STYLE}>
+                  <div data-testid="dashboard-analytics-dau" style={CARD_STYLE}>
+                    <div style={{ fontSize: "0.75rem", color: "#6b7280", marginBottom: "0.25rem" }}>DAU</div>
+                    <div style={{ fontSize: "1.5rem", fontWeight: 600 }}>{analytics.metrics.dau ?? 0}</div>
+                  </div>
+                  <div data-testid="dashboard-analytics-mau" style={CARD_STYLE}>
+                    <div style={{ fontSize: "0.75rem", color: "#6b7280", marginBottom: "0.25rem" }}>MAU</div>
+                    <div style={{ fontSize: "1.5rem", fontWeight: 600 }}>{analytics.metrics.mau ?? 0}</div>
+                  </div>
+                  <div data-testid="dashboard-analytics-signups" style={CARD_STYLE}>
+                    <div style={{ fontSize: "0.75rem", color: "#6b7280", marginBottom: "0.25rem" }}>Sign-ups</div>
+                    <div style={{ fontSize: "1.5rem", fontWeight: 600 }}>{analytics.metrics.signUps ?? 0}</div>
+                  </div>
+                  <div data-testid="dashboard-analytics-login-success" style={CARD_STYLE}>
+                    <div style={{ fontSize: "0.75rem", color: "#6b7280", marginBottom: "0.25rem" }}>Login success</div>
+                    <div style={{ fontSize: "1.5rem", fontWeight: 600 }}>{analytics.metrics.loginSuccessCount ?? 0}</div>
+                  </div>
+                  <div data-testid="dashboard-analytics-login-failure" style={CARD_STYLE}>
+                    <div style={{ fontSize: "0.75rem", color: "#6b7280", marginBottom: "0.25rem" }}>Login failure</div>
+                    <div style={{ fontSize: "1.5rem", fontWeight: 600 }}>{analytics.metrics.loginFailureCount ?? 0}</div>
+                  </div>
+                  <div data-testid="dashboard-analytics-mfa-adoption" style={CARD_STYLE}>
+                    <div style={{ fontSize: "0.75rem", color: "#6b7280", marginBottom: "0.25rem" }}>MFA adoption</div>
+                    <div style={{ fontSize: "1.5rem", fontWeight: 600 }}>
+                      {analytics.metrics.mfaAdoptionRate != null
+                        ? `${Math.round(analytics.metrics.mfaAdoptionRate * 100)}%`
+                        : "0%"}
+                    </div>
+                  </div>
+                  <div data-testid="dashboard-analytics-password-resets" style={CARD_STYLE}>
+                    <div style={{ fontSize: "0.75rem", color: "#6b7280", marginBottom: "0.25rem" }}>Password resets</div>
+                    <div style={{ fontSize: "1.5rem", fontWeight: 600 }}>{analytics.metrics.passwordResetRequests ?? 0}</div>
+                  </div>
+                  <div data-testid="dashboard-analytics-session-duration" style={CARD_STYLE}>
+                    <div style={{ fontSize: "0.75rem", color: "#6b7280", marginBottom: "0.25rem" }}>Avg session</div>
+                    <div style={{ fontSize: "1rem" }}>
+                      {analytics.metrics.avgSessionDurationMs != null
+                        ? `${Math.round(analytics.metrics.avgSessionDurationMs / 60000)}m`
+                        : "—"}
+                    </div>
+                  </div>
+                </div>
+                {(analytics.metrics.deviceBrowserBreakdown?.length ?? 0) > 0 && (
+                  <div data-testid="dashboard-analytics-device-browser" style={{ marginTop: "1.5rem" }}>
+                    <h2 style={{ fontSize: "1rem", marginBottom: "0.5rem" }}>Device / browser</h2>
+                    <div style={{ overflowX: "auto" }}>
+                      <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                        <thead>
+                          <tr>
+                            <th style={TABLE_HEAD_STYLE}>Browser</th>
+                            <th style={TABLE_HEAD_STYLE}>Count</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {analytics.metrics.deviceBrowserBreakdown!.map((row) => (
+                            <tr key={row.label}>
+                              <td style={TABLE_CELL_STYLE}>{row.label}</td>
+                              <td style={TABLE_CELL_STYLE}>{row.count}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
+                <div style={{ marginTop: "1.5rem", display: "flex", gap: "0.5rem" }}>
+                  {analytics.onExportCsv && (
+                    <button
+                      type="button"
+                      data-testid="dashboard-analytics-export-csv"
+                      onClick={analytics.onExportCsv}
+                      style={{
+                        padding: "0.5rem 0.75rem",
+                        fontSize: "0.875rem",
+                        border: "1px solid #e5e7eb",
+                        borderRadius: "6px",
+                        background: "#fff",
+                        cursor: "pointer",
+                      }}
+                    >
+                      Export CSV
+                    </button>
+                  )}
+                  {analytics.onExportJson && (
+                    <button
+                      type="button"
+                      data-testid="dashboard-analytics-export-json"
+                      onClick={analytics.onExportJson}
+                      style={{
+                        padding: "0.5rem 0.75rem",
+                        fontSize: "0.875rem",
+                        border: "1px solid #e5e7eb",
+                        borderRadius: "6px",
+                        background: "#fff",
+                        cursor: "pointer",
+                      }}
+                    >
+                      Export JSON
+                    </button>
+                  )}
+                </div>
+              </>
+            ) : (
+              <p data-testid="dashboard-analytics-placeholder">Analytics metrics and export (CSV, JSON).</p>
             )}
           </section>
         )}

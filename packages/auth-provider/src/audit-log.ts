@@ -2,8 +2,10 @@ import { randomBytes } from "crypto";
 
 export const AUDIT_EVENT_TYPES = {
   USER_LOGIN: "user.login",
+  USER_LOGIN_FAILED: "user.login_failed",
   USER_LOGOUT: "user.logout",
   USER_PASSWORD_CHANGE: "user.password_change",
+  USER_PASSWORD_RESET_REQUESTED: "user.password_reset_requested",
   USER_MFA_SETUP: "user.mfa_setup",
   ADMIN_USER_CREATED: "admin.user_created",
   ADMIN_USER_DELETED: "admin.user_deleted",

@@ -104,7 +104,9 @@ describe("createAuditEvent", () => {
 describe("AUDIT_EVENT_TYPES", () => {
   it("includes all PRD event categories", () => {
     expect(AUDIT_EVENT_TYPES.USER_LOGIN).toBe("user.login");
+    expect(AUDIT_EVENT_TYPES.USER_LOGIN_FAILED).toBe("user.login_failed");
     expect(AUDIT_EVENT_TYPES.USER_LOGOUT).toBe("user.logout");
+    expect(AUDIT_EVENT_TYPES.USER_PASSWORD_RESET_REQUESTED).toBe("user.password_reset_requested");
     expect(AUDIT_EVENT_TYPES.USER_PASSWORD_CHANGE).toBe("user.password_change");
     expect(AUDIT_EVENT_TYPES.USER_MFA_SETUP).toBe("user.mfa_setup");
     expect(AUDIT_EVENT_TYPES.ADMIN_USER_CREATED).toBe("admin.user_created");

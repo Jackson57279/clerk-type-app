@@ -5,6 +5,8 @@ export type {
   DashboardProps,
   DashboardSection,
   DashboardOverviewMetrics,
+  DashboardAnalyticsMetrics,
+  DashboardAnalyticsProps,
   DashboardUserSummary,
   DashboardUserManagementProps,
   DashboardOrganizationSummary,
