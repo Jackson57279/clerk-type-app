@@ -76,6 +76,10 @@ export interface ResetPasswordWithTokenOptions {
     plainPassword: string,
     policy: PasswordPolicy
   ) => PasswordValidationResult;
+  validatePasswordAsync?: (
+    plainPassword: string,
+    policy: PasswordPolicy
+  ) => Promise<PasswordValidationResult>;
 }
 
 export interface ResetPasswordWithTokenSuccess {
@@ -104,6 +108,7 @@ export async function resetPasswordWithToken(
     updateUserPassword,
     passwordPolicy = defaultPasswordPolicy,
     validatePasswordFn = validatePassword,
+    validatePasswordAsync,
   } = options;
 
   const verified = verifyPasswordResetToken(token, secret, { usedTokenStore });
@@ -111,7 +116,9 @@ export async function resetPasswordWithToken(
     return { success: false, reason: "invalid_or_expired_token" };
   }
 
-  const validation = validatePasswordFn(newPassword, passwordPolicy);
+  const validation = validatePasswordAsync
+    ? await validatePasswordAsync(newPassword, passwordPolicy)
+    : validatePasswordFn(newPassword, passwordPolicy);
   if (!validation.valid) {
     return {
       success: false,

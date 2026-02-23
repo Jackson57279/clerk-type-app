@@ -5,6 +5,7 @@ import {
   validatePassword,
   validatePasswordWithPolicy,
   isPasswordPwned,
+  getPasswordPolicyFromEnv,
   defaultPasswordPolicy,
   type PasswordPolicy,
 } from "../src/password.js";
@@ -112,6 +113,54 @@ describe("Password policy", () => {
     const r = validatePassword("thispasswordistoolong1", policy);
     expect(r.valid).toBe(false);
     expect(r.errors.some((e) => e.includes("at most 16"))).toBe(true);
+  });
+});
+
+describe("getPasswordPolicyFromEnv", () => {
+  it("returns default policy when env is empty", () => {
+    const policy = getPasswordPolicyFromEnv({});
+    expect(policy.minLength).toBe(8);
+    expect(policy.maxLength).toBe(128);
+    expect(policy.requireUppercase).toBe(false);
+    expect(policy.requireLowercase).toBe(true);
+    expect(policy.requireDigit).toBe(true);
+    expect(policy.requireSpecial).toBe(false);
+  });
+
+  it("reads PASSWORD_MIN_LENGTH from env", () => {
+    const policy = getPasswordPolicyFromEnv({ PASSWORD_MIN_LENGTH: "12" });
+    expect(policy.minLength).toBe(12);
+  });
+
+  it("reads PASSWORD_MAX_LENGTH from env", () => {
+    const policy = getPasswordPolicyFromEnv({ PASSWORD_MAX_LENGTH: "64" });
+    expect(policy.maxLength).toBe(64);
+  });
+
+  it("reads PASSWORD_REQUIRE_UPPERCASE from env", () => {
+    expect(getPasswordPolicyFromEnv({ PASSWORD_REQUIRE_UPPERCASE: "1" }).requireUppercase).toBe(true);
+    expect(getPasswordPolicyFromEnv({ PASSWORD_REQUIRE_UPPERCASE: "true" }).requireUppercase).toBe(true);
+    expect(getPasswordPolicyFromEnv({ PASSWORD_REQUIRE_UPPERCASE: "0" }).requireUppercase).toBe(false);
+  });
+
+  it("reads PASSWORD_REQUIRE_LOWERCASE from env (default true when unset)", () => {
+    expect(getPasswordPolicyFromEnv({}).requireLowercase).toBe(true);
+    expect(getPasswordPolicyFromEnv({ PASSWORD_REQUIRE_LOWERCASE: "false" }).requireLowercase).toBe(false);
+  });
+
+  it("reads PASSWORD_REQUIRE_DIGIT from env (default true when unset)", () => {
+    expect(getPasswordPolicyFromEnv({}).requireDigit).toBe(true);
+    expect(getPasswordPolicyFromEnv({ PASSWORD_REQUIRE_DIGIT: "0" }).requireDigit).toBe(false);
+  });
+
+  it("reads PASSWORD_REQUIRE_SPECIAL from env", () => {
+    expect(getPasswordPolicyFromEnv({ PASSWORD_REQUIRE_SPECIAL: "yes" }).requireSpecial).toBe(true);
+    expect(getPasswordPolicyFromEnv({}).requireSpecial).toBe(false);
+  });
+
+  it("falls back to default for invalid numeric env", () => {
+    const policy = getPasswordPolicyFromEnv({ PASSWORD_MIN_LENGTH: "abc" });
+    expect(policy.minLength).toBe(8);
   });
 });
 

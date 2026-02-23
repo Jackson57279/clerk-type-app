@@ -23,6 +23,37 @@ export const defaultPasswordPolicy: PasswordPolicy = {
   requireSpecial: false,
 };
 
+function parseBool(val: string | undefined): boolean {
+  if (val === undefined) return false;
+  const v = val.trim().toLowerCase();
+  return v === "1" || v === "true" || v === "yes";
+}
+
+function parsePositiveInt(val: string | undefined, fallback: number): number {
+  if (val === undefined) return fallback;
+  const n = parseInt(val, 10);
+  return Number.isNaN(n) || n < 1 ? fallback : n;
+}
+
+export function getPasswordPolicyFromEnv(
+  env: NodeJS.ProcessEnv = process.env
+): PasswordPolicy {
+  return {
+    minLength: parsePositiveInt(env.PASSWORD_MIN_LENGTH, 8),
+    maxLength: parsePositiveInt(env.PASSWORD_MAX_LENGTH, 128),
+    requireUppercase: parseBool(env.PASSWORD_REQUIRE_UPPERCASE),
+    requireLowercase:
+      env.PASSWORD_REQUIRE_LOWERCASE === undefined
+        ? true
+        : parseBool(env.PASSWORD_REQUIRE_LOWERCASE),
+    requireDigit:
+      env.PASSWORD_REQUIRE_DIGIT === undefined
+        ? true
+        : parseBool(env.PASSWORD_REQUIRE_DIGIT),
+    requireSpecial: parseBool(env.PASSWORD_REQUIRE_SPECIAL),
+  };
+}
+
 export interface PasswordValidationResult {
   valid: boolean;
   errors: string[];

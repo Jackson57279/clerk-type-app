@@ -1,10 +1,14 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import {
   requestPasswordReset,
   resetPasswordWithToken,
 } from "../src/password-reset-flow.js";
 import { createMemoryUsedTokenStore } from "../src/password-reset.js";
 import { createPasswordResetToken } from "../src/password-reset.js";
+import {
+  validatePasswordWithPolicy,
+  defaultPasswordPolicy,
+} from "../src/password.js";
 
 const SECRET = "reset-secret";
 
@@ -157,5 +161,113 @@ describe("resetPasswordWithToken", () => {
     });
     expect(second).toEqual({ success: false, reason: "invalid_or_expired_token" });
     expect(updateUserPassword).toHaveBeenCalledTimes(1);
+  });
+
+  it("uses validatePasswordAsync when provided and succeeds when valid", async () => {
+    const store = createMemoryUsedTokenStore();
+    const { token } = createPasswordResetToken(
+      { userId: "u2", email: "u2@x.com" },
+      SECRET
+    );
+    const updateUserPassword = vi.fn().mockResolvedValue(undefined);
+    const validateAsync = vi.fn().mockResolvedValue({
+      valid: true,
+      errors: [],
+    });
+
+    const result = await resetPasswordWithToken({
+      token,
+      newPassword: "validpass1",
+      secret: SECRET,
+      usedTokenStore: store,
+      updateUserPassword,
+      validatePasswordAsync: validateAsync,
+    });
+
+    expect(result).toEqual({ success: true, userId: "u2" });
+    expect(validateAsync).toHaveBeenCalledWith("validpass1", defaultPasswordPolicy);
+    expect(updateUserPassword).toHaveBeenCalledTimes(1);
+  });
+
+  it("uses validatePasswordAsync when provided and returns invalid_password on failure", async () => {
+    const store = createMemoryUsedTokenStore();
+    const { token } = createPasswordResetToken(
+      { userId: "u3", email: "u3@x.com" },
+      SECRET
+    );
+    const updateUserPassword = vi.fn();
+    const validateAsync = vi.fn().mockResolvedValue({
+      valid: false,
+      errors: ["Password has been found in a data breach"],
+    });
+
+    const result = await resetPasswordWithToken({
+      token,
+      newPassword: "validpass1",
+      secret: SECRET,
+      usedTokenStore: store,
+      updateUserPassword,
+      validatePasswordAsync: validateAsync,
+    });
+
+    expect(result).toEqual({
+      success: false,
+      reason: "invalid_password",
+      errors: ["Password has been found in a data breach"],
+    });
+    expect(updateUserPassword).not.toHaveBeenCalled();
+  });
+});
+
+describe("resetPasswordWithToken with breach detection", () => {
+  const originalFetch = globalThis.fetch;
+  beforeEach(() => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((url: string) => {
+        if (url.includes("5BAA6")) {
+          return Promise.resolve({
+            ok: true,
+            text: () =>
+              Promise.resolve(
+                "1E4C9B93F3F0682250B6CF8331B7EE68FD8:3730471\r\nOTHERSUFFIX:1"
+              ),
+          } as Response);
+        }
+        return Promise.resolve({ ok: true, text: () => Promise.resolve("") } as Response);
+      })
+    );
+  });
+  afterEach(() => {
+    vi.stubGlobal("fetch", originalFetch);
+  });
+
+  it("rejects pwned password when using validatePasswordWithPolicy with checkBreach", async () => {
+    const store = createMemoryUsedTokenStore();
+    const policy = { ...defaultPasswordPolicy, requireDigit: false };
+    const { token } = createPasswordResetToken(
+      { userId: "u4", email: "u4@x.com" },
+      SECRET
+    );
+    const updateUserPassword = vi.fn();
+    const validateAsync = (plain: string, p: typeof policy) =>
+      validatePasswordWithPolicy(plain, p, { checkBreach: true });
+
+    const result = await resetPasswordWithToken({
+      token,
+      newPassword: "password",
+      secret: SECRET,
+      usedTokenStore: store,
+      updateUserPassword,
+      passwordPolicy: policy,
+      validatePasswordAsync: validateAsync,
+    });
+
+    expect(result).toEqual({
+      success: false,
+      reason: "invalid_password",
+      errors: expect.arrayContaining([expect.stringMatching(/breach/)]),
+    });
+    expect(updateUserPassword).not.toHaveBeenCalled();
   });
 });
