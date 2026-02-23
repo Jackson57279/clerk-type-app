@@ -17,6 +17,11 @@ describe("buildSessionCookie", () => {
     expect(header).toContain("HttpOnly; Secure; SameSite=Strict");
   });
 
+  it("returns valid Set-Cookie value with only required attributes", () => {
+    const header = buildSessionCookie("sid", "token123");
+    expect(header).toBe("sid=token123; HttpOnly; Secure; SameSite=Strict");
+  });
+
   it("starts with name=value", () => {
     const header = buildSessionCookie("sessionId", "abc");
     expect(header).toMatch(/^sessionId=abc/);
@@ -61,5 +66,10 @@ describe("buildClearSessionCookie", () => {
   it("includes Path when provided", () => {
     const header = buildClearSessionCookie("sid", "/");
     expect(header).toContain("Path=/");
+  });
+
+  it("returns valid Set-Cookie clear value with HttpOnly; Secure; SameSite=Strict", () => {
+    const header = buildClearSessionCookie("sid");
+    expect(header).toBe("sid=; Max-Age=0; HttpOnly; Secure; SameSite=Strict");
   });
 });
