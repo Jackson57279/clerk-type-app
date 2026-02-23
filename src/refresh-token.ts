@@ -32,6 +32,12 @@ export interface CreateRefreshTokenOptions {
   expiresInSec?: number;
   iss?: string;
   aud?: string;
+  keyId?: string;
+}
+
+export interface SigningKeySetView {
+  getCurrent(): { id: string; secret: string } | null;
+  getKeyById(id: string): { secret: string } | null;
 }
 
 export interface CreateRefreshTokenResult {
@@ -60,8 +66,9 @@ export function createRefreshToken(
   if (options.iss) tokenPayload.iss = options.iss;
   if (options.aud) tokenPayload.aud = options.aud;
 
-  const header = { alg: "HS256", typ: "JWT" };
-  const headerB64 = encodePayload(header as unknown as Record<string, unknown>);
+  const header: Record<string, unknown> = { alg: "HS256", typ: "JWT" };
+  if (options.keyId) header.kid = options.keyId;
+  const headerB64 = encodePayload(header);
   const payloadB64 = encodePayload(tokenPayload);
   const signingInput = `${headerB64}.${payloadB64}`;
   const sig = createHmac("sha256", secret).update(signingInput).digest();
@@ -122,6 +129,31 @@ export function verifyRefreshToken(
     iss: data.iss as string | undefined,
     aud: data.aud as string | undefined,
   };
+}
+
+function parseJwtHeaderKid(token: string): string | null {
+  const parts = token.split(".");
+  if (parts.length < 1 || !parts[0]) return null;
+  try {
+    const buf = decodeBase64url(parts[0]);
+    const payload = JSON.parse(buf.toString("utf8")) as Record<string, unknown>;
+    const kid = payload.kid;
+    return typeof kid === "string" ? kid : null;
+  } catch {
+    return null;
+  }
+}
+
+export function verifyRefreshTokenWithKeySet(
+  token: string,
+  keySet: SigningKeySetView
+): RefreshTokenPayloadVerified | null {
+  const kid = parseJwtHeaderKid(token);
+  const secret = kid
+    ? keySet.getKeyById(kid)?.secret ?? keySet.getCurrent()?.secret
+    : keySet.getCurrent()?.secret;
+  if (!secret) return null;
+  return verifyRefreshToken(token, secret);
 }
 
 export interface UsedRefreshTokenStore {
@@ -194,7 +226,9 @@ export function handleRefreshTokenFlow(
       error_description: "refresh_token is required",
     };
   }
-  const payload = verifyRefreshToken(refreshToken, options.secret);
+  const payload = options.keySet
+    ? verifyRefreshTokenWithKeySet(refreshToken, options.keySet)
+    : verifyRefreshToken(refreshToken, options.secret);
   if (!payload) {
     return {
       error: "invalid_grant",
@@ -216,6 +250,7 @@ export function handleRefreshTokenFlow(
 
 export interface ExchangeRefreshTokenOptions {
   secret: string;
+  keySet?: SigningKeySetView;
   usedTokenStore?: UsedRefreshTokenStore;
   accessTokenTtlMs?: number;
   rotateRefreshToken?: boolean;
@@ -256,11 +291,21 @@ function issueAccessToken(
   };
 }
 
+function getSigningSecretAndKeyId(options: ExchangeRefreshTokenOptions): { secret: string; keyId?: string } {
+  if (options.keySet) {
+    const current = options.keySet.getCurrent();
+    if (current) return { secret: current.secret, keyId: current.id };
+  }
+  return { secret: options.secret };
+}
+
 export function exchangeRefreshToken(
   refreshToken: string,
   options: ExchangeRefreshTokenOptions
 ): RefreshTokenSuccessResponse | RefreshTokenErrorResponse {
-  const payload = verifyRefreshToken(refreshToken, options.secret);
+  const payload = options.keySet
+    ? verifyRefreshTokenWithKeySet(refreshToken, options.keySet)
+    : verifyRefreshToken(refreshToken, options.secret);
   if (!payload) {
     return { error: "invalid_grant", error_description: "Invalid or expired refresh_token" };
   }
@@ -268,13 +313,14 @@ export function exchangeRefreshToken(
   if (store?.isUsed(payload.jti)) {
     return { error: "invalid_grant", error_description: "Refresh token was already used" };
   }
+  const { secret, keyId } = getSigningSecretAndKeyId(options);
   const ttlMs = options.accessTokenTtlMs ?? DEFAULT_ACCESS_TOKEN_TTL_MS;
   const access = issueAccessToken(
     payload.sub,
     payload.client_id,
     payload.scope,
     {
-      secret: options.secret,
+      secret,
       ttlMs,
       iss: options.iss,
       aud: options.aud,
@@ -292,8 +338,8 @@ export function exchangeRefreshToken(
   if (options.rotateRefreshToken && store) {
     const newRefresh = createRefreshToken(
       { sub: payload.sub, clientId: payload.client_id, scope: payload.scope },
-      options.secret,
-      { iss: options.iss, aud: options.aud }
+      secret,
+      { iss: options.iss, aud: options.aud, keyId }
     );
     result.refresh_token = newRefresh.refresh_token;
   }

@@ -2,10 +2,17 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import {
   createRefreshToken,
   verifyRefreshToken,
+  verifyRefreshTokenWithKeySet,
   exchangeRefreshToken,
   createMemoryUsedRefreshTokenStore,
   handleRefreshTokenFlow,
 } from "../src/refresh-token.js";
+import {
+  createMemorySigningKeyStore,
+  asKeySetView,
+  rotateIfNeeded,
+  ROTATION_INTERVAL_DAYS,
+} from "../src/key-rotation.js";
 
 const SECRET = "refresh-token-secret";
 
@@ -433,5 +440,95 @@ describe("handleRefreshTokenFlow", () => {
     );
     expect("error" in result3).toBe(true);
     if ("error" in result3) expect(result3.error).toBe("invalid_grant");
+  });
+});
+
+describe("key set and verifyRefreshTokenWithKeySet", () => {
+  it("createRefreshToken with keyId includes kid in header", () => {
+    const result = createRefreshToken(
+      { sub: "u", clientId: "c" },
+      SECRET,
+      { keyId: "key-1" }
+    );
+    const parts = result.refresh_token.split(".");
+    const header = JSON.parse(
+      Buffer.from(
+        parts[0]!.replace(/-/g, "+").replace(/_/g, "/"),
+        "base64"
+      ).toString("utf8")
+    ) as Record<string, string>;
+    expect(header.kid).toBe("key-1");
+  });
+
+  it("verifyRefreshTokenWithKeySet verifies token signed with current key", () => {
+    const keyStore = createMemorySigningKeyStore();
+    const view = asKeySetView(keyStore);
+    const current = keyStore.getCurrent()!;
+    const { refresh_token } = createRefreshToken(
+      { sub: "user-1", clientId: "c" },
+      current.secret,
+      { keyId: current.id }
+    );
+    const payload = verifyRefreshTokenWithKeySet(refresh_token, view);
+    expect(payload).not.toBeNull();
+    expect(payload?.sub).toBe("user-1");
+  });
+
+  it("verifyRefreshTokenWithKeySet verifies token signed with previous key after rotation", () => {
+    const keyStore = createMemorySigningKeyStore();
+    const view = asKeySetView(keyStore);
+    const old = keyStore.getCurrent()!;
+    const { refresh_token } = createRefreshToken(
+      { sub: "user-1", clientId: "c" },
+      old.secret,
+      { keyId: old.id }
+    );
+    vi.useFakeTimers();
+    vi.advanceTimersByTime(ROTATION_INTERVAL_DAYS * 24 * 60 * 60 * 1000);
+    rotateIfNeeded(keyStore);
+    vi.useRealTimers();
+    expect(keyStore.getCurrent()!.id).not.toBe(old.id);
+    const payload = verifyRefreshTokenWithKeySet(refresh_token, view);
+    expect(payload).not.toBeNull();
+    expect(payload?.sub).toBe("user-1");
+  });
+
+  it("exchangeRefreshToken with keySet uses current key for new refresh token", () => {
+    const keyStore = createMemorySigningKeyStore();
+    const view = asKeySetView(keyStore);
+    const usedStore = createMemoryUsedRefreshTokenStore();
+    const current = keyStore.getCurrent()!;
+    const { refresh_token } = createRefreshToken(
+      { sub: "u", clientId: "c" },
+      current.secret,
+      { keyId: current.id }
+    );
+    const result = exchangeRefreshToken(refresh_token, {
+      secret: current.secret,
+      keySet: view,
+      usedTokenStore: usedStore,
+      rotateRefreshToken: true,
+    });
+    expect("access_token" in result).toBe(true);
+    if ("refresh_token" in result && result.refresh_token) {
+      const payload = verifyRefreshTokenWithKeySet(result.refresh_token, view);
+      expect(payload?.sub).toBe("u");
+    }
+  });
+
+  it("handleRefreshTokenFlow with keySet verifies and returns access_token", () => {
+    const keyStore = createMemorySigningKeyStore();
+    const view = asKeySetView(keyStore);
+    const current = keyStore.getCurrent()!;
+    const { refresh_token } = createRefreshToken(
+      { sub: "u", clientId: "c" },
+      current.secret,
+      { keyId: current.id }
+    );
+    const result = handleRefreshTokenFlow(
+      { grant_type: "refresh_token", refresh_token },
+      { secret: current.secret, keySet: view }
+    );
+    expect("access_token" in result).toBe(true);
   });
 });
