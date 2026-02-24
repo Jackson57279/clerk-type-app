@@ -249,6 +249,14 @@ describe("verifySmsOtp", () => {
     );
   });
 
+  it("returns false for empty code", async () => {
+    const store = memoryStore();
+    const sender = capturingSender();
+    const phone = "+15550000001";
+    await sendSmsOtp(phone, { store, sender, template: "{{code}}" });
+    expect(await verifySmsOtp(phone, "", { store })).toBe(false);
+  });
+
   it("returns false after expiry", async () => {
     const store = memoryStore();
     const sender = capturingSender();
