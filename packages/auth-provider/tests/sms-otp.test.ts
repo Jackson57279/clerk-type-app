@@ -164,6 +164,18 @@ describe("sendSmsOtp", () => {
     expect(fourth.retryAfterSeconds).toBeGreaterThan(0);
   });
 
+  it("rate limits by phone when rateLimitKey not provided", async () => {
+    const store = memoryStore();
+    const sender = capturingSender();
+    const phone = "+15551111112";
+    await sendSmsOtp(phone, { store, sender });
+    await sendSmsOtp(phone, { store, sender });
+    await sendSmsOtp(phone, { store, sender });
+    const fourth = await sendSmsOtp(phone, { store, sender });
+    expect(fourth.success).toBe(false);
+    expect(fourth.retryAfterSeconds).toBeDefined();
+  });
+
   it("allows different phones independently", async () => {
     const store = memoryStore();
     const sender = capturingSender();
