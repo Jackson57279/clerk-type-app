@@ -1,12 +1,38 @@
-import { timingSafeEqual } from "crypto";
+import { randomBytes, timingSafeEqual } from "crypto";
 
 export const DEFAULT_CSRF_COOKIE_NAME = "csrf";
 export const DEFAULT_CSRF_HEADER_NAME = "X-CSRF-Token";
+
+export interface CsrfCookieOptions {
+  maxAgeSeconds?: number;
+  path?: string;
+}
 
 export interface CsrfMiddlewareOptions {
   cookieName?: string;
   headerName?: string;
   methodsToProtect?: string[];
+}
+
+export function generateCsrfToken(): string {
+  return randomBytes(32).toString("hex");
+}
+
+const CSRF_ATTRS = "Secure; SameSite=Strict";
+
+export function buildCsrfCookie(
+  name: string,
+  token: string,
+  options: CsrfCookieOptions = {}
+): string {
+  const parts = [`${name}=${token}`, CSRF_ATTRS];
+  if (options.maxAgeSeconds !== undefined) {
+    parts.push(`Max-Age=${options.maxAgeSeconds}`);
+  }
+  if (options.path !== undefined) {
+    parts.push(`Path=${options.path}`);
+  }
+  return parts.join("; ");
 }
 
 export type GetHeader = (name: string) => string | undefined;

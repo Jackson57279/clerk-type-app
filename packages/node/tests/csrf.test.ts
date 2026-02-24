@@ -3,6 +3,8 @@ import type { Request, Response, NextFunction } from "express";
 import { csrfProtectionMiddleware } from "../src/express.js";
 import {
   verifyCsrfRequest as verifyCsrfFromCsrf,
+  generateCsrfToken,
+  buildCsrfCookie,
   DEFAULT_CSRF_COOKIE_NAME,
   DEFAULT_CSRF_HEADER_NAME,
 } from "../src/csrf.js";
@@ -10,6 +12,61 @@ import {
 function nextFn(): NextFunction {
   return vi.fn() as unknown as NextFunction;
 }
+
+describe("generateCsrfToken", () => {
+  it("returns a 64-char hex string", () => {
+    const token = generateCsrfToken();
+    expect(token).toHaveLength(64);
+    expect(token).toMatch(/^[a-f0-9]{64}$/);
+  });
+
+  it("returns unique tokens", () => {
+    const seen = new Set<string>();
+    for (let i = 0; i < 50; i++) {
+      const token = generateCsrfToken();
+      expect(seen.has(token)).toBe(false);
+      seen.add(token);
+    }
+  });
+});
+
+describe("buildCsrfCookie", () => {
+  it("omits HttpOnly so JS can read the token", () => {
+    const header = buildCsrfCookie("csrf", "abc123");
+    expect(header).not.toContain("HttpOnly");
+  });
+
+  it("includes Secure and SameSite=Strict", () => {
+    const header = buildCsrfCookie("csrf", "token");
+    expect(header).toContain("Secure");
+    expect(header).toContain("SameSite=Strict");
+  });
+
+  it("starts with name=value", () => {
+    const header = buildCsrfCookie("csrf-token", "xyz");
+    expect(header).toMatch(/^csrf-token=xyz/);
+  });
+
+  it("includes Max-Age when provided", () => {
+    const header = buildCsrfCookie("csrf", "t", { maxAgeSeconds: 3600 });
+    expect(header).toContain("Max-Age=3600");
+  });
+
+  it("includes Path when provided", () => {
+    const header = buildCsrfCookie("csrf", "t", { path: "/" });
+    expect(header).toContain("Path=/");
+  });
+});
+
+describe("double-submit cookie round-trip", () => {
+  it("generated token in cookie and header passes verifyCsrfRequest", () => {
+    const token = generateCsrfToken();
+    const cookieHeader = `session=id; ${DEFAULT_CSRF_COOKIE_NAME}=${token}`;
+    const getHeader = (name: string) =>
+      name === DEFAULT_CSRF_HEADER_NAME ? token : undefined;
+    expect(verifyCsrfFromCsrf(cookieHeader, getHeader)).toBe(true);
+  });
+});
 
 describe("verifyCsrfRequest (csrf module)", () => {
   it("returns true when cookie and header match", () => {
