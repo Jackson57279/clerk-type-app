@@ -3,6 +3,7 @@ import { decode as base32Decode } from "hi-base32";
 import {
   register,
   login,
+  createLoginLimitsResolver,
   type RegistrationLoginStore,
   type CredentialUser,
 } from "../src/registration-login.js";
@@ -499,6 +500,159 @@ describe("login with concurrent session limit", () => {
     if (!result.success) return;
     expect(result.evictedSessionIds).toEqual([]);
     expect(result.newSessionId).toBeDefined();
+  });
+
+  it("uses getLimits for configurable per-user limit", async () => {
+    const store = memoryStore();
+    await register(store, { email: "u@example.com", password: "PassWord1" });
+    const user = await store.findUserByEmail("u@example.com");
+    expect(user).not.toBeNull();
+    const userId = user!.userId;
+    const appStore = {
+      remove: vi.fn<void, [string]>(),
+      register: vi.fn<void, [string, string, string | null]>(),
+    };
+    registerSession("s0", userId, null);
+    registerSession("s1", userId, null);
+    registerSession("s2", userId, null);
+
+    const result = await login(
+      store,
+      { email: "u@example.com", password: "PassWord1" },
+      {
+        sessionFixation: {
+          sessionStore: appStore,
+          currentSessionId: "pre-login",
+        },
+        concurrentSessionLimit: {
+          getLimits: (uid) =>
+            uid === userId ? { user: 2 } : { user: 5 },
+        },
+      }
+    );
+
+    expect(result.success).toBe(true);
+    if (!result.success) return;
+    expect(result.evictedSessionIds).toHaveLength(2);
+    expect(result.evictedSessionIds).toContain("s0");
+    expect(result.evictedSessionIds).toContain("s1");
+  });
+
+  it("uses async getLimits for configurable per-org limit", async () => {
+    const store = memoryStore();
+    await register(store, { email: "u@example.com", password: "PassWord1" });
+    const user = await store.findUserByEmail("u@example.com");
+    expect(user).not.toBeNull();
+    const userId = user!.userId;
+    const orgId = "org-strict";
+    const appStore = {
+      remove: vi.fn<void, [string]>(),
+      register: vi.fn<void, [string, string, string | null]>(),
+    };
+    registerSession("s0", userId, orgId);
+    registerSession("s1", userId, orgId);
+
+    const result = await login(
+      store,
+      { email: "u@example.com", password: "PassWord1" },
+      {
+        sessionFixation: {
+          sessionStore: appStore,
+          currentSessionId: "pre-login",
+          orgId,
+        },
+        concurrentSessionLimit: {
+          getLimits: async (_uid, oid) =>
+            oid === "org-strict"
+              ? { user: 2, org: 10 }
+              : { user: 5 },
+        },
+      }
+    );
+
+    expect(result.success).toBe(true);
+    if (!result.success) return;
+    expect(result.evictedSessionIds).toHaveLength(1);
+    expect(result.evictedSessionIds).toContain("s0");
+  });
+});
+
+describe("createLoginLimitsResolver", () => {
+  it("returns default limits when org has no settings", async () => {
+    const orgStore = {
+      getById: vi.fn().mockResolvedValue(null),
+      getBySlug: vi.fn().mockResolvedValue(null),
+      create: vi.fn(),
+      list: vi.fn(),
+      update: vi.fn(),
+      softDelete: vi.fn(),
+    };
+    const resolve = createLoginLimitsResolver({
+      organizationStore: orgStore,
+      defaultUserLimit: 5,
+      defaultOrgLimit: 3,
+    });
+    const limits = await resolve("u1", "org-unknown");
+    expect(limits).toEqual({ user: 5, org: 3 });
+  });
+
+  it("returns org maxConcurrentSessionsPerUser when set", async () => {
+    const orgStore = {
+      getById: vi.fn().mockImplementation((id: string) =>
+        id === "org-1"
+          ? Promise.resolve({
+              id: "org-1",
+              name: "Org",
+              slug: "org",
+              maxConcurrentSessionsPerUser: 2,
+              logoUrl: null,
+              primaryColor: null,
+              faviconUrl: null,
+              maxMembers: null,
+              allowedDomains: [],
+              customDomains: [],
+              requireEmailVerification: true,
+              samlEnabled: false,
+              samlConfig: null,
+              scimEnabled: false,
+              scimTokenHash: null,
+              createdAt: "",
+              updatedAt: "",
+              deletedAt: null,
+            })
+          : Promise.resolve(null)
+      ),
+      getBySlug: vi.fn().mockResolvedValue(null),
+      create: vi.fn(),
+      list: vi.fn(),
+      update: vi.fn(),
+      softDelete: vi.fn(),
+    };
+    const resolve = createLoginLimitsResolver({
+      organizationStore: orgStore,
+      defaultUserLimit: 5,
+    });
+    const limits = await resolve("u1", "org-1");
+    expect(limits).toEqual({ user: 2 });
+  });
+
+  it("uses default user limit when orgId is null", async () => {
+    const orgStore = {
+      getById: vi.fn(),
+      getBySlug: vi.fn(),
+      create: vi.fn(),
+      list: vi.fn(),
+      update: vi.fn(),
+      softDelete: vi.fn(),
+    };
+    const resolve = createLoginLimitsResolver({
+      organizationStore: orgStore,
+      defaultUserLimit: 3,
+      defaultOrgLimit: 2,
+    });
+    const limits = await resolve("u1", null);
+    expect(limits).toEqual({ user: 3, org: 2 });
+    expect(orgStore.getById).not.toHaveBeenCalled();
   });
 });
 

@@ -43,6 +43,8 @@ import {
   getConcurrentSessionLimitDefaults,
   type SessionLimits,
 } from "./concurrent-session-limit.js";
+import { getOrganizationSettings } from "./organization-settings.js";
+import type { OrganizationStore } from "./organization-crud.js";
 
 export interface CredentialUser {
   userId: string;
@@ -209,7 +211,38 @@ export interface LoginSessionFixationOptions {
 
 export interface LoginConcurrentSessionLimitOptions {
   limits?: SessionLimits;
+  getLimits?: (
+    userId: string,
+    orgId: string | null
+  ) => SessionLimits | Promise<SessionLimits>;
   env?: NodeJS.ProcessEnv;
+}
+
+export interface CreateLoginLimitsResolverOptions {
+  organizationStore: OrganizationStore;
+  defaultUserLimit: number;
+  defaultOrgLimit?: number;
+}
+
+export function createLoginLimitsResolver(
+  options: CreateLoginLimitsResolverOptions
+): (userId: string, orgId: string | null) => Promise<SessionLimits> {
+  const {
+    organizationStore,
+    defaultUserLimit,
+    defaultOrgLimit,
+  } = options;
+  return async (userId: string, orgId: string | null) => {
+    const limits: SessionLimits = { user: defaultUserLimit };
+    if (defaultOrgLimit !== undefined) limits.org = defaultOrgLimit;
+    if (orgId != null) {
+      const settings = await getOrganizationSettings(organizationStore, orgId);
+      if (settings?.maxConcurrentSessionsPerUser != null) {
+        limits.user = settings.maxConcurrentSessionsPerUser;
+      }
+    }
+    return limits;
+  };
 }
 
 export interface LoginOptions {
@@ -446,17 +479,21 @@ export async function login(
     const { sessionStore, currentSessionId, orgId, ...cookieOptions } = fix;
     const orgIdVal = orgId ?? null;
     if (concurrentLimit) {
-      const resolvedLimits: SessionLimits = concurrentLimit.limits
-        ? concurrentLimit.limits
-        : (() => {
-            const d = getConcurrentSessionLimitDefaults(
-              concurrentLimit.env ?? process.env
-            );
-            return {
-              user: d.defaultUserLimit,
-              ...(d.defaultOrgLimit !== undefined && { org: d.defaultOrgLimit }),
-            };
-          })();
+      let resolvedLimits: SessionLimits;
+      if (concurrentLimit.getLimits) {
+        const limits = concurrentLimit.getLimits(user.userId, orgIdVal);
+        resolvedLimits = await Promise.resolve(limits);
+      } else if (concurrentLimit.limits) {
+        resolvedLimits = concurrentLimit.limits;
+      } else {
+        const d = getConcurrentSessionLimitDefaults(
+          concurrentLimit.env ?? process.env
+        );
+        resolvedLimits = {
+          user: d.defaultUserLimit,
+          ...(d.defaultOrgLimit !== undefined && { org: d.defaultOrgLimit }),
+        };
+      }
       const out = createSessionAfterLoginWithConcurrentLimit(
         currentSessionId,
         user.userId,
