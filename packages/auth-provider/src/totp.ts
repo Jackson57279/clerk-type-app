@@ -1,3 +1,6 @@
+/**
+ * RFC 6238 TOTP: time-based one-time passwords (HOTP with T = floor((time - T0) / X)).
+ */
 import { createHmac } from "crypto";
 
 const DEFAULT_PERIOD = 30;
