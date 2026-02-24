@@ -77,4 +77,9 @@ describe("buildClearSessionCookie", () => {
     const header = buildClearSessionCookie("sid", "/");
     expect(header).toContain("HttpOnly; Secure; SameSite=Strict");
   });
+
+  it("returns exact Set-Cookie clear value with path", () => {
+    const header = buildClearSessionCookie("sid", "/");
+    expect(header).toBe("sid=; Max-Age=0; HttpOnly; Secure; SameSite=Strict; Path=/");
+  });
 });
