@@ -315,6 +315,29 @@ describe("verifyMagicLink", () => {
     expect(second).toEqual({ success: false, reason: "invalid_or_expired_token" });
   });
 
+  it("single-use: token invalidated after use by default when usedTokenStore omitted", async () => {
+    const { token } = createMagicLinkToken(
+      { email: "u@x.com", userId: "u1" },
+      SECRET,
+      { ttlMs: 15 * 60 * 1000 }
+    );
+    const findUserByEmail = async () => ({ userId: "u1", email: "u@x.com" });
+
+    const first = await verifyMagicLink({
+      token,
+      secret: SECRET,
+      findUserByEmail,
+    });
+    expect(first).toEqual({ success: true, userId: "u1", email: "u@x.com" });
+
+    const second = await verifyMagicLink({
+      token,
+      secret: SECRET,
+      findUserByEmail,
+    });
+    expect(second).toEqual({ success: false, reason: "invalid_or_expired_token" });
+  });
+
   it("resolves userId via findUserByEmail when token has no userId", async () => {
     const store = createMemoryUsedTokenStore();
     const { token } = createMagicLinkToken(

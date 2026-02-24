@@ -260,4 +260,33 @@ describe("verifyEmailWithToken", () => {
     expect(second).toEqual({ success: false, reason: "invalid_or_expired_token" });
     expect(setEmailVerified).not.toHaveBeenCalled();
   });
+
+  it("single-use: token invalidated after use by default when usedTokenStore omitted", async () => {
+    const { token } = createEmailVerificationToken(
+      { userId: "user-1", email: "user@example.com" },
+      SECRET
+    );
+    const setEmailVerified = vi.fn().mockResolvedValue(undefined);
+
+    const first = await verifyEmailWithToken({
+      token,
+      secret: SECRET,
+      setEmailVerified,
+    });
+    expect(first).toEqual({
+      success: true,
+      userId: "user-1",
+      email: "user@example.com",
+    });
+    expect(setEmailVerified).toHaveBeenCalledWith("user-1");
+
+    setEmailVerified.mockClear();
+    const second = await verifyEmailWithToken({
+      token,
+      secret: SECRET,
+      setEmailVerified,
+    });
+    expect(second).toEqual({ success: false, reason: "invalid_or_expired_token" });
+    expect(setEmailVerified).not.toHaveBeenCalled();
+  });
 });
