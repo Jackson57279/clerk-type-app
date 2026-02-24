@@ -1,5 +1,7 @@
 import { validateAndNormalizeCustomDomains } from "./custom-domains.js";
 
+const MAX_CONCURRENT_SESSIONS_PER_USER_CAP = 1000;
+
 export interface Organization {
   id: string;
   name: string;
@@ -8,6 +10,7 @@ export interface Organization {
   primaryColor: string | null;
   faviconUrl: string | null;
   maxMembers: number | null;
+  maxConcurrentSessionsPerUser: number | null;
   allowedDomains: string[];
   customDomains: string[];
   requireEmailVerification: boolean;
@@ -27,6 +30,7 @@ export interface CreateOrganizationInput {
   primaryColor?: string | null;
   faviconUrl?: string | null;
   maxMembers?: number | null;
+  maxConcurrentSessionsPerUser?: number | null;
   allowedDomains?: string[];
   customDomains?: string[];
   requireEmailVerification?: boolean;
@@ -43,6 +47,7 @@ export interface UpdateOrganizationInput {
   primaryColor?: string | null;
   faviconUrl?: string | null;
   maxMembers?: number | null;
+  maxConcurrentSessionsPerUser?: number | null;
   allowedDomains?: string[];
   customDomains?: string[];
   requireEmailVerification?: boolean;
@@ -91,6 +96,7 @@ export async function createOrganization(
   if (existing && !existing.deletedAt) {
     throw new Error("An organization with this slug already exists");
   }
+  const maxSessions = validateMaxConcurrentSessionsPerUser(data.maxConcurrentSessionsPerUser);
   const customDomains = validateAndNormalizeCustomDomains(data.customDomains ?? []);
   return store.create({
     name: data.name.trim(),
@@ -99,6 +105,7 @@ export async function createOrganization(
     primaryColor: data.primaryColor ?? null,
     faviconUrl: data.faviconUrl ?? null,
     maxMembers: data.maxMembers ?? null,
+    maxConcurrentSessionsPerUser: maxSessions,
     allowedDomains: data.allowedDomains ?? [],
     customDomains,
     requireEmailVerification: data.requireEmailVerification ?? true,
@@ -107,6 +114,19 @@ export async function createOrganization(
     scimEnabled: data.scimEnabled ?? false,
     scimTokenHash: data.scimTokenHash ?? null,
   });
+}
+
+function validateMaxConcurrentSessionsPerUser(
+  value: number | null | undefined
+): number | null {
+  if (value === undefined || value === null) return null;
+  const n = Number(value);
+  if (!Number.isInteger(n) || n < 0 || n > MAX_CONCURRENT_SESSIONS_PER_USER_CAP) {
+    throw new Error(
+      `maxConcurrentSessionsPerUser must be an integer between 0 and ${MAX_CONCURRENT_SESSIONS_PER_USER_CAP}`
+    );
+  }
+  return n;
 }
 
 export async function getOrganization(
@@ -152,6 +172,11 @@ export async function updateOrganization(
   }
   if (data.customDomains !== undefined) {
     updateData.customDomains = validateAndNormalizeCustomDomains(data.customDomains);
+  }
+  if (data.maxConcurrentSessionsPerUser !== undefined) {
+    updateData.maxConcurrentSessionsPerUser = validateMaxConcurrentSessionsPerUser(
+      data.maxConcurrentSessionsPerUser
+    );
   }
   return store.update(id, updateData);
 }

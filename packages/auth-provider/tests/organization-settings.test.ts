@@ -27,6 +27,7 @@ function memoryStore(): OrganizationStore {
       primaryColor: partial.primaryColor ?? null,
       faviconUrl: partial.faviconUrl ?? null,
       maxMembers: partial.maxMembers ?? null,
+      maxConcurrentSessionsPerUser: partial.maxConcurrentSessionsPerUser ?? null,
       allowedDomains: partial.allowedDomains ?? [],
       customDomains: partial.customDomains ?? [],
       requireEmailVerification: partial.requireEmailVerification ?? true,
@@ -59,6 +60,7 @@ function memoryStore(): OrganizationStore {
         primaryColor: data.primaryColor ?? null,
         faviconUrl: data.faviconUrl ?? null,
         maxMembers: data.maxMembers ?? null,
+        maxConcurrentSessionsPerUser: data.maxConcurrentSessionsPerUser ?? null,
         allowedDomains: data.allowedDomains ?? [],
         customDomains: data.customDomains ?? [],
         requireEmailVerification: data.requireEmailVerification ?? true,
@@ -108,6 +110,10 @@ function memoryStore(): OrganizationStore {
         primaryColor: data.primaryColor !== undefined ? data.primaryColor : existing.primaryColor,
         faviconUrl: data.faviconUrl !== undefined ? data.faviconUrl : existing.faviconUrl,
         maxMembers: data.maxMembers !== undefined ? data.maxMembers : existing.maxMembers,
+        maxConcurrentSessionsPerUser:
+          data.maxConcurrentSessionsPerUser !== undefined
+            ? data.maxConcurrentSessionsPerUser
+            : existing.maxConcurrentSessionsPerUser,
         allowedDomains: data.allowedDomains ?? existing.allowedDomains,
         customDomains: data.customDomains ?? existing.customDomains,
         requireEmailVerification: data.requireEmailVerification ?? existing.requireEmailVerification,
@@ -136,6 +142,7 @@ function expectSettings(settings: OrganizationSettings, overrides: Partial<Organ
     primaryColor: null,
     faviconUrl: null,
     maxMembers: null,
+    maxConcurrentSessionsPerUser: null,
     allowedDomains: [],
     customDomains: [],
     requireEmailVerification: true,
@@ -190,6 +197,21 @@ describe("getOrganizationSettings", () => {
       customDomains: ["auth.acme.com", "login.acme.com"],
     });
     expect(updated.customDomains).toEqual(["auth.acme.com", "login.acme.com"]);
+  });
+
+  it("returns and updates maxConcurrentSessionsPerUser via settings", async () => {
+    const store = memoryStore();
+    const org = await createOrganization(store, {
+      name: "Acme",
+      slug: "acme",
+      maxConcurrentSessionsPerUser: 5,
+    });
+    const settings = await getOrganizationSettings(store, org.id);
+    expect(settings!.maxConcurrentSessionsPerUser).toBe(5);
+    const updated = await updateOrganizationSettings(store, org.id, {
+      maxConcurrentSessionsPerUser: 10,
+    });
+    expect(updated.maxConcurrentSessionsPerUser).toBe(10);
   });
 
   it("returns null for unknown organization id", async () => {

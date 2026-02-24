@@ -93,6 +93,7 @@ function org(overrides: Partial<Organization> & { id: string; name: string; slug
     primaryColor: null,
     faviconUrl: null,
     maxMembers: overrides.maxMembers ?? null,
+    maxConcurrentSessionsPerUser: overrides.maxConcurrentSessionsPerUser ?? null,
     allowedDomains: [],
     customDomains: [],
     requireEmailVerification: true,

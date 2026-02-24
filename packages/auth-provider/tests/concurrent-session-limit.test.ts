@@ -699,4 +699,38 @@ describe("createLimitsResolver (configurable per user/org)", () => {
     expect(limiter.check("u4", "org-b").allowed).toBe(true);
     expect(limiter.check("u4", "org-b").evictSessionIds).toEqual([]);
   });
+
+  it("org-level limit from settings (e.g. maxConcurrentSessionsPerUser) drives getOrgLimit", () => {
+    const orgSettingsByOrg: Record<string, number | null> = {
+      "org-strict": 2,
+      "org-relaxed": 5,
+    };
+    const getOrgLimit = (orgId: string): number | undefined => {
+      const v = orgSettingsByOrg[orgId];
+      return v != null ? v : undefined;
+    };
+    const limiter = createConcurrentSessionLimit({
+      defaultUserLimit: 10,
+      defaultOrgLimit: 3,
+      getLimits: createLimitsResolver({
+        defaultUserLimit: 10,
+        defaultOrgLimit: 3,
+        getOrgLimit,
+      }),
+    });
+    limiter.register("s1", "u1", "org-strict");
+    limiter.register("s2", "u2", "org-strict");
+    const rStrict = limiter.check("u3", "org-strict");
+    expect(rStrict.allowed).toBe(true);
+    expect(rStrict.evictSessionIds).toHaveLength(1);
+
+    limiter.register("r1", "u1", "org-relaxed");
+    limiter.register("r2", "u2", "org-relaxed");
+    limiter.register("r3", "u3", "org-relaxed");
+    limiter.register("r4", "u4", "org-relaxed");
+    limiter.register("r5", "u5", "org-relaxed");
+    const rRelaxed = limiter.check("u6", "org-relaxed");
+    expect(rRelaxed.allowed).toBe(true);
+    expect(rRelaxed.evictSessionIds).toHaveLength(1);
+  });
 });

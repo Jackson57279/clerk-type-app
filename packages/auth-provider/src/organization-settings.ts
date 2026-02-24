@@ -10,6 +10,7 @@ export interface OrganizationSettings {
   primaryColor: string | null;
   faviconUrl: string | null;
   maxMembers: number | null;
+  maxConcurrentSessionsPerUser: number | null;
   allowedDomains: string[];
   customDomains: string[];
   requireEmailVerification: boolean;
@@ -24,6 +25,7 @@ export interface UpdateOrganizationSettingsInput {
   primaryColor?: string | null;
   faviconUrl?: string | null;
   maxMembers?: number | null;
+  maxConcurrentSessionsPerUser?: number | null;
   allowedDomains?: string[];
   customDomains?: string[];
   requireEmailVerification?: boolean;
@@ -39,6 +41,7 @@ function orgToSettings(org: Organization): OrganizationSettings {
     primaryColor: org.primaryColor,
     faviconUrl: org.faviconUrl,
     maxMembers: org.maxMembers,
+    maxConcurrentSessionsPerUser: org.maxConcurrentSessionsPerUser,
     allowedDomains: org.allowedDomains,
     customDomains: org.customDomains,
     requireEmailVerification: org.requireEmailVerification,

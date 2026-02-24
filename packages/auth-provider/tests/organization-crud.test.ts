@@ -25,6 +25,7 @@ function memoryStore(): OrganizationStore {
       primaryColor: partial.primaryColor ?? null,
       faviconUrl: partial.faviconUrl ?? null,
       maxMembers: partial.maxMembers ?? null,
+      maxConcurrentSessionsPerUser: partial.maxConcurrentSessionsPerUser ?? null,
       allowedDomains: partial.allowedDomains ?? [],
       customDomains: partial.customDomains ?? [],
       requireEmailVerification: partial.requireEmailVerification ?? true,
@@ -57,6 +58,7 @@ function memoryStore(): OrganizationStore {
         primaryColor: data.primaryColor ?? null,
         faviconUrl: data.faviconUrl ?? null,
         maxMembers: data.maxMembers ?? null,
+        maxConcurrentSessionsPerUser: data.maxConcurrentSessionsPerUser ?? null,
         allowedDomains: data.allowedDomains ?? [],
         customDomains: data.customDomains ?? [],
         requireEmailVerification: data.requireEmailVerification ?? true,
@@ -107,6 +109,10 @@ function memoryStore(): OrganizationStore {
         primaryColor: data.primaryColor !== undefined ? data.primaryColor : existing.primaryColor,
         faviconUrl: data.faviconUrl !== undefined ? data.faviconUrl : existing.faviconUrl,
         maxMembers: data.maxMembers !== undefined ? data.maxMembers : existing.maxMembers,
+        maxConcurrentSessionsPerUser:
+          data.maxConcurrentSessionsPerUser !== undefined
+            ? data.maxConcurrentSessionsPerUser
+            : existing.maxConcurrentSessionsPerUser,
         allowedDomains: data.allowedDomains ?? existing.allowedDomains,
         customDomains: data.customDomains ?? existing.customDomains,
         requireEmailVerification: data.requireEmailVerification ?? existing.requireEmailVerification,
@@ -200,6 +206,26 @@ describe("createOrganization", () => {
     await expect(
       createOrganization(store, { name: "Acme", slug: "acme", customDomains: ["localhost"] })
     ).rejects.toThrow("Invalid custom domain");
+  });
+
+  it("creates organization with maxConcurrentSessionsPerUser", async () => {
+    const store = memoryStore();
+    const org = await createOrganization(store, {
+      name: "Acme",
+      slug: "acme",
+      maxConcurrentSessionsPerUser: 3,
+    });
+    expect(org.maxConcurrentSessionsPerUser).toBe(3);
+  });
+
+  it("rejects maxConcurrentSessionsPerUser out of range on create", async () => {
+    const store = memoryStore();
+    await expect(
+      createOrganization(store, { name: "Acme", slug: "acme", maxConcurrentSessionsPerUser: -1 })
+    ).rejects.toThrow("maxConcurrentSessionsPerUser");
+    await expect(
+      createOrganization(store, { name: "Acme", slug: "acme2", maxConcurrentSessionsPerUser: 1001 })
+    ).rejects.toThrow("maxConcurrentSessionsPerUser");
   });
 });
 
@@ -297,6 +323,21 @@ describe("updateOrganization", () => {
     await expect(
       updateOrganization(store, created.id, { customDomains: ["not-a-valid-domain"] })
     ).rejects.toThrow("Invalid custom domain");
+  });
+
+  it("updates maxConcurrentSessionsPerUser", async () => {
+    const store = memoryStore();
+    const org = await createOrganization(store, { name: "Acme", slug: "acme" });
+    const updated = await updateOrganization(store, org.id, { maxConcurrentSessionsPerUser: 5 });
+    expect(updated.maxConcurrentSessionsPerUser).toBe(5);
+  });
+
+  it("rejects maxConcurrentSessionsPerUser out of range on update", async () => {
+    const store = memoryStore();
+    const org = await createOrganization(store, { name: "Acme", slug: "acme" });
+    await expect(
+      updateOrganization(store, org.id, { maxConcurrentSessionsPerUser: -1 })
+    ).rejects.toThrow("maxConcurrentSessionsPerUser");
   });
 });
 
