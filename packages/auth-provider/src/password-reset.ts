@@ -1,6 +1,7 @@
 import { createHmac, randomBytes } from "crypto";
+import { DEFAULT_LINK_TTL_MS } from "./link-format.js";
 
-export const DEFAULT_PASSWORD_RESET_TTL_MS = 60 * 60 * 1000;
+export const DEFAULT_PASSWORD_RESET_TTL_MS = DEFAULT_LINK_TTL_MS;
 
 const JWT_HEADER = { alg: "HS256", typ: "JWT" } as const;
 
