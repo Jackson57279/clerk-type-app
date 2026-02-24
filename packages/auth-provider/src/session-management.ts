@@ -1,5 +1,11 @@
 import { createHmac, createHash, randomBytes } from "crypto";
 import { hashDeviceFingerprint, validateDeviceBinding } from "./device-binding.js";
+import {
+  checkCanCreateSession,
+  registerSession,
+  removeSession,
+  type SessionLimits,
+} from "./concurrent-session-limit.js";
 
 const JWT_HEADER = { alg: "HS256", typ: "JWT" } as const;
 const DEFAULT_ACCESS_TOKEN_TTL_MS = 60 * 60 * 1000;
@@ -81,6 +87,7 @@ export interface SessionManagementOptions {
   refreshTokenTtlSec?: number;
   iss?: string;
   aud?: string;
+  concurrentLimit?: SessionLimits;
 }
 
 export interface RefreshSessionOptions extends SessionManagementOptions {
@@ -94,6 +101,13 @@ export interface CreateSessionResult {
   sessionId: string;
   expiresIn: number;
   refreshExpiresIn: number;
+}
+
+export class SessionLimitReachedError extends Error {
+  constructor() {
+    super("Concurrent session limit reached");
+    this.name = "SessionLimitReachedError";
+  }
 }
 
 export interface AccessTokenPayload {
@@ -129,51 +143,70 @@ export type RefreshSessionResult =
   | RefreshSessionReplayDetected
   | RefreshSessionInvalidGrant;
 
-export function createSession(
+export async function createSession(
   store: SessionStore,
   params: CreateSessionParams,
   options: SessionManagementOptions
 ): Promise<CreateSessionResult> {
   const accessTtlMs = options.accessTokenTtlMs ?? DEFAULT_ACCESS_TOKEN_TTL_MS;
   const refreshTtlSec = options.refreshTokenTtlSec ?? DEFAULT_REFRESH_TOKEN_TTL_SEC;
+  const orgId = params.orgId ?? null;
+
+  if (options.concurrentLimit) {
+    const limitCheck = checkCanCreateSession(
+      params.userId,
+      orgId,
+      options.concurrentLimit
+    );
+    if (!limitCheck.allowed) {
+      throw new SessionLimitReachedError();
+    }
+    for (const sessionId of limitCheck.evictSessionIds) {
+      await store.revokeSession(sessionId);
+      removeSession(sessionId);
+    }
+  }
+
   const sessionId = randomBytes(16).toString("hex");
   const familyId = randomBytes(16).toString("hex");
   const rawRefresh = randomBytes(REFRESH_TOKEN_BYTES).toString("base64url");
   const refreshTokenHash = hashRefreshToken(rawRefresh);
   const expiresAt = new Date(Date.now() + refreshTtlSec * 1000);
 
-  return store
-    .createSession({
-      sessionId,
-      userId: params.userId,
-      orgId: params.orgId ?? null,
-      refreshTokenHash,
-      refreshTokenFamily: familyId,
-      expiresAt,
-      ipAddress: params.ipAddress,
-      userAgent: params.userAgent,
-      deviceFingerprint: params.deviceFingerprint,
-    })
-    .then((createdSessionId) => {
-      const usedId = createdSessionId || sessionId;
-      const accessToken = issueAccessToken(
-        params.userId,
-        usedId,
-        params.orgId ?? null,
-        options.secret,
-        accessTtlMs,
-        options.iss,
-        options.aud
-      );
-      const expiresIn = Math.floor(accessTtlMs / 1000);
-      return {
-        accessToken,
-        refreshToken: rawRefresh,
-        sessionId: usedId,
-        expiresIn,
-        refreshExpiresIn: refreshTtlSec,
-      };
-    });
+  const createdSessionId = await store.createSession({
+    sessionId,
+    userId: params.userId,
+    orgId,
+    refreshTokenHash,
+    refreshTokenFamily: familyId,
+    expiresAt,
+    ipAddress: params.ipAddress,
+    userAgent: params.userAgent,
+    deviceFingerprint: params.deviceFingerprint,
+  });
+  const usedId = createdSessionId || sessionId;
+
+  if (options.concurrentLimit) {
+    registerSession(usedId, params.userId, orgId);
+  }
+
+  const accessToken = issueAccessToken(
+    params.userId,
+    usedId,
+    orgId,
+    options.secret,
+    accessTtlMs,
+    options.iss,
+    options.aud
+  );
+  const expiresIn = Math.floor(accessTtlMs / 1000);
+  return {
+    accessToken,
+    refreshToken: rawRefresh,
+    sessionId: usedId,
+    expiresIn,
+    refreshExpiresIn: refreshTtlSec,
+  };
 }
 
 function issueAccessToken(
@@ -331,10 +364,16 @@ export async function refreshSession(
   };
 }
 
+export interface RevokeSessionOptions {
+  onRevoke?: (sessionId: string) => void;
+}
+
 export function revokeSession(
   store: SessionStore,
-  sessionId: string
+  sessionId: string,
+  options?: RevokeSessionOptions
 ): Promise<void> {
+  options?.onRevoke?.(sessionId);
   return store.revokeSession(sessionId);
 }
 

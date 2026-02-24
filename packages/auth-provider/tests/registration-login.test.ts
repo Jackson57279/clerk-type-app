@@ -545,8 +545,8 @@ describe("login with concurrent session limit", () => {
     expect(user).not.toBeNull();
     const userId = user!.userId;
     const appStore = {
-      remove: vi.fn<void, [string]>(),
-      register: vi.fn<void, [string, string, string | null]>(),
+      remove: vi.fn(),
+      register: vi.fn(),
     };
     registerSession("s0", userId, null);
     registerSession("s1", userId, null);
@@ -582,8 +582,8 @@ describe("login with concurrent session limit", () => {
     const userId = user!.userId;
     const orgId = "org-strict";
     const appStore = {
-      remove: vi.fn<void, [string]>(),
-      register: vi.fn<void, [string, string, string | null]>(),
+      remove: vi.fn(),
+      register: vi.fn(),
     };
     registerSession("s0", userId, orgId);
     registerSession("s1", userId, orgId);
@@ -610,6 +610,30 @@ describe("login with concurrent session limit", () => {
     if (!result.success) return;
     expect(result.evictedSessionIds).toHaveLength(1);
     expect(result.evictedSessionIds).toContain("s0");
+  });
+
+  it("returns session_limit_reached when concurrent session limit is 0", async () => {
+    const store = memoryStore();
+    await register(store, { email: "u@example.com", password: "PassWord1" });
+    const appStore = {
+      remove: vi.fn(),
+      register: vi.fn(),
+    };
+    const result = await login(
+      store,
+      { email: "u@example.com", password: "PassWord1" },
+      {
+        sessionFixation: {
+          sessionStore: appStore,
+          currentSessionId: "pre-login",
+        },
+        concurrentSessionLimit: { limits: { user: 0 } },
+      }
+    );
+    expect(result.success).toBe(false);
+    if (result.success) return;
+    expect("reason" in result && result.reason).toBe("session_limit_reached");
+    expect(appStore.register).not.toHaveBeenCalled();
   });
 });
 

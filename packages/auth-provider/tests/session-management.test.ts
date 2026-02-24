@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import {
   createSession,
   verifyAccessToken,
@@ -6,7 +6,13 @@ import {
   revokeSession,
   revokeAllSessionsForUser,
   createMemorySessionStore,
+  SessionLimitReachedError,
 } from "../src/session-management.js";
+import {
+  clearAllSessions,
+  getActiveCountByUser,
+  removeSession,
+} from "../src/concurrent-session-limit.js";
 
 const SECRET = "session-jwt-secret";
 
@@ -60,6 +66,72 @@ describe("createSession", () => {
       { secret: SECRET, accessTokenTtlMs: 15 * 60 * 1000 }
     );
     expect(result.expiresIn).toBe(15 * 60);
+  });
+});
+
+describe("createSession with concurrent limit", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    clearAllSessions();
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("throws SessionLimitReachedError when user limit is 0", async () => {
+    const store = createMemorySessionStore();
+    await expect(
+      createSession(
+        store,
+        { userId: "u1" },
+        { secret: SECRET, concurrentLimit: { user: 0 } }
+      )
+    ).rejects.toThrow(SessionLimitReachedError);
+  });
+
+  it("evicts oldest sessions and revokes them in store when over limit", async () => {
+    const store = createMemorySessionStore();
+    const a = await createSession(
+      store,
+      { userId: "u1" },
+      { secret: SECRET, concurrentLimit: { user: 3 } }
+    );
+    vi.advanceTimersByTime(100);
+    await createSession(
+      store,
+      { userId: "u1" },
+      { secret: SECRET, concurrentLimit: { user: 3 } }
+    );
+    vi.advanceTimersByTime(100);
+    await createSession(
+      store,
+      { userId: "u1" },
+      { secret: SECRET, concurrentLimit: { user: 3 } }
+    );
+    expect(getActiveCountByUser("u1")).toBe(3);
+    vi.advanceTimersByTime(100);
+    const d = await createSession(
+      store,
+      { userId: "u1" },
+      { secret: SECRET, concurrentLimit: { user: 3 } }
+    );
+    expect(getActiveCountByUser("u1")).toBe(3);
+    await expect(refreshSession(store, a.refreshToken, { secret: SECRET })).resolves.toMatchObject({
+      error: "invalid_grant",
+    });
+    const dPayload = verifyAccessToken(d.accessToken, SECRET);
+    expect(dPayload?.session_id).toBe(d.sessionId);
+  });
+
+  it("registers new session in limiter when concurrentLimit set", async () => {
+    const store = createMemorySessionStore();
+    const result = await createSession(
+      store,
+      { userId: "u1" },
+      { secret: SECRET, concurrentLimit: { user: 5 } }
+    );
+    expect(getActiveCountByUser("u1")).toBe(1);
+    expect(result.sessionId).toBeDefined();
   });
 });
 
@@ -297,6 +369,28 @@ describe("revokeSession", () => {
       secret: SECRET,
     });
     expect("error" in result).toBe(true);
+  });
+
+  it("calls onRevoke with sessionId so limiter can remove session", async () => {
+    const store = createMemorySessionStore();
+    vi.useFakeTimers();
+    clearAllSessions();
+    const created = await createSession(
+      store,
+      { userId: "u1" },
+      { secret: SECRET, concurrentLimit: { user: 5 } }
+    );
+    expect(getActiveCountByUser("u1")).toBe(1);
+    const onRevoke = vi.fn();
+    await revokeSession(store, created.sessionId, {
+      onRevoke: (id) => {
+        removeSession(id);
+        onRevoke(id);
+      },
+    });
+    expect(onRevoke).toHaveBeenCalledWith(created.sessionId);
+    expect(getActiveCountByUser("u1")).toBe(0);
+    vi.useRealTimers();
   });
 });
 

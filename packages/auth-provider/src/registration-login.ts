@@ -39,6 +39,7 @@ import {
   type CreateSessionAfterLoginOptions,
 } from "./session-fixation.js";
 import {
+  checkCanCreateSession,
   createSessionAfterLoginWithConcurrentLimit,
   getConcurrentSessionLimitDefaults,
   type SessionLimits,
@@ -299,11 +300,17 @@ export interface LoginAccountLocked {
   retryAfterSeconds: number;
 }
 
+export interface LoginSessionLimitReached {
+  success: false;
+  reason: "session_limit_reached";
+}
+
 export type LoginResult =
   | LoginSuccess
   | LoginFailure
   | LoginRateLimited
   | LoginAccountLocked
+  | LoginSessionLimitReached
   | LoginRequiresTotp
   | LoginRequiresSmsOtp;
 
@@ -493,6 +500,14 @@ export async function login(
           user: d.defaultUserLimit,
           ...(d.defaultOrgLimit !== undefined && { org: d.defaultOrgLimit }),
         };
+      }
+      const limitCheck = checkCanCreateSession(
+        user.userId,
+        orgIdVal,
+        resolvedLimits
+      );
+      if (!limitCheck.allowed) {
+        return { success: false, reason: "session_limit_reached" };
       }
       const out = createSessionAfterLoginWithConcurrentLimit(
         currentSessionId,
