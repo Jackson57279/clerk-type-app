@@ -1,6 +1,8 @@
 import type { Request, Response, NextFunction } from "express";
 import { verifyAccessToken } from "./verify.js";
 import type { AuthPayload, AuthMiddlewareOptions } from "./types.js";
+import { verifyCsrfRequest } from "./csrf.js";
+import type { CsrfMiddlewareOptions } from "./csrf.js";
 
 declare global {
   // eslint-disable-next-line @typescript-eslint/no-namespace -- Express augmentation
@@ -40,5 +42,25 @@ export function requireAuth() {
       return;
     }
     next();
+  };
+}
+
+const DEFAULT_CSRF_METHODS = ["POST", "PUT", "PATCH", "DELETE"];
+
+export function csrfProtectionMiddleware(options: CsrfMiddlewareOptions = {}) {
+  const methods = options.methodsToProtect ?? DEFAULT_CSRF_METHODS;
+  const methodSet = new Set(methods.map((m) => m.toUpperCase()));
+  return function middleware(req: Request, res: Response, next: NextFunction): void {
+    if (!methodSet.has(req.method.toUpperCase())) {
+      next();
+      return;
+    }
+    const cookieHeader = req.get("Cookie");
+    const getHeader = (name: string) => req.get(name) ?? undefined;
+    if (verifyCsrfRequest(cookieHeader ?? undefined, getHeader, options)) {
+      next();
+      return;
+    }
+    res.status(403).json({ error: "Invalid CSRF token" });
   };
 }
