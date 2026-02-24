@@ -295,6 +295,42 @@ describe("login", () => {
 });
 
 describe("login with session fixation prevention", () => {
+  it("issues new session ID after login so pre-login session is invalid (session fixation prevention)", async () => {
+    const store = memoryStore();
+    await register(store, { email: "u@example.com", password: "PassWord1" });
+    const sessionStore = new Map<string, { userId: string; orgId: string | null }>();
+    const preLoginId = "fixated-session-id";
+    sessionStore.set(preLoginId, { userId: "anonymous", orgId: null });
+
+    const result = await login(
+      store,
+      { email: "u@example.com", password: "PassWord1" },
+      {
+        sessionFixation: {
+          sessionStore: {
+            remove(id: string) {
+              sessionStore.delete(id);
+            },
+            register(id: string, userId: string, orgId: string | null) {
+              sessionStore.set(id, { userId, orgId });
+            },
+          },
+          currentSessionId: preLoginId,
+        },
+      }
+    );
+
+    expect(result.success).toBe(true);
+    if (!result.success) return;
+    expect(result.newSessionId).toBeDefined();
+    expect(result.newSessionId).not.toBe(preLoginId);
+    expect(sessionStore.has(preLoginId)).toBe(false);
+    expect(sessionStore.get(result.newSessionId!)).toEqual({
+      userId: result.userId,
+      orgId: null,
+    });
+  });
+
   it("returns newSessionId and setCookieHeader on success when sessionFixation provided", async () => {
     const store = memoryStore();
     await register(store, { email: "u@example.com", password: "PassWord1" });
