@@ -5,6 +5,8 @@ const MEMORY_KB = 64 * 1024;
 const ITERATIONS = 3;
 const PARALLELISM = 4;
 
+export const PASSWORD_HASH_ALGORITHM = "argon2id" as const;
+
 const ARGON2_OPTIONS = {
   type: argon2.argon2id,
   memoryCost: MEMORY_KB,

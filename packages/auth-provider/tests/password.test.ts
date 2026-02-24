@@ -12,15 +12,20 @@ import {
   getPasswordPolicyConfig,
   getPasswordPolicyForClient,
   defaultPasswordPolicy,
+  PASSWORD_HASH_ALGORITHM,
   type PasswordPolicy,
 } from "../src/password.js";
 
 describe("Argon2id password hashing", () => {
+  it("uses Argon2id (Password Hashing Competition winner)", () => {
+    expect(PASSWORD_HASH_ALGORITHM).toBe("argon2id");
+  });
+
   it("hashes a password and returns a string", async () => {
     const hash = await hashPassword("my-secret-password");
     expect(typeof hash).toBe("string");
     expect(hash.length).toBeGreaterThan(0);
-    expect(hash).toMatch(/^\$argon2id/);
+    expect(hash).toMatch(new RegExp(`^\\$${PASSWORD_HASH_ALGORITHM}`));
   });
 
   it("uses strong Argon2id parameters", async () => {
