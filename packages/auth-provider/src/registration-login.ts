@@ -33,6 +33,11 @@ import {
   AUDIT_EVENT_TYPES,
   type AuditLogStore,
 } from "./audit-log.js";
+import {
+  createSessionAfterLogin,
+  type SessionStore,
+  type CreateSessionAfterLoginOptions,
+} from "./session-fixation.js";
 
 export interface CredentialUser {
   userId: string;
@@ -191,6 +196,12 @@ export interface SuspiciousActivityDetector {
   evaluateLogin(context: LoginContext): SuspiciousActivityResult;
 }
 
+export interface LoginSessionFixationOptions {
+  sessionStore: SessionStore;
+  currentSessionId: string;
+  orgId?: string | null;
+}
+
 export interface LoginOptions {
   totpStore?: TotpStore;
   smsMfa?: SmsMfaLoginOptions;
@@ -201,6 +212,7 @@ export interface LoginOptions {
   suspiciousActivityDetector?: SuspiciousActivityDetector;
   auditLogStore?: AuditLogStore;
   useIpRateLimit?: boolean;
+  sessionFixation?: LoginSessionFixationOptions & CreateSessionAfterLoginOptions;
 }
 
 export interface LoginSuccess {
@@ -208,6 +220,8 @@ export interface LoginSuccess {
   userId: string;
   suspicious?: boolean;
   suspiciousReasons?: string[];
+  newSessionId?: string;
+  setCookieHeader?: string;
 }
 
 export interface LoginRequiresTotp {
@@ -413,6 +427,19 @@ export async function login(
         });
       }
     }
+  }
+  const fix = options.sessionFixation;
+  if (fix) {
+    const { sessionStore, currentSessionId, orgId, ...cookieOptions } = fix;
+    const { newSessionId, setCookieHeader } = createSessionAfterLogin(
+      currentSessionId,
+      user.userId,
+      orgId ?? null,
+      sessionStore,
+      cookieOptions
+    );
+    success.newSessionId = newSessionId;
+    success.setCookieHeader = setCookieHeader;
   }
   return success;
 }

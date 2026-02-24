@@ -289,6 +289,126 @@ describe("login", () => {
   });
 });
 
+describe("login with session fixation prevention", () => {
+  it("returns newSessionId and setCookieHeader on success when sessionFixation provided", async () => {
+    const store = memoryStore();
+    await register(store, { email: "u@example.com", password: "PassWord1" });
+    const sessionStore = new Map<string, { userId: string; orgId: string | null }>();
+    const preLoginId = "pre-login-session-id";
+    sessionStore.set(preLoginId, { userId: "anonymous", orgId: null });
+
+    const result = await login(
+      store,
+      { email: "u@example.com", password: "PassWord1" },
+      {
+        sessionFixation: {
+          sessionStore: {
+            remove(id: string) {
+              sessionStore.delete(id);
+            },
+            register(id: string, userId: string, orgId: string | null) {
+              sessionStore.set(id, { userId, orgId });
+            },
+          },
+          currentSessionId: preLoginId,
+        },
+      }
+    );
+
+    expect(result.success).toBe(true);
+    if (!result.success) return;
+    expect(result.newSessionId).toBeDefined();
+    expect(result.setCookieHeader).toBeDefined();
+    expect(result.newSessionId).not.toBe(preLoginId);
+    expect(result.setCookieHeader).toMatch(/^session=/);
+    expect(result.setCookieHeader).toContain(result.newSessionId);
+    expect(sessionStore.has(preLoginId)).toBe(false);
+    expect(sessionStore.get(result.newSessionId!)).toEqual({
+      userId: result.userId,
+      orgId: null,
+    });
+  });
+
+  it("does not return newSessionId or setCookieHeader when sessionFixation not provided", async () => {
+    const store = memoryStore();
+    await register(store, { email: "u@example.com", password: "PassWord1" });
+    const result = await login(store, {
+      email: "u@example.com",
+      password: "PassWord1",
+    });
+    expect(result.success).toBe(true);
+    if (!result.success) return;
+    expect(result.newSessionId).toBeUndefined();
+    expect(result.setCookieHeader).toBeUndefined();
+  });
+
+  it("does not regenerate session on login failure", async () => {
+    const store = memoryStore();
+    await register(store, { email: "u@example.com", password: "PassWord1" });
+    const sessionStore = new Map<string, { userId: string; orgId: string | null }>();
+    const preLoginId = "fixated-id";
+    sessionStore.set(preLoginId, { userId: "anonymous", orgId: null });
+
+    const result = await login(
+      store,
+      { email: "u@example.com", password: "WrongPassword" },
+      {
+        sessionFixation: {
+          sessionStore: {
+            remove(id: string) {
+              sessionStore.delete(id);
+            },
+            register(id: string, userId: string, orgId: string | null) {
+              sessionStore.set(id, { userId, orgId });
+            },
+          },
+          currentSessionId: preLoginId,
+        },
+      }
+    );
+
+    expect(result.success).toBe(false);
+    expect(sessionStore.has(preLoginId)).toBe(true);
+    expect(sessionStore.get(preLoginId)).toEqual({
+      userId: "anonymous",
+      orgId: null,
+    });
+  });
+
+  it("registers new session with orgId when sessionFixation.orgId provided", async () => {
+    const store = memoryStore();
+    await register(store, { email: "u@example.com", password: "PassWord1" });
+    const sessionStore = new Map<string, { userId: string; orgId: string | null }>();
+
+    const result = await login(
+      store,
+      { email: "u@example.com", password: "PassWord1" },
+      {
+        sessionFixation: {
+          sessionStore: {
+            remove(id: string) {
+              sessionStore.delete(id);
+            },
+            register(id: string, userId: string, orgId: string | null) {
+              sessionStore.set(id, { userId, orgId });
+            },
+          },
+          currentSessionId: "old-id",
+          orgId: "org-1",
+        },
+      }
+    );
+
+    expect(result.success).toBe(true);
+    if (!result.success) return;
+    expect(result.newSessionId).toBeDefined();
+    expect(sessionStore.get(result.newSessionId!)).toEqual({
+      userId: result.userId,
+      orgId: "org-1",
+    });
+  });
+});
+
 describe("login with suspicious activity detection", () => {
   it("returns success without suspicious when no detector provided", async () => {
     const store = memoryStore();
