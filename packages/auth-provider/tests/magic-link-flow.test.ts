@@ -429,3 +429,138 @@ describe("magic link flow (request then verify)", () => {
     });
   });
 });
+
+describe("magic link device binding (optional fingerprint validation)", () => {
+  it("request without deviceFingerprint and verify without: no binding, succeeds", async () => {
+    const store = createMemoryUsedTokenStore();
+    const user = { userId: "u1", email: "nobind@example.com" };
+    let capturedToken: string | null = null;
+    await requestMagicLink({
+      email: user.email,
+      secret: SECRET,
+      findUserByEmail: async () => user,
+      buildMagicLink: (t) => {
+        capturedToken = t;
+        return `https://app.example.com/auth?t=${t}`;
+      },
+      sendEmail: async () => {},
+      usedTokenStore: store,
+      isAllowedEmail: () => true,
+    });
+    const result = await verifyMagicLink({
+      token: capturedToken!,
+      secret: SECRET,
+      usedTokenStore: store,
+      findUserByEmail: async () => user,
+    });
+    expect(result).toEqual({ success: true, userId: "u1", email: user.email });
+  });
+
+  it("request with deviceFingerprint and verify with same fingerprint succeeds", async () => {
+    const store = createMemoryUsedTokenStore();
+    const user = { userId: "u2", email: "bind@example.com" };
+    let capturedToken: string | null = null;
+    await requestMagicLink({
+      email: user.email,
+      secret: SECRET,
+      findUserByEmail: async () => user,
+      buildMagicLink: (t) => {
+        capturedToken = t;
+        return `https://app.example.com/auth?t=${t}`;
+      },
+      sendEmail: async () => {},
+      usedTokenStore: store,
+      isAllowedEmail: () => true,
+      deviceFingerprint: "device-A",
+    });
+    const result = await verifyMagicLink({
+      token: capturedToken!,
+      secret: SECRET,
+      usedTokenStore: store,
+      deviceFingerprint: "device-A",
+      findUserByEmail: async () => user,
+    });
+    expect(result).toEqual({ success: true, userId: "u2", email: user.email });
+  });
+
+  it("request with deviceFingerprint and verify with different fingerprint returns invalid_or_expired_token", async () => {
+    const store = createMemoryUsedTokenStore();
+    const user = { userId: "u3", email: "bind2@example.com" };
+    let capturedToken: string | null = null;
+    await requestMagicLink({
+      email: user.email,
+      secret: SECRET,
+      findUserByEmail: async () => user,
+      buildMagicLink: (t) => {
+        capturedToken = t;
+        return `https://app.example.com/auth?t=${t}`;
+      },
+      sendEmail: async () => {},
+      usedTokenStore: store,
+      isAllowedEmail: () => true,
+      deviceFingerprint: "device-A",
+    });
+    const result = await verifyMagicLink({
+      token: capturedToken!,
+      secret: SECRET,
+      usedTokenStore: store,
+      deviceFingerprint: "device-B",
+      findUserByEmail: async () => user,
+    });
+    expect(result).toEqual({ success: false, reason: "invalid_or_expired_token" });
+  });
+
+  it("request with deviceFingerprint and verify without fingerprint returns invalid_or_expired_token", async () => {
+    const store = createMemoryUsedTokenStore();
+    const user = { userId: "u4", email: "bind3@example.com" };
+    let capturedToken: string | null = null;
+    await requestMagicLink({
+      email: user.email,
+      secret: SECRET,
+      findUserByEmail: async () => user,
+      buildMagicLink: (t) => {
+        capturedToken = t;
+        return `https://app.example.com/auth?t=${t}`;
+      },
+      sendEmail: async () => {},
+      usedTokenStore: store,
+      isAllowedEmail: () => true,
+      deviceFingerprint: "device-A",
+    });
+    const result = await verifyMagicLink({
+      token: capturedToken!,
+      secret: SECRET,
+      usedTokenStore: store,
+      findUserByEmail: async () => user,
+    });
+    expect(result).toEqual({ success: false, reason: "invalid_or_expired_token" });
+  });
+
+  it("verify with skipDeviceBinding succeeds when fingerprint does not match", async () => {
+    const store = createMemoryUsedTokenStore();
+    const user = { userId: "u5", email: "bind4@example.com" };
+    let capturedToken: string | null = null;
+    await requestMagicLink({
+      email: user.email,
+      secret: SECRET,
+      findUserByEmail: async () => user,
+      buildMagicLink: (t) => {
+        capturedToken = t;
+        return `https://app.example.com/auth?t=${t}`;
+      },
+      sendEmail: async () => {},
+      usedTokenStore: store,
+      isAllowedEmail: () => true,
+      deviceFingerprint: "device-A",
+    });
+    const result = await verifyMagicLink({
+      token: capturedToken!,
+      secret: SECRET,
+      usedTokenStore: store,
+      deviceFingerprint: "device-B",
+      skipDeviceBinding: true,
+      findUserByEmail: async () => user,
+    });
+    expect(result).toEqual({ success: true, userId: "u5", email: user.email });
+  });
+});

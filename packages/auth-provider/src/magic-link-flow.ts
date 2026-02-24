@@ -100,6 +100,7 @@ export interface VerifyMagicLinkOptions {
   secret: string;
   usedTokenStore?: SingleUseTokenStore;
   deviceFingerprint?: string | null;
+  skipDeviceBinding?: boolean;
   findUserByEmail?: (email: string) => Promise<UserByEmail | null>;
 }
 
@@ -126,12 +127,14 @@ export async function verifyMagicLink(
     secret,
     usedTokenStore,
     deviceFingerprint,
+    skipDeviceBinding,
     findUserByEmail,
   } = options;
 
   const payload = verifyMagicLinkToken(token, secret, {
     ...(usedTokenStore !== undefined && { usedTokenStore }),
     deviceFingerprint,
+    skipDeviceBinding,
   });
   if (!payload) {
     return { success: false, reason: "invalid_or_expired_token" };
