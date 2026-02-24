@@ -981,6 +981,37 @@ describe("login with brute force protection", () => {
     expect(lockout.check("u5@example.com").locked).toBe(false);
   });
 
+  it("locks account for 30 min after 10 failed login attempts (default)", async () => {
+    vi.useFakeTimers();
+    const store = memoryStore();
+    await register(store, { email: "ten@example.com", password: "PassWord1" });
+    const lockout = createAccountLockout();
+
+    for (let i = 0; i < 10; i++) {
+      await login(store, { email: "ten@example.com", password: "Wrong" }, {
+        accountLockout: lockout,
+      });
+    }
+    const result = await login(
+      store,
+      { email: "ten@example.com", password: "PassWord1" },
+      { accountLockout: lockout }
+    );
+    expect(result.success).toBe(false);
+    if (result.success) return;
+    expect("reason" in result && result.reason).toBe("account_locked");
+    expect("retryAfterSeconds" in result && result.retryAfterSeconds).toBe(30 * 60);
+
+    vi.advanceTimersByTime(30 * 60 * 1000);
+    const after = await login(
+      store,
+      { email: "ten@example.com", password: "PassWord1" },
+      { accountLockout: lockout }
+    );
+    expect(after.success).toBe(true);
+    vi.useRealTimers();
+  });
+
   it("login without brute force or lockout options is unchanged", async () => {
     const store = memoryStore();
     await register(store, { email: "u6@example.com", password: "PassWord1" });
