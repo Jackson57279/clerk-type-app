@@ -65,7 +65,7 @@ describe("csrfProtectionMiddleware", () => {
     const next = nextFn();
     csrfProtectionMiddleware()(req, res, next);
     expect(next).toHaveBeenCalledTimes(1);
-    expect((res as { status: ReturnType<typeof vi.fn> }).status).not.toHaveBeenCalled();
+    expect((res as unknown as { status: ReturnType<typeof vi.fn> }).status).not.toHaveBeenCalled();
   });
 
   it("calls next for POST when cookie and header match", () => {
@@ -80,7 +80,7 @@ describe("csrfProtectionMiddleware", () => {
     const next = nextFn();
     csrfProtectionMiddleware()(req, res, next);
     expect(next).toHaveBeenCalledTimes(1);
-    expect((res as { status: ReturnType<typeof vi.fn> }).status).not.toHaveBeenCalled();
+    expect((res as unknown as { status: ReturnType<typeof vi.fn> }).status).not.toHaveBeenCalled();
   });
 
   it("responds 403 for POST when header missing", () => {
@@ -95,8 +95,8 @@ describe("csrfProtectionMiddleware", () => {
     const next = nextFn();
     csrfProtectionMiddleware()(req, res, next);
     expect(next).not.toHaveBeenCalled();
-    expect((res as { status: ReturnType<typeof vi.fn> }).status).toHaveBeenCalledWith(403);
-    expect((res as { json: ReturnType<typeof vi.fn> }).json).toHaveBeenCalledWith({
+    expect((res as unknown as { status: ReturnType<typeof vi.fn> }).status).toHaveBeenCalledWith(403);
+    expect((res as unknown as { json: ReturnType<typeof vi.fn> }).json).toHaveBeenCalledWith({
       error: "Invalid CSRF token",
     });
   });
@@ -112,7 +112,7 @@ describe("csrfProtectionMiddleware", () => {
     const next = nextFn();
     csrfProtectionMiddleware()(req, res, next);
     expect(next).not.toHaveBeenCalled();
-    expect((res as { status: ReturnType<typeof vi.fn> }).status).toHaveBeenCalledWith(403);
+    expect((res as unknown as { status: ReturnType<typeof vi.fn> }).status).toHaveBeenCalledWith(403);
   });
 
   it("responds 403 for POST when cookie and header differ", () => {
@@ -126,7 +126,7 @@ describe("csrfProtectionMiddleware", () => {
     const next = nextFn();
     csrfProtectionMiddleware()(req, res, next);
     expect(next).not.toHaveBeenCalled();
-    expect((res as { status: ReturnType<typeof vi.fn> }).status).toHaveBeenCalledWith(403);
+    expect((res as unknown as { status: ReturnType<typeof vi.fn> }).status).toHaveBeenCalledWith(403);
   });
 
   it("protects PUT, PATCH, DELETE by default", () => {
@@ -143,7 +143,7 @@ describe("csrfProtectionMiddleware", () => {
       const next = nextFn();
       csrfProtectionMiddleware()(req, res, next);
       expect(next).not.toHaveBeenCalled();
-      expect((res as { status: ReturnType<typeof vi.fn> }).status).toHaveBeenCalledWith(403);
+      expect((res as unknown as { status: ReturnType<typeof vi.fn> }).status).toHaveBeenCalledWith(403);
     }
   });
 

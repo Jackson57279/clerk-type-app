@@ -2,7 +2,14 @@
   "name": "auth-provider",
   "version": "0.1.0",
   "private": true,
-  "type": "module",
+"type": "module",
+  "exports": {
+    "./remote-logout": {
+      "types": "./dist/remote-logout.d.ts",
+      "import": "./dist/remote-logout.js",
+      "default": "./dist/remote-logout.js"
+    }
+  },
   "scripts": {
     "build": "tsc",
     "test": "vitest run",
