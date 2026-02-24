@@ -182,6 +182,108 @@ describe("refreshSession", () => {
   });
 });
 
+describe("refreshSession device binding", () => {
+  it("refresh succeeds when session has no device fingerprint (optional)", async () => {
+    const store = createMemorySessionStore();
+    const created = await createSession(
+      store,
+      { userId: "u" },
+      { secret: SECRET }
+    );
+    const result = await refreshSession(store, created.refreshToken, {
+      secret: SECRET,
+    });
+    expect("accessToken" in result).toBe(true);
+    const created2 = await createSession(
+      store,
+      { userId: "u" },
+      { secret: SECRET }
+    );
+    const result2 = await refreshSession(store, created2.refreshToken, {
+      secret: SECRET,
+      deviceFingerprint: "any",
+    });
+    expect("accessToken" in result2).toBe(true);
+  });
+
+  it("refresh succeeds when session has fingerprint and current matches", async () => {
+    const store = createMemorySessionStore();
+    const created = await createSession(
+      store,
+      { userId: "u", deviceFingerprint: "device-A" },
+      { secret: SECRET }
+    );
+    const result = await refreshSession(store, created.refreshToken, {
+      secret: SECRET,
+      deviceFingerprint: "device-A",
+    });
+    expect("accessToken" in result).toBe(true);
+  });
+
+  it("refresh succeeds when fingerprint matches after trim", async () => {
+    const store = createMemorySessionStore();
+    const created = await createSession(
+      store,
+      { userId: "u", deviceFingerprint: "  device-A  " },
+      { secret: SECRET }
+    );
+    const result = await refreshSession(store, created.refreshToken, {
+      secret: SECRET,
+      deviceFingerprint: "device-A",
+    });
+    expect("accessToken" in result).toBe(true);
+  });
+
+  it("refresh returns invalid_grant when session has fingerprint but current is missing", async () => {
+    const store = createMemorySessionStore();
+    const created = await createSession(
+      store,
+      { userId: "u", deviceFingerprint: "device-A" },
+      { secret: SECRET }
+    );
+    const result = await refreshSession(store, created.refreshToken, {
+      secret: SECRET,
+    });
+    expect("error" in result).toBe(true);
+    if ("error" in result) {
+      expect(result.error).toBe("invalid_grant");
+      expect((result as { error_description?: string }).error_description).toBe(
+        "Device binding validation failed"
+      );
+    }
+  });
+
+  it("refresh returns invalid_grant when session has fingerprint but current does not match", async () => {
+    const store = createMemorySessionStore();
+    const created = await createSession(
+      store,
+      { userId: "u", deviceFingerprint: "device-A" },
+      { secret: SECRET }
+    );
+    const result = await refreshSession(store, created.refreshToken, {
+      secret: SECRET,
+      deviceFingerprint: "device-B",
+    });
+    expect("error" in result).toBe(true);
+    if ("error" in result) expect(result.error).toBe("invalid_grant");
+  });
+
+  it("refresh succeeds with skipDeviceBinding when fingerprint does not match", async () => {
+    const store = createMemorySessionStore();
+    const created = await createSession(
+      store,
+      { userId: "u", deviceFingerprint: "device-A" },
+      { secret: SECRET }
+    );
+    const result = await refreshSession(store, created.refreshToken, {
+      secret: SECRET,
+      deviceFingerprint: "device-B",
+      skipDeviceBinding: true,
+    });
+    expect("accessToken" in result).toBe(true);
+  });
+});
+
 describe("revokeSession", () => {
   it("revokes session so refresh no longer works", async () => {
     const store = createMemorySessionStore();

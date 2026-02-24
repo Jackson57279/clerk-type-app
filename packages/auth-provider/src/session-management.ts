@@ -1,4 +1,5 @@
 import { createHmac, createHash, randomBytes } from "crypto";
+import { hashDeviceFingerprint, validateDeviceBinding } from "./device-binding.js";
 
 const JWT_HEADER = { alg: "HS256", typ: "JWT" } as const;
 const DEFAULT_ACCESS_TOKEN_TTL_MS = 60 * 60 * 1000;
@@ -35,6 +36,7 @@ export interface SessionInfo {
   familyId: string;
   expiresAt: Date;
   revokedAt: Date | null;
+  deviceFingerprint?: string | null;
 }
 
 export interface CreateSessionParams {
@@ -79,6 +81,11 @@ export interface SessionManagementOptions {
   refreshTokenTtlSec?: number;
   iss?: string;
   aud?: string;
+}
+
+export interface RefreshSessionOptions extends SessionManagementOptions {
+  deviceFingerprint?: string | null;
+  skipDeviceBinding?: boolean;
 }
 
 export interface CreateSessionResult {
@@ -245,7 +252,7 @@ export function verifyAccessToken(
 export async function refreshSession(
   store: SessionStore,
   refreshToken: string,
-  options: SessionManagementOptions
+  options: RefreshSessionOptions
 ): Promise<RefreshSessionResult> {
   const hash = hashRefreshToken(refreshToken);
   const usedFamilyId = await store.getFamilyIdByUsedRefreshHash(hash);
@@ -275,6 +282,24 @@ export async function refreshSession(
     return {
       error: "invalid_grant",
       error_description: "Refresh token has expired",
+    };
+  }
+
+  const storedFp = session.deviceFingerprint != null && session.deviceFingerprint.trim() !== ""
+    ? session.deviceFingerprint
+    : null;
+  const storedFingerprintHash = storedFp ? hashDeviceFingerprint(storedFp) : null;
+  if (
+    !options.skipDeviceBinding &&
+    storedFingerprintHash != null &&
+    !validateDeviceBinding({
+      storedFingerprintHash,
+      currentFingerprint: options.deviceFingerprint ?? null,
+    })
+  ) {
+    return {
+      error: "invalid_grant",
+      error_description: "Device binding validation failed",
     };
   }
 
@@ -331,6 +356,7 @@ export function createMemorySessionStore(): SessionStore {
       refreshTokenHash: string;
       expiresAt: Date;
       revokedAt: Date | null;
+      deviceFingerprint: string | null;
     }
   >();
   const byRefreshHash = new Map<string, string>();
@@ -347,6 +373,7 @@ export function createMemorySessionStore(): SessionStore {
         refreshTokenHash: params.refreshTokenHash,
         expiresAt: params.expiresAt,
         revokedAt: null as Date | null,
+        deviceFingerprint: params.deviceFingerprint ?? null,
       };
       sessions.set(sessionId, rec);
       byRefreshHash.set(params.refreshTokenHash, sessionId);
@@ -365,6 +392,7 @@ export function createMemorySessionStore(): SessionStore {
         familyId: rec.familyId,
         expiresAt: rec.expiresAt,
         revokedAt: rec.revokedAt,
+        deviceFingerprint: rec.deviceFingerprint,
       };
     },
 
