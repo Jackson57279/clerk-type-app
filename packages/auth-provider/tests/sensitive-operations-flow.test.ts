@@ -326,6 +326,39 @@ describe("double-opt-in required for sensitive operations", () => {
       expect.objectContaining({ userId: "u1", email: "u@example.com", operation: "change_password" })
     );
   });
+
+  it("passes operationParams from confirmation token to action", async () => {
+    const context = {
+      userId: "u1",
+      email: "u@example.com",
+      operation: "change_email" as SensitiveOperationType,
+    };
+    const req = await requestSensitiveOperation({
+      operation: "change_email",
+      userId: context.userId,
+      email: context.email,
+      secret: SECRET,
+      buildConfirmLink: (t) => `https://app.example.com/confirm?token=${t}`,
+      operationParams: { newEmail: "new@example.com" },
+    });
+    if (!isRequestSensitiveOperationSuccess(req)) throw new Error("expected success");
+    const action = vi.fn().mockResolvedValue(undefined);
+    await executeSensitiveOperation(
+      "change_email",
+      req.token,
+      context,
+      SECRET,
+      action
+    );
+    expect(action).toHaveBeenCalledWith(
+      expect.objectContaining({
+        userId: "u1",
+        email: "u@example.com",
+        operation: "change_email",
+        operationParams: { newEmail: "new@example.com" },
+      })
+    );
+  });
 });
 
 describe("executeSensitiveOperation", () => {
