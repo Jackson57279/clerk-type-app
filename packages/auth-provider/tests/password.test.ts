@@ -322,6 +322,16 @@ describe("getPasswordPolicyConfig", () => {
 });
 
 describe("getPasswordPolicyForClient", () => {
+  it("matches default policy when env is empty (server and client in sync)", () => {
+    const client = getPasswordPolicyForClient({});
+    expect(client.minLength).toBe(defaultPasswordPolicy.minLength);
+    expect(client.maxLength).toBe(defaultPasswordPolicy.maxLength ?? 128);
+    expect(client.requireUppercase).toBe(defaultPasswordPolicy.requireUppercase);
+    expect(client.requireLowercase).toBe(defaultPasswordPolicy.requireLowercase);
+    expect(client.requireDigit).toBe(defaultPasswordPolicy.requireDigit);
+    expect(client.requireSpecial).toBe(defaultPasswordPolicy.requireSpecial);
+  });
+
   it("returns default policy and requirements when env is empty", () => {
     const client = getPasswordPolicyForClient({});
     expect(client.minLength).toBe(8);
