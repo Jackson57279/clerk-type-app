@@ -65,6 +65,55 @@ describe("requestMagicLink", () => {
     expect(sentHtml).toContain("https://app.example.com/auth?t=");
   });
 
+  describe("expiration (15 min default, configurable)", () => {
+    const orig = process.env.MAGIC_LINK_TTL_MINUTES;
+    afterEach(() => {
+      if (orig !== undefined) process.env.MAGIC_LINK_TTL_MINUTES = orig;
+      else delete process.env.MAGIC_LINK_TTL_MINUTES;
+    });
+
+    it("uses 15 minutes default when ttlMs and env not set", async () => {
+      delete process.env.MAGIC_LINK_TTL_MINUTES;
+      const sendEmail = vi.fn().mockResolvedValue(undefined);
+      const findUserByEmail = vi.fn().mockResolvedValue({
+        userId: "user-1",
+        email: "user@example.com",
+      });
+      await requestMagicLink({
+        email: "user@example.com",
+        secret: SECRET,
+        findUserByEmail,
+        buildMagicLink: (t) => `https://app.example.com/auth?t=${t}`,
+        sendEmail,
+        isAllowedEmail: () => true,
+      });
+      const payload = sendEmail.mock.calls[0]?.[0] as { html: string; text: string };
+      expect(payload?.html).toContain("15 minutes");
+      expect(payload?.text).toContain("15 minutes");
+    });
+
+    it("uses ttlMs when provided (overrides env)", async () => {
+      process.env.MAGIC_LINK_TTL_MINUTES = "60";
+      const sendEmail = vi.fn().mockResolvedValue(undefined);
+      const findUserByEmail = vi.fn().mockResolvedValue({
+        userId: "user-1",
+        email: "user@example.com",
+      });
+      await requestMagicLink({
+        email: "user@example.com",
+        secret: SECRET,
+        findUserByEmail,
+        buildMagicLink: (t) => `https://app.example.com/auth?t=${t}`,
+        sendEmail,
+        isAllowedEmail: () => true,
+        ttlMs: 5 * 60 * 1000,
+      });
+      const payload = sendEmail.mock.calls[0]?.[0] as { html: string; text: string };
+      expect(payload?.html).toContain("5 minutes");
+      expect(payload?.text).toContain("5 minutes");
+    });
+  });
+
   it("uses fallbackSendEmail when primary sendEmail fails", async () => {
     const findUserByEmail = vi.fn().mockResolvedValue({
       userId: "user-1",
