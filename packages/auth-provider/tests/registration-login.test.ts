@@ -876,6 +876,55 @@ describe("login with brute force protection", () => {
     expect("reason" in result && result.reason).toBe("rate_limited");
   });
 
+  it("applies progressive delay: retryAfterSeconds increases after each failed login", async () => {
+    vi.useFakeTimers();
+    const store = memoryStore();
+    await register(store, { email: "prog@example.com", password: "PassWord1" });
+    const bf = createBruteForceProtection({ baseDelayMs: 1000 });
+
+    await login(store, { email: "prog@example.com", password: "Wrong" }, {
+      getBruteForceKey: () => "10.0.0.5",
+      bruteForceProtection: bf,
+    });
+    let result = await login(
+      store,
+      { email: "prog@example.com", password: "PassWord1" },
+      { getBruteForceKey: () => "10.0.0.5", bruteForceProtection: bf }
+    );
+    expect(result.success).toBe(false);
+    if (result.success) return;
+    expect("retryAfterSeconds" in result && result.retryAfterSeconds).toBe(1);
+
+    vi.advanceTimersByTime(1000);
+    await login(store, { email: "prog@example.com", password: "Wrong" }, {
+      getBruteForceKey: () => "10.0.0.5",
+      bruteForceProtection: bf,
+    });
+    result = await login(
+      store,
+      { email: "prog@example.com", password: "PassWord1" },
+      { getBruteForceKey: () => "10.0.0.5", bruteForceProtection: bf }
+    );
+    expect(result.success).toBe(false);
+    if (result.success) return;
+    expect("retryAfterSeconds" in result && result.retryAfterSeconds).toBe(2);
+
+    vi.advanceTimersByTime(2000);
+    await login(store, { email: "prog@example.com", password: "Wrong" }, {
+      getBruteForceKey: () => "10.0.0.5",
+      bruteForceProtection: bf,
+    });
+    result = await login(
+      store,
+      { email: "prog@example.com", password: "PassWord1" },
+      { getBruteForceKey: () => "10.0.0.5", bruteForceProtection: bf }
+    );
+    expect(result.success).toBe(false);
+    if (result.success) return;
+    expect("retryAfterSeconds" in result && result.retryAfterSeconds).toBe(4);
+    vi.useRealTimers();
+  });
+
   it("returns account_locked when account lockout blocks email", async () => {
     const store = memoryStore();
     await register(store, { email: "locked@example.com", password: "PassWord1" });
