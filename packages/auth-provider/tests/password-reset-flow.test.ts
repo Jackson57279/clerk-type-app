@@ -258,6 +258,28 @@ describe("resetPasswordWithToken", () => {
     expect(updateUserPassword).not.toHaveBeenCalled();
   });
 
+  it("returns invalid_or_expired_token for expired token", async () => {
+    vi.useFakeTimers();
+    const store = createMemoryUsedTokenStore();
+    const { token } = createPasswordResetToken(
+      { userId: "u1", email: "u@x.com" },
+      SECRET,
+      { ttlMs: 1000 }
+    );
+    vi.advanceTimersByTime(2000);
+    const updateUserPassword = vi.fn();
+    const result = await resetPasswordWithToken({
+      token,
+      newPassword: "validpass1",
+      secret: SECRET,
+      usedTokenStore: store,
+      updateUserPassword,
+    });
+    vi.useRealTimers();
+    expect(result).toEqual({ success: false, reason: "invalid_or_expired_token" });
+    expect(updateUserPassword).not.toHaveBeenCalled();
+  });
+
   it("returns invalid_password when new password fails policy", async () => {
     const store = createMemoryUsedTokenStore();
     const { token } = createPasswordResetToken(
