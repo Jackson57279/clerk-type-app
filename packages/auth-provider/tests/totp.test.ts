@@ -66,6 +66,12 @@ describe("generateTOTP", () => {
     });
     expect(code).toBe(expectedCode);
   });
+
+  it("supports time step T larger than 32-bit integer (RFC 6238 Section 4.2)", () => {
+    const time = 30 * 2 ** 31;
+    const code = generateTOTP(RFC_SECRET, { time, period: 30, digits: 6 });
+    expect(code).toMatch(/^\d{6}$/);
+  });
 });
 
 describe("verifyTOTP", () => {
