@@ -136,6 +136,40 @@ export interface PasswordValidationResult {
   errors: string[];
 }
 
+export type PasswordPolicyClientShape = Pick<
+  PasswordPolicyForClient,
+  "minLength" | "maxLength" | "requireUppercase" | "requireLowercase" | "requireDigit" | "requireSpecial"
+>;
+
+export function validatePasswordWithClientPolicy(
+  plainPassword: string,
+  clientPolicy: PasswordPolicyClientShape
+): PasswordValidationResult {
+  const errors: string[] = [];
+  if (plainPassword.length < clientPolicy.minLength) {
+    errors.push(`Password must be at least ${clientPolicy.minLength} characters`);
+  }
+  if (plainPassword.length > clientPolicy.maxLength) {
+    errors.push(`Password must be at most ${clientPolicy.maxLength} characters`);
+  }
+  if (clientPolicy.requireUppercase && !/[A-Z]/.test(plainPassword)) {
+    errors.push("Password must contain at least one uppercase letter");
+  }
+  if (clientPolicy.requireLowercase && !/[a-z]/.test(plainPassword)) {
+    errors.push("Password must contain at least one lowercase letter");
+  }
+  if (clientPolicy.requireDigit && !/\d/.test(plainPassword)) {
+    errors.push("Password must contain at least one digit");
+  }
+  if (clientPolicy.requireSpecial && !/[!@#$%^&*()_+\-=[\]{};':"\\|,.<>/?]/.test(plainPassword)) {
+    errors.push("Password must contain at least one special character");
+  }
+  return {
+    valid: errors.length === 0,
+    errors,
+  };
+}
+
 export function validatePassword(
   plainPassword: string,
   policy: PasswordPolicy = defaultPasswordPolicy

@@ -3,6 +3,7 @@ import {
   hashPassword,
   verifyPassword,
   validatePassword,
+  validatePasswordWithClientPolicy,
   validatePasswordWithPolicy,
   validatePasswordWithEnv,
   isPasswordPwned,
@@ -362,6 +363,54 @@ describe("getPasswordPolicyForClient", () => {
     expect(parsed.minLength).toBe(client.minLength);
     expect(parsed.maxLength).toBe(client.maxLength);
     expect(parsed.requirements).toEqual(client.requirements);
+  });
+});
+
+describe("validatePasswordWithClientPolicy", () => {
+  it("accepts password meeting client policy (same as default)", () => {
+    const client = getPasswordPolicyForClient({});
+    const r = validatePasswordWithClientPolicy("secret12", client);
+    expect(r.valid).toBe(true);
+    expect(r.errors).toHaveLength(0);
+  });
+
+  it("rejects password shorter than minLength", () => {
+    const client = getPasswordPolicyForClient({ PASSWORD_MIN_LENGTH: "10" });
+    const r = validatePasswordWithClientPolicy("short1a", client);
+    expect(r.valid).toBe(false);
+    expect(r.errors.some((e) => e.includes("at least 10"))).toBe(true);
+  });
+
+  it("rejects password longer than maxLength", () => {
+    const client = getPasswordPolicyForClient({ PASSWORD_MAX_LENGTH: "12" });
+    const r = validatePasswordWithClientPolicy("thispasswordistoolong1", client);
+    expect(r.valid).toBe(false);
+    expect(r.errors.some((e) => e.includes("at most 12"))).toBe(true);
+  });
+
+  it("enforces requireUppercase when true in client policy", () => {
+    const client = getPasswordPolicyForClient({ PASSWORD_REQUIRE_UPPERCASE: "true" });
+    expect(validatePasswordWithClientPolicy("lowercase1", client).valid).toBe(false);
+    expect(validatePasswordWithClientPolicy("Uppercase1", client).valid).toBe(true);
+  });
+
+  it("enforces requireSpecial when true in client policy", () => {
+    const client = getPasswordPolicyForClient({ PASSWORD_REQUIRE_SPECIAL: "true" });
+    expect(validatePasswordWithClientPolicy("n special1", client).valid).toBe(false);
+    expect(validatePasswordWithClientPolicy("WithSpecial1!", client).valid).toBe(true);
+  });
+
+  it("returns same error messages as validatePassword for consistency", () => {
+    const policy = { ...defaultPasswordPolicy, minLength: 10, requireUppercase: true };
+    const client = getPasswordPolicyForClient({
+      PASSWORD_MIN_LENGTH: "10",
+      PASSWORD_REQUIRE_UPPERCASE: "true",
+    });
+    const pwd = "short";
+    const syncResult = validatePassword(pwd, policy);
+    const clientResult = validatePasswordWithClientPolicy(pwd, client);
+    expect(clientResult.errors.sort()).toEqual(syncResult.errors.sort());
+    expect(clientResult.valid).toBe(syncResult.valid);
   });
 });
 
