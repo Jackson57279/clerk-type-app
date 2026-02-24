@@ -76,8 +76,8 @@ describe("createPasswordResetToken", () => {
 });
 
 describe("DEFAULT_PASSWORD_RESET_TTL_MS", () => {
-  it("equals DEFAULT_LINK_TTL_MS (short expiry)", () => {
-    expect(DEFAULT_PASSWORD_RESET_TTL_MS).toBe(15 * 60 * 1000);
+  it("is 1 hour (time-limited per PRD)", () => {
+    expect(DEFAULT_PASSWORD_RESET_TTL_MS).toBe(60 * 60 * 1000);
   });
 });
 
