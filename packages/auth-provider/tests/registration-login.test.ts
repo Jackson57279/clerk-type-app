@@ -356,8 +356,8 @@ describe("login with suspicious activity detection", () => {
     if (!result.success) return;
     expect(result.suspicious).toBe(true);
     expect(events).toHaveLength(1);
-    expect(events[0].eventType).toBe(AUDIT_EVENT_TYPES.SECURITY_SUSPICIOUS_LOGIN);
-    expect(events[0].metadata).toEqual({ reasons: ["new_device"] });
+    expect(events[0]!.eventType).toBe(AUDIT_EVENT_TYPES.SECURITY_SUSPICIOUS_LOGIN);
+    expect(events[0]!.metadata).toEqual({ reasons: ["new_device"] });
   });
 });
 

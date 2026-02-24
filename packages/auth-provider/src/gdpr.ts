@@ -113,7 +113,13 @@ export async function exportUserData(
       eventType: AUDIT_EVENT_TYPES.GDPR_DATA_EXPORT,
       targetType: "user",
       targetId: userId,
-      ...auditContext,
+      ...(auditContext && {
+        actorId: auditContext.actorId ?? undefined,
+        actorType: auditContext.actorType ?? undefined,
+        actorEmail: auditContext.actorEmail ?? undefined,
+        ipAddress: auditContext.ipAddress ?? undefined,
+        userAgent: auditContext.userAgent ?? undefined,
+      }),
     });
   }
   return result;
@@ -275,7 +281,13 @@ export async function eraseUserData(
       targetType: "user",
       targetId: userId,
       metadata: { invalidatedSessionIds },
-      ...auditContext,
+      ...(auditContext && {
+        actorId: auditContext.actorId ?? undefined,
+        actorType: auditContext.actorType ?? undefined,
+        actorEmail: auditContext.actorEmail ?? undefined,
+        ipAddress: auditContext.ipAddress ?? undefined,
+        userAgent: auditContext.userAgent ?? undefined,
+      }),
     });
   }
   return { erased: true, invalidatedSessionIds };

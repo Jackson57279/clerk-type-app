@@ -48,17 +48,18 @@ describe("createAuditEvent", () => {
     };
     await createAuditEvent(store, input);
     expect(events).toHaveLength(1);
-    expect(events[0].eventId).toMatch(/^evt_[a-f0-9]{32}$/);
-    expect(events[0].eventType).toBe(AUDIT_EVENT_TYPES.USER_LOGIN);
-    expect(events[0].actorType).toBe("user");
-    expect(events[0].actorId).toBe("user_123");
-    expect(events[0].actorEmail).toBe("u@example.com");
-    expect(events[0].targetType).toBe("session");
-    expect(events[0].targetId).toBe("sess_456");
-    expect(events[0].ipAddress).toBe("192.168.1.1");
-    expect(events[0].userAgent).toBe("Mozilla/5.0");
-    expect(events[0].organizationId).toBe("org_789");
-    expect(events[0].metadata).toEqual({ method: "password", mfa_used: true });
+    const ev = events[0]!;
+    expect(ev.eventId).toMatch(/^evt_[a-f0-9]{32}$/);
+    expect(ev.eventType).toBe(AUDIT_EVENT_TYPES.USER_LOGIN);
+    expect(ev.actorType).toBe("user");
+    expect(ev.actorId).toBe("user_123");
+    expect(ev.actorEmail).toBe("u@example.com");
+    expect(ev.targetType).toBe("session");
+    expect(ev.targetId).toBe("sess_456");
+    expect(ev.ipAddress).toBe("192.168.1.1");
+    expect(ev.userAgent).toBe("Mozilla/5.0");
+    expect(ev.organizationId).toBe("org_789");
+    expect(ev.metadata).toEqual({ method: "password", mfa_used: true });
   });
 
   it("supports minimal input (eventType only)", async () => {
@@ -67,10 +68,11 @@ describe("createAuditEvent", () => {
       eventType: AUDIT_EVENT_TYPES.SECURITY_MFA_CHALLENGE_FAILED,
     });
     expect(events).toHaveLength(1);
-    expect(events[0].eventType).toBe(AUDIT_EVENT_TYPES.SECURITY_MFA_CHALLENGE_FAILED);
-    expect(events[0].eventId).toMatch(/^evt_/);
-    expect(events[0].actorType).toBeUndefined();
-    expect(events[0].metadata).toBeUndefined();
+    const ev = events[0]!;
+    expect(ev.eventType).toBe(AUDIT_EVENT_TYPES.SECURITY_MFA_CHALLENGE_FAILED);
+    expect(ev.eventId).toMatch(/^evt_/);
+    expect(ev.actorType).toBeUndefined();
+    expect(ev.metadata).toBeUndefined();
   });
 
   it("logs multiple event types correctly", async () => {
@@ -97,7 +99,7 @@ describe("createAuditEvent", () => {
       eventType: AUDIT_EVENT_TYPES.ADMIN_ROLE_CHANGED,
       metadata: { from_role: "member", to_role: "admin" },
     });
-    expect(events[0].metadata).toEqual({ from_role: "member", to_role: "admin" });
+    expect(events[0]!.metadata).toEqual({ from_role: "member", to_role: "admin" });
   });
 });
 

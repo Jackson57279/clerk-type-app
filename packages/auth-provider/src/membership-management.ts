@@ -2,6 +2,7 @@ import type { MemberRole, OrganizationMembership as ApprovalMembership } from ".
 import { assertOrganizationCanAddMember } from "./seat-management.js";
 import type { Organization } from "./organization-crud.js";
 
+export type { MemberRole };
 export const MEMBERSHIP_ROLES: MemberRole[] = [
   "owner",
   "admin",

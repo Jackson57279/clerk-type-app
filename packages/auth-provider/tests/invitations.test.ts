@@ -373,7 +373,7 @@ describe("acceptInvitation", () => {
     expect(membership.role).toBe("editor");
     const members = await listOrganizationMembers(memStore, "org_1");
     expect(members).toHaveLength(1);
-    expect(members[0].userId).toBe("user_new");
+    expect(members[0]!.userId).toBe("user_new");
   });
 
   it("calls emitWebhook when provided", async () => {
@@ -392,10 +392,11 @@ describe("acceptInvitation", () => {
       },
     });
     expect(payloads).toHaveLength(1);
-    expect(payloads[0].type).toBe("organization_invitation.accepted");
-    expect(payloads[0].data.organization_id).toBe("org_1");
-    expect(payloads[0].data.user_id).toBe("user_1");
-    expect(payloads[0].data.role).toBe("member");
+    const p = payloads[0]!;
+    expect(p.type).toBe("organization_invitation.accepted");
+    expect(p.data.organization_id).toBe("org_1");
+    expect(p.data.user_id).toBe("user_1");
+    expect(p.data.role).toBe("member");
   });
 
   it("rejects wrong organization", async () => {
@@ -515,10 +516,10 @@ describe("listOrganizationInvitations", () => {
     await acceptInvitation(invStore, memStore, o, inv1.token, "user_1");
     const pending = await listOrganizationInvitations(invStore, "org_1", "pending");
     expect(pending).toHaveLength(1);
-    expect(pending[0].email).toBe("b@e.com");
+    expect(pending[0]!.email).toBe("b@e.com");
     const accepted = await listOrganizationInvitations(invStore, "org_1", "accepted");
     expect(accepted).toHaveLength(1);
-    expect(accepted[0].email).toBe("a@e.com");
+    expect(accepted[0]!.email).toBe("a@e.com");
   });
 
   it("returns empty array for org with no invitations", async () => {

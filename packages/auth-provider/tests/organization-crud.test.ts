@@ -234,7 +234,7 @@ describe("listOrganizations", () => {
     await deleteOrganization(store, a.id);
     const list = await listOrganizations(store);
     expect(list).toHaveLength(1);
-    expect(list[0].slug).toBe("b");
+    expect(list[0]!.slug).toBe("b");
   });
 
   it("includes deleted when option set", async () => {
@@ -243,7 +243,7 @@ describe("listOrganizations", () => {
     await deleteOrganization(store, a.id);
     const list = await listOrganizations(store, { includeDeleted: true });
     expect(list).toHaveLength(1);
-    expect(list[0].deletedAt).not.toBeNull();
+    expect(list[0]!.deletedAt).not.toBeNull();
   });
 });
 
@@ -258,7 +258,7 @@ describe("updateOrganization", () => {
     expect(updated.name).toBe("Acme Corp");
     expect(updated.slug).toBe("acme-corp");
     const bySlug = await getOrganization(store, "acme-corp");
-    expect(bySlug?.id).toBe(created.id);
+    expect(bySlug!.id).toBe(created.id);
   });
 
   it("throws when organization not found", async () => {
@@ -309,7 +309,7 @@ describe("deleteOrganization", () => {
     expect(list).toHaveLength(0);
     const withDeleted = await listOrganizations(store, { includeDeleted: true });
     expect(withDeleted).toHaveLength(1);
-    expect(withDeleted[0].deletedAt).not.toBeNull();
+    expect(withDeleted[0]!.deletedAt).not.toBeNull();
   });
 
   it("throws when organization not found", async () => {

@@ -180,7 +180,7 @@ describe("removeMember", () => {
     await removeMember(store, member.id);
     const list = await listOrganizationMembers(store, "org_1");
     expect(list).toHaveLength(1);
-    expect(list[0].id).toBe(owner.id);
+    expect(list[0]!.id).toBe(owner.id);
   });
 
   it("rejects removing the last owner", async () => {
@@ -200,7 +200,7 @@ describe("removeMember", () => {
     await removeMember(store, owner1.id);
     const list = await listOrganizationMembers(store, "org_1");
     expect(list).toHaveLength(1);
-    expect(list[0].role).toBe("owner");
+    expect(list[0]!.role).toBe("owner");
   });
 
   it("throws when membership not found", async () => {

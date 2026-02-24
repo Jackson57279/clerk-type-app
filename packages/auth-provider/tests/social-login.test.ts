@@ -683,8 +683,10 @@ describe("confirmAccountLink", () => {
     expect(callbackResult.ok).toBe(false);
     if (callbackResult.ok) return;
     expect(callbackResult.error).toBe("link_confirmation_required");
-    const linkToken = callbackResult.linkToken;
-    const confirmResult = await confirmAccountLink(linkToken, { store });
+    const linkToken =
+      callbackResult.error === "link_confirmation_required" ? callbackResult.linkToken : undefined;
+    expect(linkToken).toBeDefined();
+    const confirmResult = await confirmAccountLink(linkToken!, { store });
     expect(confirmResult.ok).toBe(true);
     if (!confirmResult.ok) return;
     expect(confirmResult.userId).toBe(user.id);
