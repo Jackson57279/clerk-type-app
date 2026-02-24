@@ -31,6 +31,10 @@ import {
 } from "../src/backup-codes.js";
 import { createSuspiciousActivityDetector } from "../src/suspicious-activity.js";
 import { AUDIT_EVENT_TYPES, type AuditLogStore } from "../src/audit-log.js";
+import {
+  clearAllSessions,
+  registerSession,
+} from "../src/concurrent-session-limit.js";
 
 function secretToBuffer(secretBase32: string): Buffer {
   return Buffer.from(base32Decode.asBytes(secretBase32));
@@ -406,6 +410,95 @@ describe("login with session fixation prevention", () => {
       userId: result.userId,
       orgId: "org-1",
     });
+  });
+});
+
+describe("login with concurrent session limit", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    clearAllSessions();
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("evicts oldest sessions when over limit and syncs app session store", async () => {
+    const store = memoryStore();
+    await register(store, { email: "u@example.com", password: "PassWord1" });
+    const user = await store.findUserByEmail("u@example.com");
+    expect(user).not.toBeNull();
+    const userId = user!.userId;
+    const sessionStore = new Map<string, { userId: string; orgId: string | null }>();
+    const appStore = {
+      remove(id: string) {
+        sessionStore.delete(id);
+      },
+      register(id: string, uid: string, orgId: string | null) {
+        sessionStore.set(id, { userId: uid, orgId });
+      },
+    };
+    registerSession("s0", userId, null);
+    vi.advanceTimersByTime(100);
+    registerSession("s1", userId, null);
+    sessionStore.set("s0", { userId, orgId: null });
+    sessionStore.set("s1", { userId, orgId: null });
+    sessionStore.set("pre-login", { userId: "anonymous", orgId: null });
+
+    const result = await login(
+      store,
+      { email: "u@example.com", password: "PassWord1" },
+      {
+        sessionFixation: {
+          sessionStore: appStore,
+          currentSessionId: "pre-login",
+        },
+        concurrentSessionLimit: { limits: { user: 2 } },
+      }
+    );
+
+    expect(result.success).toBe(true);
+    if (!result.success) return;
+    expect(result.newSessionId).toBeDefined();
+    expect(result.setCookieHeader).toMatch(/^session=/);
+    expect(result.evictedSessionIds).toContain("s0");
+    expect(sessionStore.has("s0")).toBe(false);
+    expect(sessionStore.has("pre-login")).toBe(false);
+    expect(sessionStore.get(result.newSessionId!)).toEqual({
+      userId: result.userId,
+      orgId: null,
+    });
+  });
+
+  it("returns no evictions when under limit", async () => {
+    const store = memoryStore();
+    await register(store, { email: "u@example.com", password: "PassWord1" });
+    const sessionStore = new Map<string, { userId: string; orgId: string | null }>();
+    const appStore = {
+      remove(id: string) {
+        sessionStore.delete(id);
+      },
+      register(id: string, userId: string, orgId: string | null) {
+        sessionStore.set(id, { userId, orgId });
+      },
+    };
+    sessionStore.set("pre-login", { userId: "anonymous", orgId: null });
+
+    const result = await login(
+      store,
+      { email: "u@example.com", password: "PassWord1" },
+      {
+        sessionFixation: {
+          sessionStore: appStore,
+          currentSessionId: "pre-login",
+        },
+        concurrentSessionLimit: { limits: { user: 5 } },
+      }
+    );
+
+    expect(result.success).toBe(true);
+    if (!result.success) return;
+    expect(result.evictedSessionIds).toEqual([]);
+    expect(result.newSessionId).toBeDefined();
   });
 });
 

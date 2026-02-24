@@ -38,6 +38,11 @@ import {
   type SessionStore,
   type CreateSessionAfterLoginOptions,
 } from "./session-fixation.js";
+import {
+  createSessionAfterLoginWithConcurrentLimit,
+  getConcurrentSessionLimitDefaults,
+  type SessionLimits,
+} from "./concurrent-session-limit.js";
 
 export interface CredentialUser {
   userId: string;
@@ -202,6 +207,11 @@ export interface LoginSessionFixationOptions {
   orgId?: string | null;
 }
 
+export interface LoginConcurrentSessionLimitOptions {
+  limits?: SessionLimits;
+  env?: NodeJS.ProcessEnv;
+}
+
 export interface LoginOptions {
   totpStore?: TotpStore;
   smsMfa?: SmsMfaLoginOptions;
@@ -213,6 +223,7 @@ export interface LoginOptions {
   auditLogStore?: AuditLogStore;
   useIpRateLimit?: boolean;
   sessionFixation?: LoginSessionFixationOptions & CreateSessionAfterLoginOptions;
+  concurrentSessionLimit?: LoginConcurrentSessionLimitOptions;
 }
 
 export interface LoginSuccess {
@@ -222,6 +233,7 @@ export interface LoginSuccess {
   suspiciousReasons?: string[];
   newSessionId?: string;
   setCookieHeader?: string;
+  evictedSessionIds?: string[];
 }
 
 export interface LoginRequiresTotp {
@@ -429,17 +441,50 @@ export async function login(
     }
   }
   const fix = options.sessionFixation;
+  const concurrentLimit = options.concurrentSessionLimit;
   if (fix) {
     const { sessionStore, currentSessionId, orgId, ...cookieOptions } = fix;
-    const { newSessionId, setCookieHeader } = createSessionAfterLogin(
-      currentSessionId,
-      user.userId,
-      orgId ?? null,
-      sessionStore,
-      cookieOptions
-    );
-    success.newSessionId = newSessionId;
-    success.setCookieHeader = setCookieHeader;
+    const orgIdVal = orgId ?? null;
+    if (concurrentLimit) {
+      const resolvedLimits: SessionLimits = concurrentLimit.limits
+        ? concurrentLimit.limits
+        : (() => {
+            const d = getConcurrentSessionLimitDefaults(
+              concurrentLimit.env ?? process.env
+            );
+            return {
+              user: d.defaultUserLimit,
+              ...(d.defaultOrgLimit !== undefined && { org: d.defaultOrgLimit }),
+            };
+          })();
+      const out = createSessionAfterLoginWithConcurrentLimit(
+        currentSessionId,
+        user.userId,
+        orgIdVal,
+        resolvedLimits,
+        {
+          cookieName: cookieOptions.cookieName,
+          maxAgeSeconds: cookieOptions.maxAgeSeconds,
+          path: cookieOptions.path,
+        }
+      );
+      for (const id of out.evictedSessionIds) sessionStore.remove(id);
+      sessionStore.remove(currentSessionId);
+      sessionStore.register(out.newSessionId, user.userId, orgIdVal);
+      success.newSessionId = out.newSessionId;
+      success.setCookieHeader = out.setCookieHeader;
+      success.evictedSessionIds = out.evictedSessionIds;
+    } else {
+      const { newSessionId, setCookieHeader } = createSessionAfterLogin(
+        currentSessionId,
+        user.userId,
+        orgIdVal,
+        sessionStore,
+        cookieOptions
+      );
+      success.newSessionId = newSessionId;
+      success.setCookieHeader = setCookieHeader;
+    }
   }
   return success;
 }
