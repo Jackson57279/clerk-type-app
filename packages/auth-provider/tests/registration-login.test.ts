@@ -1042,7 +1042,7 @@ describe("login with IP rate limit (5 per 15 min)", () => {
       opts
     );
     expect(blocked.success).toBe(false);
-    if (!blocked.success) expect(blocked.reason).toBe("rate_limited");
+    if (!blocked.success) expect("reason" in blocked && blocked.reason).toBe("rate_limited");
     expect(allowed.success).toBe(true);
   });
 
