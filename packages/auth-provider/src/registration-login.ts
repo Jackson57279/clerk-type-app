@@ -1,9 +1,11 @@
 import {
   defaultPasswordPolicy,
+  getPasswordPolicyConfig,
   hashPassword,
   type PasswordPolicy,
   type PasswordValidationResult,
   validatePassword,
+  validatePasswordWithEnv,
   verifyPassword,
 } from "./password.js";
 import {
@@ -64,6 +66,11 @@ export interface RegisterOptions {
     plain: string,
     policy: PasswordPolicy
   ) => PasswordValidationResult;
+  validatePasswordAsync?: (
+    plain: string,
+    policy: PasswordPolicy
+  ) => Promise<PasswordValidationResult>;
+  env?: NodeJS.ProcessEnv;
   isAllowedEmail?: (email: string) => boolean;
 }
 
@@ -87,8 +94,10 @@ export async function register(
   options: RegisterOptions = {}
 ): Promise<RegisterResult> {
   const {
-    passwordPolicy = defaultPasswordPolicy,
+    passwordPolicy: policyOpt = defaultPasswordPolicy,
     validatePasswordFn = validatePassword,
+    validatePasswordAsync,
+    env: envOpt,
     isAllowedEmail,
   } = options;
 
@@ -105,7 +114,21 @@ export async function register(
     return { success: false, reason: "email_not_allowed" };
   }
 
-  const validation = validatePasswordFn(input.password, passwordPolicy);
+  let passwordPolicy: PasswordPolicy;
+  let validation: PasswordValidationResult;
+  if (envOpt !== undefined) {
+    const config = getPasswordPolicyConfig(envOpt);
+    passwordPolicy = config.policy;
+    validation = config.checkBreach
+      ? await validatePasswordWithEnv(input.password, envOpt)
+      : validatePassword(input.password, passwordPolicy);
+  } else if (validatePasswordAsync !== undefined) {
+    passwordPolicy = policyOpt;
+    validation = await validatePasswordAsync(input.password, passwordPolicy);
+  } else {
+    passwordPolicy = policyOpt;
+    validation = validatePasswordFn(input.password, passwordPolicy);
+  }
   if (!validation.valid) {
     return {
       success: false,

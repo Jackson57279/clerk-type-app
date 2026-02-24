@@ -6,7 +6,10 @@ import {
   type RegistrationLoginStore,
   type CredentialUser,
 } from "../src/registration-login.js";
-import { defaultPasswordPolicy } from "../src/password.js";
+import {
+  defaultPasswordPolicy,
+  validatePasswordWithPolicy,
+} from "../src/password.js";
 import { createBruteForceProtection } from "../src/brute-force.js";
 import { createAccountLockout } from "../src/account-lockout.js";
 import {
@@ -1083,5 +1086,102 @@ describe("custom password policy", () => {
       { passwordPolicy: strictPolicy }
     );
     expect(ok.success).toBe(true);
+  });
+
+  it("uses env for policy when options.env is provided", async () => {
+    const store = memoryStore();
+    const env = { PASSWORD_MIN_LENGTH: "12", PASSWORD_REQUIRE_SPECIAL: "true" };
+    const short = await register(
+      store,
+      { email: "env@example.com", password: "short1a" },
+      { env }
+    );
+    expect(short.success).toBe(false);
+    if (!short.success) {
+      expect(short.reason).toBe("invalid_password");
+      expect(short.errors?.some((e) => e.includes("at least 12"))).toBe(true);
+    }
+    const ok = await register(
+      store,
+      { email: "env@example.com", password: "LongEnough1!" },
+      { env }
+    );
+    expect(ok.success).toBe(true);
+  });
+
+  it("rejects pwned password when options.env has PASSWORD_CHECK_BREACH", async () => {
+    const store = memoryStore();
+    const originalFetch = globalThis.fetch;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((url: string) =>
+        url.includes("5BAA6")
+          ? Promise.resolve({
+              ok: true,
+              text: () =>
+                Promise.resolve(
+                  "1E4C9B93F3F0682250B6CF8331B7EE68FD8:3730471\r\n"
+                ),
+            } as Response)
+          : Promise.resolve({ ok: false } as Response)
+      )
+    );
+    try {
+      const env = {
+        PASSWORD_REQUIRE_DIGIT: "0",
+        PASSWORD_CHECK_BREACH: "true",
+      };
+      const result = await register(
+        store,
+        { email: "pwned@example.com", password: "password" },
+        { env }
+      );
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        expect(result.reason).toBe("invalid_password");
+        expect(result.errors?.some((e) => e.includes("breach"))).toBe(true);
+      }
+    } finally {
+      vi.stubGlobal("fetch", originalFetch);
+    }
+  });
+
+  it("uses validatePasswordAsync when provided and rejects pwned password", async () => {
+    const store = memoryStore();
+    const permissive = { ...defaultPasswordPolicy, requireDigit: false };
+    const validateAsync = (plain: string, policy: typeof permissive) =>
+      validatePasswordWithPolicy(plain, policy, { checkBreach: true });
+    const originalFetch = globalThis.fetch;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((url: string) =>
+        url.includes("5BAA6")
+          ? Promise.resolve({
+              ok: true,
+              text: () =>
+                Promise.resolve(
+                  "1E4C9B93F3F0682250B6CF8331B7EE68FD8:3730471\r\n"
+                ),
+            } as Response)
+          : Promise.resolve({ ok: false } as Response)
+      )
+    );
+    try {
+      const result = await register(
+        store,
+        { email: "async@pwned.com", password: "password" },
+        {
+          passwordPolicy: permissive,
+          validatePasswordAsync: validateAsync,
+        }
+      );
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        expect(result.reason).toBe("invalid_password");
+        expect(result.errors?.some((e) => e.includes("breach"))).toBe(true);
+      }
+    } finally {
+      vi.stubGlobal("fetch", originalFetch);
+    }
   });
 });
